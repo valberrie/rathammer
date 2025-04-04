@@ -2,10 +2,27 @@ const std = @import("std");
 const graph = @import("graph");
 const Rec = graph.Rec;
 const Vec2f = graph.Vec2f;
+
+const vdf = @import("vdf.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
+
+    const infile = try std.fs.cwd().openFile("d1_trainstation_01.vmf", .{});
+    defer infile.close();
+
+    const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    defer alloc.free(slice);
+
+    var obj = try vdf.parse(alloc, slice);
+    const vinf = obj.value.getFirst("versioninfo").?.obj;
+    defer obj.deinit();
+    for (vinf.list.items) |item|
+        std.debug.print("{s}\n", .{item.val.literal});
+
+    if (true)
+        return;
 
     var win = try graph.SDL.Window.createWindow("My window", .{
         // Optional, see Window.createWindow definition for full list of options

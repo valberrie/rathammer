@@ -1,17 +1,21 @@
 const std = @import("std");
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3_f64;
-const KV = struct {
+pub const KV = struct {
     const Value = union(enum) { literal: []const u8, obj: *Object };
     key: []const u8,
     val: Value,
 };
-const Object = struct {
+pub const Object = struct {
     const Self = @This();
     list: std.ArrayList(KV),
 
     pub fn init(alloc: std.mem.Allocator) @This() {
         return .{ .list = std.ArrayList(KV).init(alloc) };
+    }
+
+    pub fn deinit(self: Self) void {
+        self.list.deinit();
     }
 
     pub fn append(self: *Self, kv: KV) !void {
@@ -71,6 +75,171 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
         else => @compileError("not supported " ++ @typeName(T) ++ " " ++ @tagName(info)),
     }
     return undefined;
+}
+
+pub const VdfTokenIterator = struct {
+    const Self = @This();
+
+    pub const Token = union(enum) {
+        ident: []const u8,
+        object_begin: void,
+        object_end: void,
+    };
+
+    slice: []const u8,
+    pos: usize = 0,
+    state: enum { none, ident, quoted_ident } = .none,
+    line_counter: usize = 0,
+    char_counter: usize = 0,
+
+    token_buf: std.ArrayList(u8),
+
+    pub fn init(slice: []const u8, alloc: std.mem.Allocator) Self {
+        return .{
+            .slice = slice,
+            .token_buf = std.ArrayList(u8).init(alloc),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.token_buf.deinit();
+    }
+
+    pub fn next(self: *Self) !?Token {
+        self.token_buf.clearRetainingCapacity();
+        while (self.pos < self.slice.len) {
+            const byte = self.slice[self.pos];
+            self.pos += 1;
+
+            self.char_counter += 1;
+            //while (r.readByte() catch null) |byte| {
+            switch (byte) {
+                '{', '}' => {
+                    if (self.state == .quoted_ident) {
+                        try self.token_buf.append(byte);
+                    } else {
+                        return switch (byte) {
+                            '{' => .{ .object_begin = {} },
+                            '}' => .{ .object_end = {} },
+                            else => unreachable,
+                        };
+                    }
+                }, //recur
+                '\"' => { //Begin or end a string
+                    switch (self.state) {
+                        .ident => return error.fucked,
+                        .quoted_ident => {
+                            self.state = .none;
+                            return .{ .ident = self.token_buf.items };
+                        },
+                        .none => self.state = .quoted_ident,
+                    }
+                },
+                '\\' => return error.notImplemented, //escape the next char
+                '\r', '\n' => {
+                    self.line_counter += 1;
+                    self.char_counter = 0;
+                    switch (self.state) {
+                        .quoted_ident => return error.fucked,
+                        .ident => {
+                            self.state = .none;
+                            return .{ .ident = self.token_buf.items };
+                        },
+                        .none => {},
+                    }
+                },
+                ' ', '\t' => {
+                    switch (self.state) {
+                        .ident => {
+                            self.state = .none;
+                            return .{ .ident = self.token_buf.items };
+                        },
+                        .quoted_ident => {
+                            try self.token_buf.append(byte);
+                        },
+                        .none => {},
+                    }
+                },
+                else => {
+                    switch (self.state) {
+                        .ident => {},
+                        .quoted_ident => {},
+                        .none => {
+                            self.state = .ident;
+                        },
+                    }
+                    try self.token_buf.append(byte);
+                },
+            }
+        }
+        return null;
+    }
+};
+
+pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
+    value: Object,
+    obj_list: std.ArrayList(*Object),
+    arena: std.heap.ArenaAllocator,
+    pub fn deinit(self: *@This()) void {
+        self.arena.deinit();
+        for (self.obj_list.items) |item| {
+            self.obj_list.allocator.destroy(item);
+        }
+        self.obj_list.deinit();
+        self.value.deinit();
+    }
+} {
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    //defer arena.deinit();
+    const aa = arena.allocator();
+
+    var key: []const u8 = "";
+
+    var object_stack = std.ArrayList(*Object).init(alloc);
+    defer object_stack.deinit();
+
+    var root_object = Object.init(alloc);
+    var root = &root_object;
+
+    var it = VdfTokenIterator.init(slice, alloc);
+    defer it.deinit();
+    var token_state: enum { key, value } = .key;
+    var object_list = std.ArrayList(*Object).init(alloc);
+
+    while (try it.next()) |token| {
+        switch (token) {
+            .object_begin => {
+                if (token_state != .value) {
+                    std.debug.print("Error at line: {d}:{d}\n", .{ it.line_counter, it.char_counter });
+                    return error.invalid;
+                }
+
+                const new_root = try alloc.create(Object);
+                new_root.* = Object.init(aa);
+                try root.append(.{ .key = key, .val = .{ .obj = new_root } });
+                try object_stack.append(root);
+                try object_list.append(new_root);
+                root = new_root;
+                token_state = .key;
+            },
+            .object_end => {
+                root = object_stack.pop();
+            },
+            .ident => switch (token_state) {
+                .key => {
+                    key = try aa.dupe(u8, token.ident);
+                    token_state = .value;
+                },
+                .value => {
+                    try root.append(.{ .key = key, .val = .{ .literal = try aa.dupe(u8, token.ident) } });
+                    token_state = .key;
+                },
+            },
+        }
+        //Parse versioninfo
+        //  expect a string or if a '{ then recur
+    }
+    return .{ .value = root_object, .arena = arena, .obj_list = object_list };
 }
 
 pub fn main() !void {
