@@ -47,7 +47,7 @@ pub fn main() !void {
     }, &arg_it);
 
     //const infile = try std.fs.cwd().openFile("sdk_materials.vmf", .{});
-    const infile = try std.fs.cwd().openFile(args.vmf orelse "d1_trainstation_02.vmf", .{});
+    const infile = try std.fs.cwd().openFile(args.vmf orelse "sdk_materials.vmf", .{});
     defer infile.close();
 
     const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));

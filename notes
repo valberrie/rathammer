@@ -1,1 +1,18 @@
 Notes go here
+
+an interface over vmf parser.
+parsing the vmfs into a good structure
+
+Editing operations will modify the underlying csg.
+When a brush is edited, the linked mesh is recalculated, takes about 70us per side, not great, not terrible
+
+
+
+Graphically,
+Start with basic 3d world, noclip movement.
+
+2d view implementation will require some thought
+
+TODO
+loading from vpk instead of fs
+use the deferred renderer so it looks real pretty
