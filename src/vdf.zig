@@ -50,7 +50,10 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                 for (value.obj.list.items) |*item| {
                     if (std.mem.eql(u8, item.key, f.name)) {
                         if (do_many) {
-                            const val = fromValue(ar_c, &item.val, alloc) catch null;
+                            const val = fromValue(ar_c, &item.val, alloc) catch blk: {
+                                //std.debug.print("parse FAILED {any}\n", .{item.val});
+                                break :blk null;
+                            };
                             if (val) |v|
                                 try vec.append(v);
                         } else {

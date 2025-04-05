@@ -1,3 +1,4 @@
 *.vmf
 .zig-cache
 zig-out
+pngmat

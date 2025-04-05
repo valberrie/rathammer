@@ -32,53 +32,124 @@ pub const Entity = struct {
     solid: []const Solid,
 };
 pub const Side = struct {
+    pub const UvCoord = struct {
+        axis: vdf.Vec3,
+        translation: f64,
+        scale: f64,
+
+        pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
+            if (val.* != .literal)
+                return error.notgood;
+
+            const str = val.literal;
+            var i: usize = 0;
+            const ax = try parseVec(str, &i, 4, '[', ']');
+            const scale = try std.fmt.parseFloat(f64, std.mem.trimLeft(u8, str[i..], " "));
+
+            //for (val) |byte| {
+            //    switch (byte) {
+            //        '[' => {},
+            //        ']' => {},
+            //        ' ' => {},
+            //        else => {},
+            //    }
+            //}
+            return .{
+                .axis = vdf.Vec3.new(ax[0], ax[1], ax[2]),
+                .translation = ax[3],
+                .scale = scale,
+            };
+        }
+    };
     id: u32,
     plane: struct {
         pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
             if (val.* != .literal)
                 return error.notgood;
-            const str = val.literal;
-            var in_num: bool = false;
-            var vert_index: i64 = -1;
-            var comp_index: usize = 0;
 
-            var num_start_index: usize = 0;
+            const str = val.literal;
             var self: @This() = undefined;
-            for (str, 0..) |char, i| {
-                switch (char) {
-                    '0'...'9', '-', '.', 'e' => {
-                        if (!in_num)
-                            num_start_index = i;
-                        in_num = true;
-                    },
-                    '(' => {
-                        vert_index += 1;
-                    },
-                    ' ', ')' => {
-                        const s = str[num_start_index..i];
-                        if (in_num) {
-                            const f = std.fmt.parseFloat(f64, s) catch {
-                                std.debug.print("IT BROKE {s}: {s}\n", .{ s, str });
-                                return error.fucked;
-                            };
-                            if (vert_index < 0)
-                                return error.invalid;
-                            self.tri[@intCast(vert_index)].data[comp_index] = f;
-                            comp_index += 1;
-                        }
-                        in_num = false;
-                        if (char == ')') {
-                            if (comp_index != 3)
-                                return error.notEnoughComponent;
-                            comp_index = 0;
-                        }
-                    },
-                    else => return error.invalid,
-                }
+            var i: usize = 0;
+            for (0..3) |j| {
+                const r1 = try parseVec(str, &i, 3, '(', ')');
+                self.tri[j] = vdf.Vec3.new(r1[0], r1[1], r1[2]);
             }
+
             return self;
         }
         tri: [3]vdf.Vec3,
     },
+
+    uaxis: UvCoord,
+    vaxis: UvCoord,
     material: []const u8,
 };
+
+fn parseVec(str: []const u8, i: *usize, comptime count: usize, comptime start: u8, comptime end: u8) ![count]f64 {
+    var ret: [count]f64 = undefined;
+    var in_num: bool = false;
+    var vert_index: i64 = -1;
+    var comp_index: usize = 0;
+
+    while (i.* < str.len) : (i.* += 1) {
+        if (str[i.*] != ' ')
+            break;
+    }
+    var num_start_index: usize = i.*;
+    const slice = str[i.*..];
+    for (slice) |char| {
+        switch (char) {
+            else => {
+                if (!in_num)
+                    num_start_index = i.*;
+                in_num = true;
+            },
+            start => {
+                vert_index += 1;
+            },
+            ' ', end => {
+                const s = str[num_start_index..i.*];
+                if (in_num) {
+                    const f = std.fmt.parseFloat(f64, s) catch {
+                        std.debug.print("IT BROKE {s}: {s}\n", .{ s, slice });
+                        return error.fucked;
+                    };
+                    if (vert_index < 0)
+                        return error.invalid;
+                    ret[comp_index] = f;
+                    comp_index += 1;
+                }
+                in_num = false;
+                if (char == end) {
+                    if (comp_index != count)
+                        return error.notEnoughComponent;
+                    i.* += 1;
+                    return ret;
+                }
+            },
+        }
+        i.* += 1;
+    }
+    return ret;
+}
+
+test "parse vec" {
+    const str = "(0 12 12.3   ) (0 12E3 88)  ";
+    var i: usize = 0;
+
+    const a = try parseVec(str, &i, 3, '(', ')');
+    const b = try parseVec(str, &i, 3, '(', ')');
+    try std.testing.expectEqual(a[0], 0);
+    try std.testing.expectEqual(b[0], 0);
+    try std.testing.expectEqual(b[2], 88);
+}
+
+test "parse big" {
+    const str = "[0 0 0 0] 0.02";
+    var i: usize = 0;
+    const a = try parseVec(str, &i, 4, '[', ']');
+    std.debug.print("{any}\n", .{a});
+    std.debug.print("{s}\n", .{str[i..]});
+    const scale = try std.fmt.parseFloat(f64, std.mem.trimLeft(u8, str[i..], " "));
+    std.debug.print("{d}\n", .{scale});
+}

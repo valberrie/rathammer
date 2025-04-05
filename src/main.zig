@@ -2,15 +2,52 @@ const std = @import("std");
 const graph = @import("graph");
 const Rec = graph.Rec;
 const Vec2f = graph.Vec2f;
-
+const V3f = graph.za.Vec3;
+const meshutil = graph.meshutil;
+const csg = @import("csg.zig");
 const vdf = @import("vdf.zig");
 const vmf = @import("vmf.zig");
+
+fn procSolid(alloc: std.mem.Allocator, solid: vmf.Solid, matmap: *csg.MeshMap, dir: std.fs.Dir) !void {
+    var buf: [256]u8 = undefined;
+    var fbs = std.io.FixedBufferStream([]u8){ .buffer = &buf, .pos = 0 };
+    for (solid.side) |side| {
+        const res = try matmap.getOrPut(side.material);
+        if (!res.found_existing) {
+            _ = std.ascii.lowerString(&buf, side.material);
+            fbs.pos = side.material.len;
+            try fbs.writer().print(".png", .{});
+            //std.debug.print("{s}\n", .{fbs.getWritten()});
+            res.value_ptr.* = .{ .tex = blk: {
+                const bmp = graph.Bitmap.initFromPngFile(alloc, dir, fbs.getWritten()) catch {
+                    break :blk graph.Texture.initEmpty();
+                };
+
+                defer bmp.deinit();
+                break :blk graph.Texture.initFromBitmap(bmp, .{});
+            }, .mesh = undefined };
+            res.value_ptr.mesh = meshutil.Mesh.init(alloc, res.value_ptr.tex.id);
+        }
+    }
+    try csg.genMesh(solid.side, alloc, matmap);
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     //defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
 
-    const infile = try std.fs.cwd().openFile("d1_trainstation_01.vmf", .{});
+    var arg_it = try std.process.argsWithAllocator(alloc);
+    defer arg_it.deinit();
+
+    const Arg = graph.ArgGen.Arg;
+    const args = try graph.ArgGen.parseArgs(&.{
+        Arg("vmf", .string, "vmf to load"),
+        Arg("scale", .number, "scale the model"),
+    }, &arg_it);
+
+    //const infile = try std.fs.cwd().openFile("sdk_materials.vmf", .{});
+    const infile = try std.fs.cwd().openFile(args.vmf orelse "d1_trainstation_02.vmf", .{});
     defer infile.close();
 
     const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
@@ -22,47 +59,79 @@ pub fn main() !void {
     for (vinf.list.items) |item|
         std.debug.print("{s}\n", .{item.val.literal});
 
-    const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, alloc);
-
-    for (vmf_.entity) |ent| {
-        std.debug.print("{s}\n", .{ent.classname});
-    }
-    if (true)
-        return;
-
-    var win = try graph.SDL.Window.createWindow("My window", .{
-        // Optional, see Window.createWindow definition for full list of options
+    var win = try graph.SDL.Window.createWindow("Rat Hammer - 鼠", .{
         .window_size = .{ .x = 800, .y = 600 },
     });
     defer win.destroyWindow();
 
+    var matmap = csg.MeshMap.init(alloc);
+
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
-
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
-    const r = Rec(0, 0, 100, 100);
-    const v1 = Vec2f.new(0, 0);
-    const v2 = Vec2f.new(3, 3);
-    const v3 = Vec2f.new(30, 30);
-
-    while (!win.should_exit) {
-        try draw.begin(0x2f2f2fff, win.screen_dimensions.toF());
-        win.pumpEvents(.poll); //Important that this is called after draw.begin for input lag reasons
-
-        draw.text(.{ .x = 50, .y = 300 }, "Hello", &font.font, 20, 0xffffffff);
-        draw.rect(r, 0xff00ffff);
-        draw.rectVertexColors(r, &.{ 0xff, 0xff, 0xff, 0xff });
-        draw.nineSlice(r, r, font.font.texture, 1);
-        draw.rectTex(r, r, font.font.texture);
-        draw.line(v1, v2, 0xff);
-        draw.triangle(v1, v2, v3, 0xfffffff0);
-
-        try draw.flush(null, null); //Flush any draw commands
-
-        draw.triangle(v1, v2, v3, 0xfffffff0);
+    {
+        win.pumpEvents(.poll);
+        try draw.begin(0x222222ff, win.screen_dimensions.toF());
+        draw.text(.{ .x = 0, .y = 0 }, "Loading", &font.font, 20, 0xffffffff);
         try draw.end(null);
+        win.swap(); //So the window doesn't look too broken while loading
+    }
+    const basic_shader = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
+        .{ .path = "ratgraph/asset/shader/gbuffer.vert", .t = .vert },
+        .{ .path = "src/basic.frag", .t = .frag },
+    });
+
+    const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, alloc);
+    {
+        var timer = try std.time.Timer.start();
+        const dir = try std.fs.cwd().openDir("pngmat", .{});
+        for (vmf_.world.solid) |solid| {
+            try procSolid(alloc, solid, &matmap, dir);
+            //try meshes.append(try csg.genMesh(solid.side, alloc));
+        }
+        for (vmf_.entity) |ent| {
+            for (ent.solid) |solid|
+                try procSolid(alloc, solid, &matmap, dir);
+        }
+        var it = matmap.valueIterator();
+        while (it.next()) |item| {
+            item.mesh.setData();
+        }
+        const time = timer.read();
+        std.debug.print("csg took {d:.2} ms\n", .{time / std.time.ns_per_ms});
+    }
+
+    var cam = graph.Camera3D{};
+    graph.c.glEnable(graph.c.GL_CULL_FACE);
+    graph.c.glCullFace(graph.c.GL_BACK);
+
+    win.grabMouse(true);
+    while (!win.should_exit) {
+        try draw.begin(0x75573cff, win.screen_dimensions.toF());
+        win.pumpEvents(.poll);
+        cam.updateDebugMove(.{
+            .down = win.keyHigh(.LSHIFT),
+            .up = win.keyHigh(.SPACE),
+            .left = win.keyHigh(.A),
+            .right = win.keyHigh(.D),
+            .fwd = win.keyHigh(.W),
+            .bwd = win.keyHigh(.S),
+            .mouse_delta = win.mouse.delta,
+            .scroll_delta = win.mouse.wheel_delta.y,
+        });
+
+        draw.rect(Rec(0, 0, 100, 100), 0xff00ff5f);
+        draw.cube(V3f.new(0, 0, 0), V3f.new(1, 1, 1), 0xffffffff);
+        //graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
+        const view_3d = cam.getMatrix(draw.screen_dimensions.x / draw.screen_dimensions.y, 0.1, 100000);
+        var it = matmap.valueIterator();
+        const mat = graph.za.Mat4.identity().rotate(-90, graph.za.Vec3.new(1, 0, 0));
+        while (it.next()) |mesh| {
+            mesh.mesh.drawSimple(view_3d, mat, basic_shader);
+        }
+
+        try draw.end(cam);
         win.swap();
-        win.should_exit = true;
     }
 }
