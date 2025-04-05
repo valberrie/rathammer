@@ -4,9 +4,10 @@ const Rec = graph.Rec;
 const Vec2f = graph.Vec2f;
 
 const vdf = @import("vdf.zig");
+const vmf = @import("vmf.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.detectLeaks();
+    //defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
 
     const infile = try std.fs.cwd().openFile("d1_trainstation_01.vmf", .{});
@@ -21,6 +22,11 @@ pub fn main() !void {
     for (vinf.list.items) |item|
         std.debug.print("{s}\n", .{item.val.literal});
 
+    const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, alloc);
+
+    for (vmf_.entity) |ent| {
+        std.debug.print("{s}\n", .{ent.classname});
+    }
     if (true)
         return;
 

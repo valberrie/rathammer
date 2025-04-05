@@ -1,8 +1,8 @@
 const std = @import("std");
 const graph = @import("graph");
-const Vec3 = graph.za.Vec3_f64;
+pub const Vec3 = graph.za.Vec3_f64;
 pub const KV = struct {
-    const Value = union(enum) { literal: []const u8, obj: *Object };
+    pub const Value = union(enum) { literal: []const u8, obj: *Object };
     key: []const u8,
     val: Value,
 };
