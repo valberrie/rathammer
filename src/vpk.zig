@@ -49,12 +49,14 @@ pub const Context = struct {
     arena: std.heap.ArenaAllocator,
     alloc: std.mem.Allocator,
     strbuf: std.ArrayList(u8),
+    filebuf: std.ArrayList(u8),
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
             .strbuf = std.ArrayList(u8).init(alloc),
             .dirs = std.ArrayList(Dir).init(alloc),
             .extensions = ExtensionMap.init(alloc),
+            .filebuf = std.ArrayList(u8).init(alloc),
             .arena = std.heap.ArenaAllocator.init(alloc),
             .alloc = alloc,
         };
@@ -170,6 +172,12 @@ pub const Context = struct {
         }
     }
 
+    /// Returns a buffer owned by Self which will be clobberd on next getFileTemp call
+    pub fn getFileTemp(self: *Self, extension: []const u8, path: []const u8, name: []const u8) !?[]const u8 {
+        self.filebuf.clearRetainingCapacity();
+        return self.getFile(extension, path, name, &self.filebuf);
+    }
+
     ///Clears buf and returns the written string
     pub fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
         const ext = self.extensions.getPtr(extension) orelse return null;
@@ -221,6 +229,7 @@ pub const Context = struct {
         }
         self.dirs.deinit();
         self.strbuf.deinit();
+        self.filebuf.deinit();
     }
 };
 
