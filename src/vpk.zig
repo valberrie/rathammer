@@ -1,0 +1,237 @@
+const std = @import("std");
+const profile = @import("profile.zig");
+const VPK_FILE_SIG: u32 = 0x55aa1234;
+
+pub threadlocal var timer = profile.BasicProfiler.init();
+threadlocal var error_msg_buffer: [1024]u8 = undefined;
+
+/// Given one or more vpk dir files, allows you to request file contents
+pub const Context = struct {
+    const log = std.log.scoped(.vpk);
+    const Self = @This();
+    const StrCtx = std.hash_map.StringContext;
+
+    const ExtensionMap = std.StringHashMap(PathMap);
+    const PathMap = std.StringHashMap(EntryMap);
+    const EntryMap = std.StringHashMap(Entry);
+
+    const Dir = struct {
+        prefix: []const u8,
+
+        fds: std.AutoHashMap(u16, std.fs.File),
+        root: std.fs.Dir,
+
+        pub fn init(alloc: std.mem.Allocator, prefix: []const u8, root: std.fs.Dir) @This() {
+            return .{
+                .fds = std.AutoHashMap(u16, std.fs.File).init(alloc),
+                .prefix = prefix,
+                .root = root,
+            };
+        }
+
+        pub fn deinit(self: *@This()) void {
+            var it = self.fds.valueIterator();
+            while (it.next()) |f|
+                f.close();
+            self.fds.deinit();
+        }
+    };
+
+    const Entry = struct {
+        dir_index: u16,
+        archive_index: u16,
+        offset: u32,
+        length: u32,
+    };
+
+    dirs: std.ArrayList(Dir),
+    extensions: ExtensionMap,
+    arena: std.heap.ArenaAllocator,
+    alloc: std.mem.Allocator,
+    strbuf: std.ArrayList(u8),
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .strbuf = std.ArrayList(u8).init(alloc),
+            .dirs = std.ArrayList(Dir).init(alloc),
+            .extensions = ExtensionMap.init(alloc),
+            .arena = std.heap.ArenaAllocator.init(alloc),
+            .alloc = alloc,
+        };
+    }
+
+    /// the vpk_set: hl2_pak.vpk -> hl2_pak_dir.vpk . This matches the way gameinfo.txt does it
+    /// The passed in root dir must remain alive.
+    pub fn addDir(self: *Self, root: std.fs.Dir, vpk_set: []const u8) !void {
+        if (!std.mem.endsWith(u8, vpk_set, ".vpk")) {
+            log.err("Invalid vpk set: {s}", .{vpk_set});
+            log.err("Vpk sets should be in the format: 'hl2_pak.vpk' which maps to the files: hl2_pak_xxx.vpk", .{});
+            log.err("See hl2/gameinfo.txt for examples", .{});
+            return error.invalidVpkSet;
+        }
+        timer.start();
+        defer timer.end();
+        const aa = self.arena.allocator();
+        const prefix = vpk_set[0 .. vpk_set.len - ".vpk".len];
+        const new_dir = Dir.init(self.alloc, try aa.dupe(u8, prefix), root);
+        const dir_index = self.dirs.items.len;
+        try self.dirs.append(new_dir);
+        var strbuf = std.ArrayList(u8).init(self.alloc);
+        defer strbuf.deinit();
+        try strbuf.writer().print("{s}_dir.vpk", .{prefix});
+
+        const file_name = try aa.dupe(u8, strbuf.items);
+        const infile = root.openFile(strbuf.items, .{}) catch |err| switch (err) {
+            error.FileNotFound => {
+                log.err("Couldn't find vpk: {s} with given set: {s}", .{ strbuf.items, vpk_set });
+                const path = root.realpath(".", &error_msg_buffer) catch "realpathFailed";
+                log.err("Search directory path is: {s}/{s}", .{ path, strbuf.items });
+                return error.FileNotFound;
+            },
+            else => return err,
+        };
+        defer infile.close();
+        const r = infile.reader();
+        const sig = try r.readInt(u32, .little);
+        if (sig != VPK_FILE_SIG)
+            return error.invalidVpk;
+        const version = try r.readInt(u32, .little);
+        switch (version) {
+            //1 => {},
+            2 => {
+                const tree_size = try r.readInt(u32, .little);
+                const filedata_section_size = try r.readInt(u32, .little);
+                const archive_md5_sec_size = try r.readInt(u32, .little);
+                const other_md5_sec_size = try r.readInt(u32, .little);
+                const sig_sec_size = try r.readInt(u32, .little);
+                _ = sig_sec_size;
+                _ = archive_md5_sec_size;
+                _ = filedata_section_size;
+                _ = tree_size;
+
+                if (other_md5_sec_size != 48) return error.invalidMd5Size;
+                //std.debug.print("{d} {d} {d} {d}\n", .{ tree_size, filedata_section_size, archive_md5_sec_size, sig_sec_size });
+
+                while (true) {
+                    const ext = try readString(r, &strbuf);
+                    if (ext.len == 0)
+                        break;
+                    const ext_res = try self.extensions.getOrPutAdapted(ext, StrCtx{});
+                    if (!ext_res.found_existing) {
+                        ext_res.value_ptr.* = PathMap.init(self.alloc);
+                        ext_res.key_ptr.* = try aa.dupe(u8, ext);
+                    }
+                    while (true) {
+                        const path = try readString(r, &strbuf);
+                        if (path.len == 0)
+                            break;
+                        const path_res = try ext_res.value_ptr.getOrPutAdapted(path, StrCtx{});
+                        if (!path_res.found_existing) {
+                            path_res.value_ptr.* = EntryMap.init(self.alloc);
+                            path_res.key_ptr.* = try aa.dupe(u8, path);
+                        }
+                        while (true) {
+                            const fname = try readString(r, &strbuf);
+                            if (fname.len == 0)
+                                break;
+
+                            _ = try r.readInt(u32, .little); //CRC
+                            _ = try r.readInt(u16, .little); //preload bytes
+                            const arch_index = try r.readInt(u16, .little); //archive index
+                            const offset = try r.readInt(u32, .little);
+                            const entry_len = try r.readInt(u32, .little);
+
+                            const term = try r.readInt(u16, .little);
+                            if (term != 0xffff) return error.badBytes;
+                            //std.debug.print("\t\t{s}: {d}bytes, i:{d}\n", .{ fname, entry_len, arch_index });
+                            if (arch_index == 0x7fff) return error.unsupportedInlineVpk;
+
+                            const entry_res = try path_res.value_ptr.getOrPutAdapted(fname, StrCtx{});
+                            if (!entry_res.found_existing) {
+                                entry_res.key_ptr.* = try aa.dupe(u8, fname);
+                                entry_res.value_ptr.* = Entry{
+                                    .dir_index = @intCast(dir_index),
+                                    .archive_index = arch_index,
+                                    .offset = offset,
+                                    .length = entry_len,
+                                };
+                            } else {
+                                log.err("Duplicate resource is named: {s}", .{fname});
+                                return error.duplicateResource;
+                            }
+                        }
+                    }
+                }
+            },
+            else => {
+                log.err("Unsupported vpk version {d}, file: {s}", .{ version, file_name });
+                return error.unsupportedVpkVersion;
+            },
+        }
+    }
+
+    ///Clears buf and returns the written string
+    pub fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
+        const ext = self.extensions.getPtr(extension) orelse return null;
+        const path_ = ext.getPtr(path) orelse return null;
+        const entry = path_.getPtr(name) orelse return null;
+        const dir = self.getDir(entry.dir_index) orelse return null;
+        const res = try dir.fds.getOrPut(entry.archive_index);
+        if (!res.found_existing) {
+            errdefer _ = dir.fds.remove(entry.archive_index); //Prevent closing an unopened file messing with stack trace
+            self.strbuf.clearRetainingCapacity();
+            try self.strbuf.writer().print("{s}_{d:0>3}.vpk", .{ dir.prefix, entry.archive_index });
+
+            res.value_ptr.* = dir.root.openFile(self.strbuf.items, .{}) catch |err| switch (err) {
+                error.FileNotFound => {
+                    log.err("Couldn't open vpk file: {s}", .{self.strbuf.items});
+                    return err;
+                },
+                else => return err,
+            };
+        }
+
+        try buf.resize(entry.length);
+        try res.value_ptr.seekTo(entry.offset);
+        try res.value_ptr.reader().readNoEof(buf.items);
+        return buf.items;
+    }
+
+    /// The pointer to Dir may be invalidated if addDir is called
+    pub fn getDir(self: *Self, dir_index: u16) ?*Dir {
+        if (dir_index < self.dirs.items.len) {
+            return &self.dirs.items[dir_index];
+        }
+        return null;
+    }
+
+    pub fn deinit(self: *Self) void {
+        var it = self.extensions.valueIterator();
+        while (it.next()) |ext| {
+            var pit = ext.valueIterator();
+            while (pit.next()) |p| {
+                p.deinit();
+            }
+            ext.deinit();
+        }
+        self.extensions.deinit();
+        self.arena.deinit();
+        for (self.dirs.items) |*dir| {
+            dir.deinit();
+        }
+        self.dirs.deinit();
+        self.strbuf.deinit();
+    }
+};
+
+///Read next string in vpk dir file
+///Clears str
+fn readString(r: anytype, str: *std.ArrayList(u8)) ![]const u8 {
+    str.clearRetainingCapacity();
+    while (true) {
+        const char = try r.readByte();
+        if (char == 0)
+            return str.items;
+        try str.append(char);
+    }
+}

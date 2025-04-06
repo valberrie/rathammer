@@ -4,10 +4,6 @@ const std = @import("std");
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
 
     // Standard optimization options allow the person running `zig build` to select
@@ -24,6 +20,40 @@ pub fn build(b: *std.Build) void {
     const ratdep = b.dependency("ratgraph", .{ .target = target, .optimize = optimize });
     const ratmod = ratdep.module("ratgraph");
     exe.root_module.addImport("graph", ratmod);
+
+    const opts = b.addOptions();
+    opts.addOption(bool, "time_profile", b.option(bool, "profile", "profile the time loading takes") orelse false);
+    exe.root_module.addOptions("config", opts);
+
+    //exe.root_module.addCSourceFiles(.{
+    //    .root = b.path("clibrary/vtf/VTFLib"),
+    //    .flags = &.{
+    //        "-std=c++17",
+    //    },
+    //    .files = &.{
+    //        "Error.cpp",
+    //        //"FileReader.cpp",
+    //        //"FileWriter.cpp",
+    //        "Float16.cpp",
+    //        "MemoryReader.cpp",
+    //        "MemoryWriter.cpp",
+    //        "Proc.cpp",
+    //        "ProcReader.cpp",
+    //        "ProcWriter.cpp",
+    //        "VMTFile.cpp",
+    //        "VMTGroupNode.cpp",
+    //        "VMTIntegerNode.cpp",
+    //        "VMTNode.cpp",
+    //        "VMTSingleNode.cpp",
+    //        "VMTStringNode.cpp",
+    //        "VMTValueNode.cpp",
+    //        "VMTWrapper.cpp",
+    //        "VTFFile.cpp",
+    //        "VTFLib.cpp",
+    //        "VTFMathlib.cpp",
+    //        "VTFWrapper.cpp",
+    //    },
+    //});
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
