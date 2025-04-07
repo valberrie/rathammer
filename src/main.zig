@@ -9,6 +9,7 @@ const vdf = @import("vdf.zig");
 const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
 const vtf = @import("vtf.zig");
+const Editor = @import("editor.zig").Context;
 
 pub fn missingTexture() graph.Texture {
     const static = struct {
@@ -82,6 +83,35 @@ fn procSolid(
     try csgctx.genMesh(solid.side, matmap);
 }
 
+const LoadCtx = struct {
+    buffer: [256]u8 = undefined,
+    timer: std.time.Timer,
+    draw: *graph.ImmediateDrawingContext,
+    win: *graph.SDL.Window,
+    font: *graph.Font,
+
+    fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
+        if (self.timer.read() / std.time.ns_per_ms < 50) {
+            return;
+        }
+        var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
+        fbs.writer().print(fmt, args) catch return;
+        self.cb(fbs.getWritten());
+    }
+
+    fn cb(self: *@This(), message: []const u8) void {
+        if (self.timer.read() / std.time.ns_per_ms < 8) {
+            return;
+        }
+        self.timer.reset();
+        self.win.pumpEvents(.poll);
+        self.draw.begin(0x222222ff, self.win.screen_dimensions.toF()) catch return;
+        self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
+        self.draw.end(null) catch return;
+        self.win.swap(); //So the window doesn't look too broken while loading
+    }
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.detectLeaks();
@@ -90,21 +120,6 @@ pub fn main() !void {
     var arg_it = try std.process.argsWithAllocator(alloc);
     defer arg_it.deinit();
 
-    var vpkctx = vpk.Context.init(alloc);
-    defer vpkctx.deinit();
-
-    //const root = try std.fs.cwd().openDir("tf", .{});
-    const hl_root = try std.fs.cwd().openDir("hl2", .{});
-    //try vpkctx.addDir(root, "tf2_textures.vpk");
-    //try vpkctx.addDir(root, "tf2_misc.vpk");
-
-    try vpkctx.addDir(hl_root, "hl2_misc.vpk");
-    try vpkctx.addDir(hl_root, "hl2_textures.vpk");
-    //materials/nature/red_grass
-    std.debug.print("{s}\n", .{(try vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
-
-    vpk.timer.log("Vpk dir");
-
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("vmf", .string, "vmf to load"),
@@ -112,6 +127,43 @@ pub fn main() !void {
     }, &arg_it);
     var draw_tools = true;
 
+    var win = try graph.SDL.Window.createWindow("Rat Hammer - 鼠", .{
+        .window_size = .{ .x = 800, .y = 600 },
+    });
+    defer win.destroyWindow();
+
+    if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
+
+    //materials/concrete/concretewall008a
+    //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
+    //var my_tex = try vtf.loadTexture(o.?, alloc);
+    var editor = try Editor.init(alloc);
+    defer editor.deinit();
+
+    var draw = graph.ImmediateDrawingContext.init(alloc);
+    defer draw.deinit();
+    var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
+    defer font.deinit();
+    var loadctx = LoadCtx{
+        .draw = &draw,
+        .font = &font,
+        .win = &win,
+        .timer = try std.time.Timer.start(),
+    };
+    loadctx.cb("Loading");
+
+    //const root = try std.fs.cwd().openDir("tf", .{});
+    const hl_root = try std.fs.cwd().openDir("hl2", .{});
+    //try vpkctx.addDir(root, "tf2_textures.vpk");
+    //try vpkctx.addDir(root, "tf2_misc.vpk");
+
+    try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
+    try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
+    //materials/nature/red_grass
+    std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
+    loadctx.cb("Vpk's mounted");
+
+    vpk.timer.log("Vpk dir");
     //const infile = try std.fs.cwd().openFile("sdk_materials.vmf", .{});
     const infile = try std.fs.cwd().openFile(args.vmf orelse "sdk_materials.vmf", .{});
     defer infile.close();
@@ -121,40 +173,7 @@ pub fn main() !void {
 
     var obj = try vdf.parse(alloc, slice);
     defer obj.deinit();
-    var win = try graph.SDL.Window.createWindow("Rat Hammer - 鼠", .{
-        .window_size = .{ .x = 800, .y = 600 },
-    });
-    defer win.destroyWindow();
-
-    if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
-    _ = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
-
-    //materials/concrete/concretewall008a
-    //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
-    //var my_tex = try vtf.loadTexture(o.?, alloc);
-
-    var matmap = csg.MeshMap.init(alloc);
-    defer {
-        var it = matmap.iterator();
-        while (it.next()) |item| {
-            item.value_ptr.mesh.deinit();
-        }
-        matmap.deinit();
-    }
-    var csgctx = try csg.Context.init(alloc);
-    defer csgctx.deinit();
-
-    var draw = graph.ImmediateDrawingContext.init(alloc);
-    defer draw.deinit();
-    var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
-    defer font.deinit();
-    {
-        win.pumpEvents(.poll);
-        try draw.begin(0x222222ff, win.screen_dimensions.toF());
-        draw.text(.{ .x = 0, .y = 0 }, "Loading", &font.font, 20, 0xffffffff);
-        try draw.end(null);
-        win.swap(); //So the window doesn't look too broken while loading
-    }
+    loadctx.cb("vmf parsed");
     const basic_shader = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
         .{ .path = "ratgraph/asset/shader/gbuffer.vert", .t = .vert },
         .{ .path = "src/basic.frag", .t = .frag },
@@ -165,17 +184,19 @@ pub fn main() !void {
     const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator());
     {
         var gen_timer = try std.time.Timer.start();
-        for (vmf_.world.solid) |solid| {
-            try procSolid(&csgctx, alloc, solid, &matmap, &vpkctx);
+        for (vmf_.world.solid, 0..) |solid, si| {
+            try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
+            loadctx.printCb("csg generated {d} / {d}", .{ si, vmf_.world.solid.len });
             //try meshes.append(try csg.genMesh(solid.side, alloc));
         }
-        for (vmf_.entity) |ent| {
+        for (vmf_.entity, 0..) |ent, ei| {
+            loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
             for (ent.solid) |solid|
-                try procSolid(&csgctx, alloc, solid, &matmap, &vpkctx);
+                try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
         }
         var t2 = try std.time.Timer.start();
-        var it = matmap.valueIterator();
-        const nm = matmap.count();
+        var it = editor.meshmap.valueIterator();
+        const nm = editor.meshmap.count();
         while (it.next()) |item| {
             item.mesh.setData();
         }
@@ -186,6 +207,7 @@ pub fn main() !void {
         std.debug.print("Generated {d} meshes in {d:.2} ms\n", .{ nm, whole_time / std.time.ns_per_ms });
         std.debug.print("texture load took: {d:.2} ms", .{texture_time / std.time.ns_per_ms});
     }
+    loadctx.cb("csg generated");
 
     var cam = graph.Camera3D{};
     graph.c.glEnable(graph.c.GL_CULL_FACE);
@@ -213,8 +235,9 @@ pub fn main() !void {
         draw.cube(V3f.new(0, 0, 0), V3f.new(1, 1, 1), 0xffffffff);
         //graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
         const view_3d = cam.getMatrix(draw.screen_dimensions.x / draw.screen_dimensions.y, 0.1, 100000);
-        var it = matmap.iterator();
+        var it = editor.meshmap.iterator();
         const mat = graph.za.Mat4.identity().rotate(-90, graph.za.Vec3.new(1, 0, 0));
+        graph.c.glEnable(graph.c.GL_BLEND);
         while (it.next()) |mesh| {
             if (!draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
                 continue;

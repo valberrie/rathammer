@@ -16,3 +16,5 @@ Start with basic 3d world, noclip movement.
 TODO
 loading from vpk instead of fs
 use the deferred renderer so it looks real pretty
+
+Map is a collection of entities.

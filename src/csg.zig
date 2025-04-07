@@ -6,6 +6,7 @@ const Vec3 = graph.za.Vec3_f64;
 const Vec2 = graph.Vec2f;
 const vmf = @import("vmf.zig");
 const Side = vmf.Side;
+const editor = @import("editor.zig");
 // This is a direct implementation of the quake method outlined in:
 // https://github.com/jakgor471/vmf-files_webgl
 //
@@ -112,6 +113,61 @@ pub const Context = struct {
                     .ny = 0,
                     .nz = 0,
                     .color = 0xffffffff,
+                });
+            }
+            gen_time += timer.read();
+        }
+    }
+
+    pub fn genMeshS(self: *Self, sides: []const Side, alloc: std.mem.Allocator, id: u32) !editor.Solid {
+        const scale = 1.0;
+        const MAPSIZE = std.math.maxInt(i32);
+        var timer = try std.time.Timer.start();
+        var ret = editor.Solid.init(alloc, id);
+        try ret.sides.resize(sides.len);
+        for (sides, 0..) |side, si| {
+            const plane = Plane.fromTri(side.plane.tri);
+
+            self.winding_a.clearRetainingCapacity();
+            var wind_a = &self.winding_a;
+            try wind_a.appendSlice(try self.baseWinding(plane, @floatFromInt(MAPSIZE / 2)));
+
+            var wind_b = &self.winding_b;
+
+            for (sides) |subside| {
+                const pl2 = Plane.fromTri(subside.plane.tri);
+                if (plane.norm.dot(pl2.norm) > 1 - EPSILON)
+                    continue;
+
+                try self.clipWinding(wind_a.*, wind_b, pl2);
+                const temp = wind_a;
+                wind_a = wind_b;
+                wind_b = temp;
+            }
+
+            if (wind_a.items.len < 3)
+                continue;
+
+            for (wind_a.items) |*item| {
+                item.* = roundVec(item.*);
+            }
+            //const ret = map.getPtr(side.material) orelse continue;
+
+            ret.sides.items[si] = .{
+                .verts = std.ArrayList(graph.za.Vec3).init(alloc),
+                .index = std.ArrayList(u32).init(alloc),
+                .material = side.material,
+            };
+            const indexs = try self.triangulate(wind_a.items, 0);
+            //const uvs = try self.calcUVCoords(wind_a.items, side, @intCast(ret.tex.w), @intCast(ret.tex.h));
+            _ = timer.reset();
+            try ret.sides.items[si].index.appendSlice(indexs);
+            try ret.sides.items[si].verts.ensureUnusedCapacity(wind_a.items.len);
+            for (wind_a.items) |vert| {
+                try ret.sides.items[si].verts.append(.{
+                    .x = @floatCast(vert.x() * scale),
+                    .y = @floatCast(vert.y() * scale),
+                    .z = @floatCast(vert.z() * scale),
                 });
             }
             gen_time += timer.read();

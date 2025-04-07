@@ -46,14 +46,6 @@ pub const Side = struct {
             const ax = try parseVec(str, &i, 4, '[', ']');
             const scale = try std.fmt.parseFloat(f64, std.mem.trimLeft(u8, str[i..], " "));
 
-            //for (val) |byte| {
-            //    switch (byte) {
-            //        '[' => {},
-            //        ']' => {},
-            //        ' ' => {},
-            //        else => {},
-            //    }
-            //}
             return .{
                 .axis = vdf.Vec3.new(ax[0], ax[1], ax[2]),
                 .translation = ax[3],
