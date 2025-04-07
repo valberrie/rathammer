@@ -26,12 +26,12 @@ pub fn missingTexture() graph.Texture {
             2,
             .{
                 .pixel_format = graph.c.GL_RGB,
-                .pixel_store_alignment = 3,
+                .pixel_store_alignment = 1,
                 .mag_filter = graph.c.GL_NEAREST,
             },
         );
-        static.texture.?.w = 100; //Zoom the texture out
-        static.texture.?.h = 100;
+        static.texture.?.w = 400; //Zoom the texture out
+        static.texture.?.h = 400;
     }
     return static.texture.?;
 }
@@ -93,12 +93,15 @@ pub fn main() !void {
     var vpkctx = vpk.Context.init(alloc);
     defer vpkctx.deinit();
 
-    try vpkctx.addDir(try std.fs.cwd().openDir("hl2", .{}), "hl2_textures.vpk");
-    try vpkctx.addDir(try std.fs.cwd().openDir("hl2", .{}), "hl2_misc.vpk");
+    //const root = try std.fs.cwd().openDir("tf", .{});
+    const hl_root = try std.fs.cwd().openDir("hl2", .{});
+    //try vpkctx.addDir(root, "tf2_textures.vpk");
+    //try vpkctx.addDir(root, "tf2_misc.vpk");
+
+    try vpkctx.addDir(hl_root, "hl2_misc.vpk");
+    try vpkctx.addDir(hl_root, "hl2_textures.vpk");
     //materials/nature/red_grass
     std.debug.print("{s}\n", .{(try vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
-    if (true)
-        return;
 
     vpk.timer.log("Vpk dir");
 
@@ -127,8 +130,8 @@ pub fn main() !void {
     _ = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
 
     //materials/concrete/concretewall008a
-    const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
-    var my_tex = try vtf.loadTexture(o.?, alloc);
+    //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
+    //var my_tex = try vtf.loadTexture(o.?, alloc);
 
     var matmap = csg.MeshMap.init(alloc);
     defer {
@@ -206,7 +209,7 @@ pub fn main() !void {
         });
 
         draw.rect(Rec(0, 0, 100, 100), 0xff00ff5f);
-        draw.rectTex(Rec(0, 0, 1000, 1000), my_tex.rect(), my_tex);
+        //draw.rectTex(Rec(0, 0, 1000, 1000), my_tex.rect(), my_tex);
         draw.cube(V3f.new(0, 0, 0), V3f.new(1, 1, 1), 0xffffffff);
         //graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
         const view_3d = cam.getMatrix(draw.screen_dimensions.x / draw.screen_dimensions.y, 0.1, 100000);

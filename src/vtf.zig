@@ -155,6 +155,18 @@ const VtfHeader01 = struct {
     lowres_h: u8,
 };
 
+const VtfHeader03 = struct {
+    padding2: [3]u8 = undefined,
+    num_res: u32 = 0,
+    padding3: [8]u8 = undefined,
+};
+
+const VtfResource = struct {
+    tag: [3]u8,
+    flags: u8,
+    offset: u32,
+};
+
 pub fn parseStruct(comptime T: type, endian: std.builtin.Endian, r: anytype) !T {
     const info = @typeInfo(T);
     switch (info) {
@@ -236,21 +248,26 @@ pub fn loadTexture(buffer: []const u8, alloc: std.mem.Allocator) !graph.Texture 
     //}
 
     errdefer std.debug.print("POS {d} {d}\n", .{ fbs.pos, buffer.len });
-    var depth: u16 = 1;
-    switch (version_min) {
-        1 => {}, //Nothing needs to be done for v1
-        2 => {
-            depth = try r.readInt(u16, .little);
-            if (depth != 1) {
-                log.err("Depth {d}", .{depth});
-                return error.depthNotSupported;
-            }
-        },
-        else => {
-            log.err("Vtf version {d}.{d}, not supported", .{ version_maj, version_min });
-            return error.unsupportedVersion;
-        },
+    if (version_min > 3) {
+        log.err("Vtf version {d}.{d}, not supported", .{ version_maj, version_min });
+        return error.unsupportedVersion;
     }
+
+    var depth: u16 = 0;
+    if (version_min >= 2) {
+        depth = try r.readInt(u16, .little);
+        if (depth != 1) {
+            log.err("Depth {d}", .{depth});
+            return error.depthNotSupported;
+        }
+    }
+    const h3: VtfHeader03 = if (version_min >= 4) try parseStruct(VtfHeader03, .little, r) else .{}; //Versions 3 and 4 are bit equivalent
+    //FIXME actually try to parse the resources in v3,v4
+    for (0..h3.num_res) |_| {
+        const re = try parseStruct(VtfResource, .little, r);
+        std.debug.print("RE {s} {}\n", .{ re.tag, re });
+    }
+
     fbs.pos = header_size; //Ensure we are in the correct position
     { //Low res first
         const bpp = h1.lowres_fmt.bitPerPixel();

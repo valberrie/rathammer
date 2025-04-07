@@ -159,7 +159,7 @@ pub const Context = struct {
                                 };
                             } else {
                                 log.err("Duplicate resource is named: {s}", .{fname});
-                                return error.duplicateResource;
+                                //return error.duplicateResource;
                             }
                         }
                     }

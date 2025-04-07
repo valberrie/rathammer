@@ -108,7 +108,16 @@ pub const VdfTokenIterator = struct {
         self.token_buf.deinit();
     }
 
+    fn isWhitespace(char: u8) bool {
+        return char == ' ' or char == '\t';
+    }
+
+    fn isNewline(char: u8) bool {
+        return char == '\n' or char == '\r';
+    }
+
     pub fn next(self: *Self) !?Token {
+        const eql = std.mem.eql;
         self.token_buf.clearRetainingCapacity();
         while (self.pos < self.slice.len) {
             const byte = self.slice[self.pos];
@@ -153,6 +162,7 @@ pub const VdfTokenIterator = struct {
                 '\r', '\n' => {
                     self.line_counter += 1;
                     self.char_counter = 0;
+
                     switch (self.state) {
                         .quoted_ident => return error.fucked,
                         .ident => {
@@ -175,14 +185,21 @@ pub const VdfTokenIterator = struct {
                     }
                 },
                 else => {
-                    switch (self.state) {
-                        .ident => {},
-                        .quoted_ident => {},
-                        .none => {
+                    if (self.state == .ident or self.state == .none) {
+                        if (self.pos < self.slice.len and eql(u8, self.slice[self.pos - 1 .. self.pos + 1], "//")) {
+                            //Seek forward, leaving pos at next newline,
+                            while (self.pos < self.slice.len and !isNewline(self.slice[self.pos])) : (self.pos += 1) {}
+                            if (self.state == .ident) {
+                                self.state = .none;
+                                return .{ .ident = self.token_buf.items };
+                            }
+                        } else {
                             self.state = .ident;
-                        },
+                            try self.token_buf.append(byte);
+                        }
+                    } else {
+                        try self.token_buf.append(byte);
                     }
-                    try self.token_buf.append(byte);
                 },
             }
         }
@@ -254,6 +271,32 @@ pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
         //  expect a string or if a '{ then recur
     }
     return .{ .value = root_object, .arena = arena, .obj_list = object_list };
+}
+
+fn printObj(obj: Object, ident: usize) void {
+    const ident_buf = [_]u8{' '} ** 100;
+    const buf = ident_buf[0 .. ident * 4];
+
+    std.debug.print("{s}{{\n", .{buf});
+    defer std.debug.print("{s}}}\n", .{buf});
+    for (obj.list.items) |item| {
+        std.debug.print("{s}{s}: ", .{ buf, item.key });
+        switch (item.val) {
+            .literal => |k| std.debug.print("{s}\n", .{k}),
+            .obj => |o| printObj(o.*, ident + 1),
+        }
+    }
+}
+
+test {
+    const alloc = std.testing.allocator;
+    const in = try std.fs.cwd().openFile("tf/gameinfo.txt", .{});
+    const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    defer alloc.free(slice);
+
+    var val = try parse(alloc, slice);
+    defer val.deinit();
+    printObj(val.value, 0);
 }
 
 //fn outObjSolid(solid: []const Solid, alloc: std.mem.Allocator, w: anytype, ind_offset: *usize) !void {
