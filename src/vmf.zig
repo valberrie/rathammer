@@ -1,6 +1,7 @@
 //// Define's a zig struct equivalent of a vmf file
 const std = @import("std");
 const vdf = @import("vdf.zig");
+const graph = @import("graph");
 
 pub const Vmf = struct {
     world: World,
@@ -33,7 +34,7 @@ pub const Entity = struct {
 };
 pub const Side = struct {
     pub const UvCoord = struct {
-        axis: vdf.Vec3,
+        axis: graph.za.Vec3,
         translation: f64,
         scale: f64,
 
@@ -43,11 +44,11 @@ pub const Side = struct {
 
             const str = val.literal;
             var i: usize = 0;
-            const ax = try parseVec(str, &i, 4, '[', ']');
+            const ax = try parseVec(str, &i, 4, '[', ']', f32);
             const scale = try std.fmt.parseFloat(f64, std.mem.trimLeft(u8, str[i..], " "));
 
             return .{
-                .axis = vdf.Vec3.new(ax[0], ax[1], ax[2]),
+                .axis = graph.za.Vec3.new(ax[0], ax[1], ax[2]),
                 .translation = ax[3],
                 .scale = scale,
             };
@@ -63,7 +64,7 @@ pub const Side = struct {
             var self: @This() = undefined;
             var i: usize = 0;
             for (0..3) |j| {
-                const r1 = try parseVec(str, &i, 3, '(', ')');
+                const r1 = try parseVec(str, &i, 3, '(', ')', f64);
                 self.tri[j] = vdf.Vec3.new(r1[0], r1[1], r1[2]);
             }
 
@@ -77,8 +78,15 @@ pub const Side = struct {
     material: []const u8,
 };
 
-fn parseVec(str: []const u8, i: *usize, comptime count: usize, comptime start: u8, comptime end: u8) ![count]f64 {
-    var ret: [count]f64 = undefined;
+fn parseVec(
+    str: []const u8,
+    i: *usize,
+    comptime count: usize,
+    comptime start: u8,
+    comptime end: u8,
+    comptime ft: type,
+) ![count]ft {
+    var ret: [count]ft = undefined;
     var in_num: bool = false;
     var vert_index: i64 = -1;
     var comp_index: usize = 0;
@@ -102,7 +110,7 @@ fn parseVec(str: []const u8, i: *usize, comptime count: usize, comptime start: u
             ' ', end => {
                 const s = str[num_start_index..i.*];
                 if (in_num) {
-                    const f = std.fmt.parseFloat(f64, s) catch {
+                    const f = std.fmt.parseFloat(ft, s) catch {
                         std.debug.print("IT BROKE {s}: {s}\n", .{ s, slice });
                         return error.fucked;
                     };

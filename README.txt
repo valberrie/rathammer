@@ -1,4 +1,1 @@
 # Hammer editor.
-
-
-

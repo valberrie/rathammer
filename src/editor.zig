@@ -3,7 +3,7 @@ const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const SparseSet = graph.SparseSet;
 const meshutil = graph.meshutil;
-const vmf = @import("vmf");
+const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
 const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
@@ -19,6 +19,10 @@ pub const Side = struct {
     u: UVaxis,
     v: UVaxis,
     material: []const u8, //owned by somebody else
+    pub fn deinit(self: @This()) void {
+        self.verts.deinit();
+        self.index.deinit();
+    }
 };
 
 pub const Solid = struct {
@@ -34,6 +38,8 @@ pub const Solid = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        for (self.sides.items) |side|
+            side.deinit();
         self.sides.deinit();
     }
 };
@@ -49,10 +55,12 @@ pub const Context = struct {
     lower_buf: std.ArrayList(u8),
     scratch_buf: std.ArrayList(u8),
     alloc: std.mem.Allocator,
+    name_arena: std.heap.ArenaAllocator,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         return .{
             .alloc = alloc,
+            .name_arena = std.heap.ArenaAllocator.init(alloc),
             .set = try SolidSet.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = vpk.Context.init(alloc),
@@ -62,6 +70,69 @@ pub const Context = struct {
         };
     }
 
+    pub fn deinit(self: *Self) void {
+        {
+            var it = self.set.denseIterator();
+            while (it.next()) |item|
+                item.deinit();
+        }
+        self.set.deinit();
+        self.lower_buf.deinit();
+        self.scratch_buf.deinit();
+        self.csgctx.deinit();
+        self.vpkctx.deinit();
+        var it = self.meshmap.iterator();
+        while (it.next()) |item| {
+            item.value_ptr.mesh.deinit();
+        }
+        self.meshmap.deinit();
+        self.name_arena.deinit();
+    }
+
+    pub fn rebuildAllMeshes(self: *Self) !void {
+        { //First clear
+            var mesh_it = self.meshmap.valueIterator();
+            while (mesh_it.next()) |batch| {
+                batch.mesh.vertices.clearRetainingCapacity();
+                batch.mesh.indicies.clearRetainingCapacity();
+            }
+        }
+        { //Iterate all solids and add
+            var it = self.set.denseIterator();
+            while (it.next()) |solid| {
+                for (solid.sides.items) |side| {
+                    const batch = self.meshmap.getPtr(side.material) orelse continue;
+                    const mesh = &batch.mesh;
+                    try mesh.vertices.ensureUnusedCapacity(side.verts.items.len);
+                    try mesh.indicies.ensureUnusedCapacity(side.index.items.len);
+                    const offset = mesh.vertices.items.len;
+                    for (side.verts.items) |v| {
+                        try mesh.vertices.append(.{
+                            .x = v.x(),
+                            .y = v.y(),
+                            .z = v.z(),
+                            .u = 0,
+                            .v = 0,
+                            .nx = 0,
+                            .ny = 0,
+                            .nz = 0,
+                            .color = 0xffffffff,
+                        });
+                    }
+                    for (side.index.items) |ind| {
+                        try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
+                    }
+                }
+            }
+        }
+        { //Set all the gl data
+            var it = self.meshmap.valueIterator();
+            while (it.next()) |item| {
+                item.mesh.setData();
+            }
+        }
+    }
+
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
         for (solid.side) |side| {
@@ -69,15 +140,15 @@ pub const Context = struct {
             if (!res.found_existing) {
                 //var t = try std.time.Timer.start();
                 try self.lower_buf.ensureTotalCapacity(side.material.len);
-                const lower = std.ascii.lowerString(&self.lower_buf.items, side.material);
+                try self.lower_buf.resize(side.material.len);
+                const lower = std.ascii.lowerString(self.lower_buf.items, side.material);
                 res.value_ptr.* = .{
                     .tex = blk: {
                         self.scratch_buf.clearRetainingCapacity();
                         try self.scratch_buf.writer().print("materials/{s}", .{lower});
-                        const sl = self.scratch_buf.items();
+                        const sl = self.scratch_buf.items;
                         const err = in: {
                             const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
-                            //dev dev_prisontvoverlay002
                             break :in vtf.loadTexture(
                                 (self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
                                 self.alloc,
@@ -86,7 +157,6 @@ pub const Context = struct {
                         break :blk err catch |e| {
                             std.debug.print("{} for {s}\n", .{ e, sl });
                             break :blk missingTexture();
-                            //graph.Texture.initEmpty();
                         };
                         //defer bmp.deinit();
                         //break :blk graph.Texture.initFromBitmap(bmp, .{});
@@ -96,24 +166,12 @@ pub const Context = struct {
                 res.value_ptr.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.tex.id);
             }
         }
-        const newsolid = self.csgctx.genMeshS(solid.side, self.alloc, self.set.sparse.items.len);
+        const newsolid = try self.csgctx.genMeshS(
+            solid.side,
+            self.alloc,
+            @intCast(self.set.sparse.items.len),
+        );
         try self.set.insert(newsolid.id, newsolid);
-    }
-
-    pub fn deinit(self: *Self) void {
-        {
-            var it = self.set.denseIterator();
-            while (it.next()) |item|
-                item.deinit();
-        }
-        self.set.deinit();
-        self.csgctx.deinit();
-        self.vpkctx.deinit();
-        var it = self.meshmap.iterator();
-        while (it.next()) |item| {
-            item.value_ptr.mesh.deinit();
-        }
-        self.meshmap.deinit();
     }
 };
 

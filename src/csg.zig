@@ -120,7 +120,6 @@ pub const Context = struct {
     }
 
     pub fn genMeshS(self: *Self, sides: []const Side, alloc: std.mem.Allocator, id: u32) !editor.Solid {
-        const scale = 1.0;
         const MAPSIZE = std.math.maxInt(i32);
         var timer = try std.time.Timer.start();
         var ret = editor.Solid.init(alloc, id);
@@ -157,6 +156,16 @@ pub const Context = struct {
                 .verts = std.ArrayList(graph.za.Vec3).init(alloc),
                 .index = std.ArrayList(u32).init(alloc),
                 .material = side.material,
+                .u = .{
+                    .axis = side.uaxis.axis,
+                    .trans = @floatCast(side.uaxis.translation),
+                    .scale = @floatCast(side.uaxis.scale),
+                },
+                .v = .{
+                    .axis = side.vaxis.axis,
+                    .trans = @floatCast(side.vaxis.translation),
+                    .scale = @floatCast(side.vaxis.scale),
+                },
             };
             const indexs = try self.triangulate(wind_a.items, 0);
             //const uvs = try self.calcUVCoords(wind_a.items, side, @intCast(ret.tex.w), @intCast(ret.tex.h));
@@ -164,14 +173,17 @@ pub const Context = struct {
             try ret.sides.items[si].index.appendSlice(indexs);
             try ret.sides.items[si].verts.ensureUnusedCapacity(wind_a.items.len);
             for (wind_a.items) |vert| {
-                try ret.sides.items[si].verts.append(.{
-                    .x = @floatCast(vert.x() * scale),
-                    .y = @floatCast(vert.y() * scale),
-                    .z = @floatCast(vert.z() * scale),
-                });
+                try ret.sides.items[si].verts.append(
+                    vert.cast(f32),
+                    //.{
+                    //.x = @floatCast(vert.x() * scale),
+                    //.y = @floatCast(vert.y() * scale),
+                    //.z = @floatCast(vert.z() * scale), }
+                );
             }
             gen_time += timer.read();
         }
+        return ret;
     }
     //Generate indicies into trianglnes that can be drawin with the uknow, opengl draw indexed
     pub fn triangulate(self: *Self, winding: []const Vec3, offset: u32) ![]const u32 {

@@ -13,10 +13,9 @@ const Editor = @import("editor.zig").Context;
 
 pub fn missingTexture() graph.Texture {
     const static = struct {
-        const m = [3]u8{ 0xfc, 0x05, 0xbe };
-        const b = [3]u8{ 0x0, 0x0, 0x0 };
+        const m = [3]u8{ 0xfc, 0x05, 0xbe }; //magenta
+        const b = [3]u8{ 0x0, 0x2f, 0x0 }; //black
         const data = m ++ b ++ b ++ m;
-        //const data = [_]u8{ 0xfc, 0x05, 0xbe, b,b,b, };
         var texture: ?graph.Texture = null;
     };
 
@@ -113,7 +112,7 @@ const LoadCtx = struct {
 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
     defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
 
@@ -154,13 +153,15 @@ pub fn main() !void {
 
     //const root = try std.fs.cwd().openDir("tf", .{});
     const hl_root = try std.fs.cwd().openDir("hl2", .{});
+    //const ep_root = try std.fs.cwd().openDir("ep2", .{});
     //try vpkctx.addDir(root, "tf2_textures.vpk");
     //try vpkctx.addDir(root, "tf2_misc.vpk");
 
     try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
     try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
+    //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //materials/nature/red_grass
-    std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
+    //std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
@@ -185,31 +186,30 @@ pub fn main() !void {
     {
         var gen_timer = try std.time.Timer.start();
         for (vmf_.world.solid, 0..) |solid, si| {
-            try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
+            try editor.putSolidFromVmf(solid);
+            //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
             loadctx.printCb("csg generated {d} / {d}", .{ si, vmf_.world.solid.len });
             //try meshes.append(try csg.genMesh(solid.side, alloc));
         }
         for (vmf_.entity, 0..) |ent, ei| {
             loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
             for (ent.solid) |solid|
-                try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
+                _ = solid;
+            //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
         }
-        var t2 = try std.time.Timer.start();
-        var it = editor.meshmap.valueIterator();
+        try editor.rebuildAllMeshes();
         const nm = editor.meshmap.count();
-        while (it.next()) |item| {
-            item.mesh.setData();
-        }
-        const set_time = t2.read();
         const whole_time = gen_timer.read();
 
-        std.debug.print("csg took {d} {d:.2} us, {d:.2}\n", .{ nm, csg.gen_time / std.time.ns_per_us / nm, set_time / std.time.ns_per_ms });
+        std.debug.print("csg took {d} {d:.2} us\n", .{ nm, csg.gen_time / std.time.ns_per_us / nm });
         std.debug.print("Generated {d} meshes in {d:.2} ms\n", .{ nm, whole_time / std.time.ns_per_ms });
         std.debug.print("texture load took: {d:.2} ms", .{texture_time / std.time.ns_per_ms});
     }
     loadctx.cb("csg generated");
 
     var cam = graph.Camera3D{};
+    cam.move_speed = 50;
+    cam.max_move_speed = 100;
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
 
@@ -229,6 +229,19 @@ pub fn main() !void {
             .mouse_delta = win.mouse.delta,
             .scroll_delta = win.mouse.wheel_delta.y,
         });
+        if (win.keyRising(._8)) {
+            const ass = struct {
+                export fn fileCb(_: ?*anyopaque, filelist: [*c]const [*c]const u8, filter: c_int) void {
+                    _ = filter;
+                    var i: usize = 0;
+                    while (filelist[i]) |file| : (i += 1) {
+                        std.debug.print("file{s}\n", .{file});
+                    }
+                }
+            };
+            var a2: i32 = 0;
+            graph.c.SDL_ShowOpenFileDialog(&ass.fileCb, @ptrCast(&a2), win.win, null, 0, null, false);
+        }
 
         draw.rect(Rec(0, 0, 100, 100), 0xff00ff5f);
         //draw.rectTex(Rec(0, 0, 1000, 1000), my_tex.rect(), my_tex);
