@@ -12,12 +12,6 @@ const editor = @import("editor.zig");
 //
 // A fantastic pdf
 
-pub const MeshBatch = struct {
-    tex: graph.Texture,
-    mesh: Mesh,
-};
-pub const MeshMap = std.StringHashMap(MeshBatch);
-
 pub var gen_time: u64 = 0;
 
 /// This context exists as the csg generation requires lots of shortlived allocations.

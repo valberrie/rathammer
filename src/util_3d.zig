@@ -8,7 +8,7 @@ const V3f = graph.za.Vec3;
 //from "Graphics Gems", Academic Press, 1990
 //
 //returns null or the point of intersection in slice form
-fn doesRayIntersectBoundingBox(comptime numdim: usize, comptime ft: type, min_b: [numdim]ft, max_b: [numdim]ft, ray_origin: [numdim]ft, ray_dir: [numdim]ft) ?[numdim]ft {
+pub fn doesRayIntersectBoundingBox(comptime numdim: usize, comptime ft: type, min_b: [numdim]ft, max_b: [numdim]ft, ray_origin: [numdim]ft, ray_dir: [numdim]ft) ?[numdim]ft {
     const RIGHT = 0;
     const LEFT = 1;
     const MIDDLE = 2;
@@ -73,12 +73,41 @@ fn doesRayIntersectBoundingBox(comptime numdim: usize, comptime ft: type, min_b:
     return coord;
 }
 
-fn doesRayIntersectBBZ(ray_origin: V3f, ray_dir: V3f, min: V3f, max: V3f) ?V3f {
+pub fn trianglePlane(verts: [3]V3f) V3f {
+    const a = verts[2].sub(verts[0]);
+    const b = verts[1].sub(verts[0]);
+    return a.cross(b);
+}
+
+pub fn doesRayIntersectConvexPlanarPolygon(ray_origin: V3f, ray_dir: V3f, plane_normal: V3f, verts: []const V3f) ?V3f {
+    if (verts.len == 0) return null;
+
+    const plane_int = doesRayIntersectPlane(ray_origin, ray_dir, verts[0], plane_normal) orelse return null;
+    if (true)
+        return plane_int;
+    for (1..verts.len - 1) |i| {
+        const a = verts[i - 1];
+        const b = verts[i];
+        const cr = a.cross(b);
+        if (cr.z() < 0)
+            return null;
+    }
+    return plane_int;
+}
+
+pub fn doesRayIntersectBBZ(ray_origin: V3f, ray_dir: V3f, min: V3f, max: V3f) ?V3f {
     const ret = doesRayIntersectBoundingBox(3, f32, min.data, max.data, ray_origin.data, ray_dir.data);
     return if (ret) |r| V3f.new(r[0], r[1], r[2]) else null;
 }
+//float denom = normal.dot(ray.direction);
+//if (abs(denom) > 0.0001f) // your favorite epsilon
+//{
+//    float t = (center - ray.origin).dot(normal) / denom;
+//    if (t >= 0) return true; // you might want to allow an epsilon here too
+//}
+//return false;
 
-fn doesRayIntersectPlane(ray_0: V3f, ray_norm: V3f, plane_0: V3f, plane_norm: V3f) ?V3f {
+pub fn doesRayIntersectPlane(ray_0: V3f, ray_norm: V3f, plane_0: V3f, plane_norm: V3f) ?V3f {
     const ln = ray_norm.dot(plane_norm);
     if (ln == 0)
         return null;
@@ -87,10 +116,10 @@ fn doesRayIntersectPlane(ray_0: V3f, ray_norm: V3f, plane_0: V3f, plane_norm: V3
     return ray_0.add(ray_norm.scale(d));
 }
 
-fn snapV3(v: V3f, snap: f32) V3f {
+pub fn snapV3(v: V3f, snap: f32) V3f {
     return V3f{ .data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)) };
 }
 
-fn snap1(comp: f32, snap: f32) f32 {
+pub fn snap1(comp: f32, snap: f32) f32 {
     return @divFloor(comp, snap) * snap;
 }

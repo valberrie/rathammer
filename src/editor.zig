@@ -7,7 +7,17 @@ const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
 const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
+const profile = @import("profile.zig");
 
+pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
+pub const MeshBatch = struct {
+    tex: graph.Texture,
+    mesh: meshutil.Mesh,
+    // Each batch needs to keep track of:
+    // needs_rebuild
+    // contained_solids:ent_id
+};
+pub const MeshMap = std.StringHashMap(MeshBatch);
 pub const Side = struct {
     pub const UVaxis = struct {
         axis: Vec3,
@@ -25,15 +35,28 @@ pub const Side = struct {
     }
 };
 
+pub const AABB = struct {
+    a: Vec3,
+    b: Vec3,
+};
+
 pub const Solid = struct {
     const Self = @This();
     sides: std.ArrayList(Side),
     id: u32,
 
+    /// Bounding box is used during broad phase ray tracing
+    /// they are recomputed along with vertex arrays
+    bounding_box: AABB,
+
     pub fn init(alloc: std.mem.Allocator, id: u32) Solid {
         return .{
             .id = id,
             .sides = std.ArrayList(Side).init(alloc),
+            .bounding_box = .{
+                .a = Vec3.zero(),
+                .b = Vec3.zero(),
+            },
         };
     }
 
@@ -41,6 +64,35 @@ pub const Solid = struct {
         for (self.sides.items) |side|
             side.deinit();
         self.sides.deinit();
+    }
+
+    pub fn recomputeBounds(self: *Self) void {
+        //var lx: f32 = std.math.floatMax(f32);
+        //var ly: f32 = std.math.floatMax(f32);
+        //var lz: f32 = std.math.floatMax(f32);
+
+        //var gx: f32 = -std.math.floatMax(f32);
+        //var gy: f32 = -std.math.floatMax(f32);
+        //var gz: f32 = -std.math.floatMax(f32);
+        var min = Vec3.set(std.math.floatMax(f32));
+        var max = Vec3.set(-std.math.floatMax(f32));
+        for (self.sides.items) |side| {
+            for (side.verts.items) |s| {
+                min = min.min(s);
+                max = max.max(s);
+                //lx = @min(lx, s.x());
+                //ly = @min(ly, s.y());
+                //lz = @min(lz, s.z());
+
+                //gx = @max(gx, s.x());
+                //gy = @max(gy, s.y());
+                //gz = @max(gz, s.z());
+            }
+        }
+        self.bounding_box.a = min;
+        self.bounding_box.b = max;
+        //self.bounding_box.a = graph.za.Vec3.new(lx, ly, lz);
+        //self.bounding_box.b = graph.za.Vec3.new(gx, gy, gz);
     }
 };
 
@@ -51,7 +103,7 @@ pub const Context = struct {
     set: SolidSet,
     csgctx: csg.Context,
     vpkctx: vpk.Context,
-    meshmap: csg.MeshMap,
+    meshmap: MeshMap,
     lower_buf: std.ArrayList(u8),
     scratch_buf: std.ArrayList(u8),
     alloc: std.mem.Allocator,
@@ -64,7 +116,7 @@ pub const Context = struct {
             .set = try SolidSet.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = vpk.Context.init(alloc),
-            .meshmap = csg.MeshMap.init(alloc),
+            .meshmap = MeshMap.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
         };
@@ -90,6 +142,7 @@ pub const Context = struct {
     }
 
     pub fn rebuildAllMeshes(self: *Self) !void {
+        mesh_build_time.start();
         { //First clear
             var mesh_it = self.meshmap.valueIterator();
             while (mesh_it.next()) |batch| {
@@ -100,6 +153,7 @@ pub const Context = struct {
         { //Iterate all solids and add
             var it = self.set.denseIterator();
             while (it.next()) |solid| {
+                solid.recomputeBounds();
                 for (solid.sides.items) |side| {
                     const batch = self.meshmap.getPtr(side.material) orelse continue;
                     const mesh = &batch.mesh;
@@ -137,6 +191,8 @@ pub const Context = struct {
                 item.mesh.setData();
             }
         }
+        mesh_build_time.end();
+        mesh_build_time.log("Mesh build time");
     }
 
     ///Given a csg defined solid, convert to mesh and store.
