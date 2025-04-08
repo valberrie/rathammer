@@ -11,77 +11,6 @@ const vpk = @import("vpk.zig");
 const vtf = @import("vtf.zig");
 const Editor = @import("editor.zig").Context;
 
-pub fn missingTexture() graph.Texture {
-    const static = struct {
-        const m = [3]u8{ 0xfc, 0x05, 0xbe }; //magenta
-        const b = [3]u8{ 0x0, 0x2f, 0x0 }; //black
-        const data = m ++ b ++ b ++ m;
-        var texture: ?graph.Texture = null;
-    };
-
-    if (static.texture == null) {
-        static.texture = graph.Texture.initFromBuffer(
-            &static.data,
-            2,
-            2,
-            .{
-                .pixel_format = graph.c.GL_RGB,
-                .pixel_store_alignment = 1,
-                .mag_filter = graph.c.GL_NEAREST,
-            },
-        );
-        static.texture.?.w = 400; //Zoom the texture out
-        static.texture.?.h = 400;
-    }
-    return static.texture.?;
-}
-
-var texture_time: u64 = 0;
-fn procSolid(
-    csgctx: *csg.Context,
-    alloc: std.mem.Allocator,
-    solid: vmf.Solid,
-    matmap: *csg.MeshMap,
-    vpkctx: *vpk.Context,
-) !void {
-    var lower_buf: [256]u8 = undefined;
-    var buf: [256]u8 = undefined;
-    var fbs = std.io.FixedBufferStream([]u8){ .buffer = &buf, .pos = 0 };
-    for (solid.side) |side| {
-        const res = try matmap.getOrPut(side.material);
-        if (!res.found_existing) {
-            var t = try std.time.Timer.start();
-            defer texture_time += t.read();
-            const lower = std.ascii.lowerString(&lower_buf, side.material);
-            res.value_ptr.* = .{
-                .tex = blk: {
-                    fbs.reset();
-                    try fbs.writer().print("materials/{s}", .{lower});
-                    const sl = fbs.getWritten();
-                    const err = in: {
-                        const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
-                        //dev dev_prisontvoverlay002
-                        break :in vtf.loadTexture(
-                            (vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
-                            alloc,
-                        ) catch |err| break :in err;
-                    };
-                    break :blk err catch |e| {
-                        std.debug.print("{} for {s}\n", .{ e, sl });
-                        break :blk missingTexture();
-                        //graph.Texture.initEmpty();
-                    };
-                    //defer bmp.deinit();
-                    //break :blk graph.Texture.initFromBitmap(bmp, .{});
-                },
-                .mesh = undefined,
-            };
-            res.value_ptr.mesh = meshutil.Mesh.init(alloc, res.value_ptr.tex.id);
-        }
-    }
-    try csgctx.genMesh(solid.side, matmap);
-}
-
 const LoadCtx = struct {
     buffer: [256]u8 = undefined,
     timer: std.time.Timer,
@@ -90,7 +19,8 @@ const LoadCtx = struct {
     font: *graph.Font,
 
     fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
-        if (self.timer.read() / std.time.ns_per_ms < 50) {
+        //No need for high fps when loading, this is 15fps
+        if (self.timer.read() / std.time.ns_per_ms < 66) {
             return;
         }
         var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
@@ -171,6 +101,7 @@ pub fn main() !void {
 
     const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
     defer alloc.free(slice);
+    var id: u32 = 0;
 
     var obj = try vdf.parse(alloc, slice);
     defer obj.deinit();
@@ -194,7 +125,7 @@ pub fn main() !void {
         for (vmf_.entity, 0..) |ent, ei| {
             loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
             for (ent.solid) |solid|
-                _ = solid;
+                try editor.putSolidFromVmf(solid);
             //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
         }
         try editor.rebuildAllMeshes();
@@ -203,11 +134,11 @@ pub fn main() !void {
 
         std.debug.print("csg took {d} {d:.2} us\n", .{ nm, csg.gen_time / std.time.ns_per_us / nm });
         std.debug.print("Generated {d} meshes in {d:.2} ms\n", .{ nm, whole_time / std.time.ns_per_ms });
-        std.debug.print("texture load took: {d:.2} ms", .{texture_time / std.time.ns_per_ms});
     }
     loadctx.cb("csg generated");
 
     var cam = graph.Camera3D{};
+    cam.up = .z;
     cam.move_speed = 50;
     cam.max_move_speed = 100;
     graph.c.glEnable(graph.c.GL_CULL_FACE);
@@ -249,12 +180,24 @@ pub fn main() !void {
         //graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
         const view_3d = cam.getMatrix(draw.screen_dimensions.x / draw.screen_dimensions.y, 0.1, 100000);
         var it = editor.meshmap.iterator();
-        const mat = graph.za.Mat4.identity().rotate(-90, graph.za.Vec3.new(1, 0, 0));
+        const mat = graph.za.Mat4.identity();
+        //.rotate(-90, graph.za.Vec3.new(1, 0, 0));
         graph.c.glEnable(graph.c.GL_BLEND);
         while (it.next()) |mesh| {
             if (!draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
                 continue;
             mesh.value_ptr.mesh.drawSimple(view_3d, mat, basic_shader);
+        }
+        {
+            if (editor.set.getOpt(id)) |solid| {
+                for (solid.sides.items) |side| {
+                    const v = side.verts.items;
+                    for (0..@divFloor(side.verts.items.len, 2)) |ti| {
+                        draw.line3D(v[ti], v[ti + 1], 0xffffffff);
+                    }
+                }
+            }
+            id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
         }
 
         try draw.end(cam);

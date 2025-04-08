@@ -65,61 +65,7 @@ pub const Context = struct {
         self.clip_winding_dists.deinit();
     }
 
-    pub fn genMesh(self: *Self, sides: []const Side, map: *MeshMap) !void {
-        const scale = 0.1;
-        const MAPSIZE = std.math.maxInt(i32);
-        var timer = try std.time.Timer.start();
-        for (sides) |side| {
-            const plane = Plane.fromTri(side.plane.tri);
-
-            self.winding_a.clearRetainingCapacity();
-            var wind_a = &self.winding_a;
-            try wind_a.appendSlice(try self.baseWinding(plane, @floatFromInt(MAPSIZE / 2)));
-
-            var wind_b = &self.winding_b;
-
-            for (sides) |subside| {
-                const pl2 = Plane.fromTri(subside.plane.tri);
-                if (plane.norm.dot(pl2.norm) > 1 - EPSILON)
-                    continue;
-
-                try self.clipWinding(wind_a.*, wind_b, pl2);
-                const temp = wind_a;
-                wind_a = wind_b;
-                wind_b = temp;
-            }
-
-            if (wind_a.items.len < 3)
-                continue;
-
-            for (wind_a.items) |*item| {
-                item.* = roundVec(item.*);
-            }
-            const ret = map.getPtr(side.material) orelse continue;
-
-            const indexs = try self.triangulate(wind_a.items, @intCast(ret.mesh.vertices.items.len));
-            const uvs = try self.calcUVCoords(wind_a.items, side, @intCast(ret.tex.w), @intCast(ret.tex.h));
-            _ = timer.reset();
-            try ret.mesh.indicies.appendSlice(indexs);
-            try ret.mesh.vertices.ensureUnusedCapacity(wind_a.items.len);
-            for (wind_a.items, 0..) |vert, i| {
-                try ret.mesh.vertices.append(.{
-                    .x = @floatCast(vert.x() * scale),
-                    .y = @floatCast(vert.y() * scale),
-                    .z = @floatCast(vert.z() * scale),
-                    .u = uvs[i].x,
-                    .v = uvs[i].y,
-                    .nx = 0,
-                    .ny = 0,
-                    .nz = 0,
-                    .color = 0xffffffff,
-                });
-            }
-            gen_time += timer.read();
-        }
-    }
-
-    pub fn genMeshS(self: *Self, sides: []const Side, alloc: std.mem.Allocator, id: u32) !editor.Solid {
+    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator, id: u32) !editor.Solid {
         const MAPSIZE = std.math.maxInt(i32);
         var timer = try std.time.Timer.start();
         var ret = editor.Solid.init(alloc, id);
@@ -241,7 +187,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn calcUVCoords(self: *Self, winding: []const Vec3, side: Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+    pub fn calcUVCoords(self: *Self, winding: []const graph.za.Vec3, side: editor.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
         self.uvs.clearRetainingCapacity();
         const uvs = &self.uvs;
         var umin: f32 = std.math.floatMax(f32);
@@ -250,8 +196,8 @@ pub const Context = struct {
         const th: f64 = @floatFromInt(tex_h);
         for (winding) |item| {
             const uv = .{
-                .x = @as(f32, @floatCast(item.dot(side.uaxis.axis) / (tw * side.uaxis.scale) + side.uaxis.translation / tw)),
-                .y = @as(f32, @floatCast(item.dot(side.vaxis.axis) / (th * side.vaxis.scale) + side.vaxis.translation / th)),
+                .x = @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                .y = @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
             };
             try uvs.append(uv);
             umin = @min(umin, uv.x);

@@ -105,14 +105,20 @@ pub const Context = struct {
                     const mesh = &batch.mesh;
                     try mesh.vertices.ensureUnusedCapacity(side.verts.items.len);
                     try mesh.indicies.ensureUnusedCapacity(side.index.items.len);
+                    const uvs = try self.csgctx.calcUVCoords(
+                        side.verts.items,
+                        side,
+                        @intCast(batch.tex.w),
+                        @intCast(batch.tex.h),
+                    );
                     const offset = mesh.vertices.items.len;
-                    for (side.verts.items) |v| {
+                    for (side.verts.items, 0..) |v, i| {
                         try mesh.vertices.append(.{
                             .x = v.x(),
                             .y = v.y(),
                             .z = v.z(),
-                            .u = 0,
-                            .v = 0,
+                            .u = uvs[i].x,
+                            .v = uvs[i].y,
                             .nx = 0,
                             .ny = 0,
                             .nz = 0,
@@ -166,7 +172,7 @@ pub const Context = struct {
                 res.value_ptr.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.tex.id);
             }
         }
-        const newsolid = try self.csgctx.genMeshS(
+        const newsolid = try self.csgctx.genMesh(
             solid.side,
             self.alloc,
             @intCast(self.set.sparse.items.len),
