@@ -107,6 +107,23 @@ pub fn main() !void {
     var fgd_ctx = fgd.EntCtx.init(alloc);
     defer fgd_ctx.deinit();
     try fgd.loadFgd(&fgd_ctx, try std.fs.cwd().openDir("Half-Life 2/bin", .{}), "halflife2.fgd");
+    var icon_map = std.StringHashMap(graph.Texture).init(alloc);
+    defer {
+        icon_map.deinit();
+    }
+    {
+        //Create an atlas for the icons
+        var it = fgd_ctx.base.valueIterator();
+        while (it.next()) |class| {
+            if (class.iconsprite.len == 0) continue;
+            const res = try icon_map.getOrPut(class.iconsprite);
+            if (!res.found_existing) {
+                const n = class.iconsprite[0 .. class.iconsprite.len - 4];
+                std.debug.print("sprite {s}\n", .{n});
+                res.value_ptr.* = try editor.loadTextureFromVpk(n);
+            }
+        }
+    }
 
     //const infile = try std.fs.cwd().openFile("sdk_materials.vmf", .{});
     const infile = try std.fs.cwd().openFile(args.vmf orelse "sdk_materials.vmf", .{});
@@ -140,7 +157,7 @@ pub fn main() !void {
             for (ent.solid) |solid|
                 try editor.putSolidFromVmf(solid);
             try editor.ents.append(.{
-                .origin = ent.origin.v,
+                .origin = ent.origin.v.scale(2),
                 .class = ent.classname,
             });
             //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
@@ -180,6 +197,7 @@ pub fn main() !void {
     var ort = graph.Rec(0, 0, 200, 200);
     var grab_mouse = true;
     var show_gui: bool = false;
+    var index: u32 = 0;
 
     win.grabMouse(true);
     while (!win.should_exit) {
@@ -304,9 +322,11 @@ pub fn main() !void {
             //try draw.flush(null, null);
         }
         for (editor.ents.items) |ent| {
-            draw.cube(ent.origin, Vec3.new(16, 16, 16), 0x00ffffff);
-            //if(fgd_ctx.base.get(ent.classname))|base|{
-            //}
+            if (fgd_ctx.base.get(ent.class)) |base| {
+                if (icon_map.get(base.iconsprite)) |isp| {
+                    draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, cam);
+                }
+            }
         }
 
         graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
@@ -342,11 +362,14 @@ pub fn main() !void {
                     const area = win_area.inset(6 * os9gui.scale);
                     _ = try gui.beginLayout(Gui.SubRectLayout, .{ .rect = area }, .{});
                     defer gui.endLayout();
+
                     if (try os9gui.beginVScroll(&crass_scroll, .{ .sw = area.w })) |scr| {
                         defer os9gui.endVScroll(scr);
-                        var ent_it = fgd_ctx.base.iterator();
-                        while (ent_it.next()) |ent|
-                            _ = os9gui.button(ent.key_ptr.*);
+
+                        os9gui.slider(&index, 0, 1000);
+                        scr.layout.pushHeight(area.w);
+                        const ar = gui.getArea() orelse return;
+                        gui.drawRectTextured(ar, 0xffffffff, graph.Rec(0, 0, 1, 1), .{ .id = index, .w = 1, .h = 1 });
                     }
                 }
             }

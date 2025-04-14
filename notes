@@ -1,3 +1,7 @@
+Goals of this editor:
+Be easy and enjoyable to use.
+Feature completeness comes after ease of use.
+
 2d view implementation will require some thought
 maybe start with an orthographic view with GL_LINES
 
@@ -12,3 +16,5 @@ use the deferred renderer so it looks real pretty
 Decide on how editing will be handled
 port the cube editor thing from ratgraph and get basic recompute of meshes working.
 Render the skybox !
+
+

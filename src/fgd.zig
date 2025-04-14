@@ -694,7 +694,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                             else => {},
                                         }
                                     } else {
-                                        std.debug.print("TYPE {s}\n", .{tkz.getSlice(type_tok)});
+                                        //std.debug.print("TYPE {s}\n", .{tkz.getSlice(type_tok)});
                                         //_ = try tkz.expectNext(.newline);
                                     }
                                     try new_class.fields.append(.{

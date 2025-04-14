@@ -209,28 +209,11 @@ pub const Context = struct {
             const res = try self.meshmap.getOrPut(side.material);
             if (!res.found_existing) {
                 //var t = try std.time.Timer.start();
-                try self.lower_buf.ensureTotalCapacity(side.material.len);
-                try self.lower_buf.resize(side.material.len);
-                const lower = std.ascii.lowerString(self.lower_buf.items, side.material);
+                //try self.lower_buf.ensureTotalCapacity(side.material.len);
+                //try self.lower_buf.resize(side.material.len);
+                //const lower = std.ascii.lowerString(self.lower_buf.items, side.material);
                 res.value_ptr.* = .{
-                    .tex = blk: {
-                        self.scratch_buf.clearRetainingCapacity();
-                        try self.scratch_buf.writer().print("materials/{s}", .{lower});
-                        const sl = self.scratch_buf.items;
-                        const err = in: {
-                            const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
-                            break :in vtf.loadTexture(
-                                (self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
-                                self.alloc,
-                            ) catch |err| break :in err;
-                        };
-                        break :blk err catch |e| {
-                            std.debug.print("{} for {s}\n", .{ e, sl });
-                            break :blk missingTexture();
-                        };
-                        //defer bmp.deinit();
-                        //break :blk graph.Texture.initFromBitmap(bmp, .{});
-                    },
+                    .tex = try self.loadTextureFromVpk(side.material),
                     .mesh = undefined,
                 };
                 res.value_ptr.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.tex.id);
@@ -242,6 +225,28 @@ pub const Context = struct {
             @intCast(self.set.sparse.items.len),
         );
         try self.set.insert(newsolid.id, newsolid);
+    }
+
+    pub fn loadTextureFromVpk(self: *Self, material: []const u8) !graph.Texture {
+        try self.lower_buf.ensureTotalCapacity(material.len);
+        try self.lower_buf.resize(material.len);
+        const lower = std.ascii.lowerString(self.lower_buf.items, material);
+        self.scratch_buf.clearRetainingCapacity();
+        try self.scratch_buf.writer().print("materials/{s}", .{lower});
+        const sl = self.scratch_buf.items;
+        const err = in: {
+            const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
+            break :in vtf.loadTexture(
+                (self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
+                self.alloc,
+            ) catch |err| break :in err;
+        };
+        return err catch |e| {
+            std.debug.print("{} for {s}\n", .{ e, sl });
+            return missingTexture();
+        };
+        //defer bmp.deinit();
+        //break :blk graph.Texture.initFromBitmap(bmp, .{});
     }
 };
 
