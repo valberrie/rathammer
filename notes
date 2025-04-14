@@ -11,10 +11,27 @@ support models
 draw billboarded entity (light, soundscape etc)
 how are editor entities defined per game? something about gameinfo.txt
 
+Tools a layer above direct manipulation of solids.
+Sketchup esque?
+
 TODO
 use the deferred renderer so it looks real pretty
 Decide on how editing will be handled
 port the cube editor thing from ratgraph and get basic recompute of meshes working.
 Render the skybox !
+
+Models
+How will models be drawn?
+One drawcall per model-material part
+
+Layout of a vtx file:
+body parts:
+    models:
+        lods:
+            meshes: 
+                strip_groups:
+                    index_array
+
+sheesh
 
 

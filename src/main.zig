@@ -99,7 +99,27 @@ pub fn main() !void {
     try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
     //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //materials/nature/red_grass
-    std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
+    if (false) {
+        const names = [_][]const u8{ "canal_dock02a", "canal_dock02a", "canal_dock02a.dx90" };
+        const path = "models/props_docks";
+        const exts = [_][]const u8{ "mdl", "vvd", "vtx" };
+        var buf: [256]u8 = undefined;
+        var bb = std.io.FixedBufferStream([]u8){ .pos = 0, .buffer = &buf };
+        for (exts, 0..) |ext, i| {
+            bb.pos = 0;
+            const outd = try std.fs.cwd().openDir("mdl", .{});
+            const vmt = (try editor.vpkctx.getFileTemp(ext, path, names[i])) orelse {
+                std.debug.print("Can't find {s}\n", .{ext});
+                continue;
+            };
+            try bb.writer().print("out.{s}", .{ext});
+            const mdl = try outd.createFile(bb.getWritten(), .{});
+            try mdl.writer().writeAll(vmt);
+        }
+        //std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
+        if (true)
+            return;
+    }
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
