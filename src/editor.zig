@@ -236,6 +236,9 @@ pub const Context = struct {
         const sl = self.scratch_buf.items;
         const err = in: {
             const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
+            //if (try self.vpkctx.getFileTemp("vmt", sl[0..slash], sl[slash + 1 ..])) |tt| {
+            //    //std.debug.print("{s}\n", .{tt});
+            //}
             break :in vtf.loadTexture(
                 (self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
                 self.alloc,
