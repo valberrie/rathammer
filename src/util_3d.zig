@@ -76,40 +76,85 @@ pub fn doesRayIntersectBoundingBox(comptime numdim: usize, comptime ft: type, mi
 pub fn trianglePlane(verts: [3]V3f) V3f {
     const a = verts[2].sub(verts[0]);
     const b = verts[1].sub(verts[0]);
-    return a.cross(b);
+    return b.cross(a).norm();
 }
 
-pub fn doesRayIntersectConvexPlanarPolygon(ray_origin: V3f, ray_dir: V3f, plane_normal: V3f, verts: []const V3f) ?V3f {
+pub fn doesRayIntersectConvexPolygon(ray_origin: V3f, ray_dir: V3f, plane_normal: V3f, verts: []const V3f) ?V3f {
     if (verts.len == 0) return null;
 
     const plane_int = doesRayIntersectPlane(ray_origin, ray_dir, verts[0], plane_normal) orelse return null;
-    if (true)
-        return plane_int;
-    for (1..verts.len - 1) |i| {
+    for (1..verts.len) |i| {
         const a = verts[i - 1];
         const b = verts[i];
-        const cr = a.cross(b);
-        if (cr.z() < 0)
+        const l1 = a.sub(plane_int); //legs of triangle
+        const l2 = b.sub(plane_int);
+
+        const th = std.math.atan2(l1.cross(l2).dot(plane_normal), l1.dot(l2));
+        if (th < 0)
             return null;
     }
     return plane_int;
 }
+pub fn doesRayIntersectConvexPolygondo(ray_origin: V3f, ray_dir: V3f, plane_normal: V3f, verts: []const V3f) ?V3f {
+    if (verts.len == 0) return null;
+
+    const help = struct {
+        fn rej(v: V3f, i: usize) graph.za.Vec2 {
+            const V2 = graph.za.Vec2;
+            return switch (i) {
+                0 => V2.new(v.y(), v.z()),
+                1 => V2.new(v.x(), v.z()),
+                2 => V2.new(v.x(), v.y()),
+                else => unreachable,
+            };
+        }
+    };
+
+    const plane_int = doesRayIntersectPlane(ray_origin, ray_dir, verts[0], plane_normal) orelse return null;
+
+    var reject: usize = 0;
+    var min = @abs(plane_normal.x());
+    for (1..2) |i| {
+        if (@abs(plane_normal.data[i]) > min) {
+            min = @abs(plane_normal.data[i]);
+            reject = i;
+        }
+    }
+    const pint = help.rej(plane_int, reject);
+
+    var cd = false;
+    for (1..verts.len) |i| {
+        const a = help.rej(verts[i - 1], reject);
+        const b = help.rej(verts[i], reject);
+        if ((a.y() > pint.y()) != (b.y() > pint.y()) and
+            (pint.x() < (b.x() - a.x()) * (pint.y() - a.y()) / (b.y() - a.y()) + a.x()))
+            cd = !cd;
+    }
+
+    return if (cd) plane_int else null;
+}
+
+//pub fn pnpoly(verts: )
+
+//int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy)
+//{
+//  int i, j, c = 0;
+//  for (i = 0, j = nvert-1; i < nvert; j = i++) {
+//    if ( ((verty[i]>testy) != (verty[j]>testy)) &&
+//	 (testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
+//       c = !c;
+//  }
+//  return c;
+//}
 
 pub fn doesRayIntersectBBZ(ray_origin: V3f, ray_dir: V3f, min: V3f, max: V3f) ?V3f {
     const ret = doesRayIntersectBoundingBox(3, f32, min.data, max.data, ray_origin.data, ray_dir.data);
     return if (ret) |r| V3f.new(r[0], r[1], r[2]) else null;
 }
-//float denom = normal.dot(ray.direction);
-//if (abs(denom) > 0.0001f) // your favorite epsilon
-//{
-//    float t = (center - ray.origin).dot(normal) / denom;
-//    if (t >= 0) return true; // you might want to allow an epsilon here too
-//}
-//return false;
 
 pub fn doesRayIntersectPlane(ray_0: V3f, ray_norm: V3f, plane_0: V3f, plane_norm: V3f) ?V3f {
     const ln = ray_norm.dot(plane_norm);
-    if (ln == 0)
+    if (@abs(ln) < 0.0001)
         return null;
 
     const d = (plane_0.sub(ray_0).dot(plane_norm)) / ln;

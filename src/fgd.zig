@@ -1,0 +1,723 @@
+const std = @import("std");
+// Comments //
+//
+// //@BaseEnt ?classprop() ?classprop2() = classname ?: "my description" [ *contents* ]
+// propertyname(type) : doc_name ?: default : doc_string
+//
+// spawnFlags =
+// []
+const eql = std.mem.eql;
+const Allocator = std.mem.Allocator;
+const stringToEnum = std.meta.stringToEnum;
+
+pub const Tag = enum {
+    comma,
+    colon,
+    l_bracket,
+    r_bracket,
+    plus,
+    l_paren,
+    r_paren,
+    equals,
+    newline,
+    quoted_string,
+    plain_string,
+    at_string,
+    //comment,
+};
+
+pub const Token = struct {
+    pub const Pos = struct {
+        start: usize,
+        end: usize,
+    };
+    tag: Tag,
+    pos: Pos,
+
+    pub fn orderedTokenIterator(delim: Tag, slice: []const Token) struct {
+        delim: Tag,
+        slice: []const Token,
+        pos: usize,
+
+        //if delim is , and our token stream is a,,a,a
+        //our next calls should return:  a null a a
+        pub fn next(self: *@This()) ?Token {
+            if (self.pos >= self.slice.len)
+                return null;
+            defer self.pos += 1;
+            if (self.slice[self.pos].tag != self.delim)
+                return self.slice[self.pos];
+
+            //Peek the next, if not delim return that
+            if (self.pos + 1 < self.slice.len and self.slice[self.pos + 1].tag != self.delim) {
+                self.pos += 1;
+                return self.slice[self.pos];
+            }
+
+            return null;
+        }
+    } {
+        return .{
+            .delim = delim,
+            .slice = slice,
+            .pos = 0,
+        };
+    }
+};
+
+pub const FgdTokenizer = struct {
+    //Zig is so cool.
+    slice: []const u8,
+    pos: usize = 0,
+    last_tok: ?Tag = null,
+    peeked: ?Token = null,
+
+    line_counter: usize = 1,
+    char_counter: usize = 1,
+
+    alloc: Allocator,
+
+    params: std.ArrayList(Token),
+
+    pub fn init(slice: []const u8, alloc: Allocator) @This() {
+        return .{
+            .slice = slice,
+            .alloc = alloc,
+            .params = std.ArrayList(Token).init(alloc),
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.params.deinit();
+    }
+
+    fn controlChar(char: u8) ?Tag {
+        return switch (char) {
+            ',' => .comma,
+            '[' => .l_bracket,
+            ']' => .r_bracket,
+            '+' => .plus,
+            '=' => .equals,
+            '(' => .l_paren,
+            ')' => .r_paren,
+            ':' => .colon,
+            else => null,
+        };
+    }
+
+    pub fn expectNext(self: *@This(), tag: Tag) !Token {
+        const n = try self.next() orelse return error.eos;
+        if (n.tag != tag)
+            return error.unexpectedTag;
+
+        return n;
+    }
+
+    pub fn getSlice(self: *@This(), token: Token) []const u8 {
+        return self.slice[token.pos.start..token.pos.end];
+    }
+
+    pub fn nextEatNewline(self: *@This()) !?Token {
+        while (try self.next()) |t| {
+            if (t.tag != .newline)
+                return t;
+        }
+        return null;
+    }
+
+    pub fn eatNewline(self: *@This()) !void {
+        while (true) {
+            const n = try self.peek() orelse return;
+            if (n.tag != .newline)
+                return;
+            _ = try self.next();
+        }
+    }
+
+    pub fn expectNextEatNewline(self: *@This(), comptime tag: Tag) !Token {
+        if (tag == .newline) @compileError("impossible");
+        while (try self.next()) |t| {
+            if (t.tag != .newline) {
+                if (t.tag != tag)
+                    return error.wrongTag;
+                return t;
+            }
+        }
+        return error.missing;
+    }
+
+    // <ent_desc> ::= <at_string> <inherit> | <equals> <ent_name> <ent_doc> | <newline> <ent_def>
+    // <ent_name> ::= <plain_string>
+    // <ent_doc> ::= <colon> <multi-line-str>
+    // <ent_def> ::= <l_br>
+
+    //A multi-line string has the grammar:
+    // <multi-line-str> ::= <quoted_string> <newline> | <multi-line-str-cont>
+    // <multi-line-str-cont> ::= <plus> <newline> <multi-line-str>
+    pub fn expectMultilineString(self: *@This()) !void { //TODO return string, requires alloc
+        while (true) {
+            const n1 = try self.next() orelse return error.multilineStringSyntax;
+            if (n1.tag != .quoted_string) {
+                return error.multilineStringSyntax;
+            }
+            const ne = try self.peek() orelse return;
+            switch (ne.tag) {
+                .plus => {
+                    _ = try self.next(); //Clear peek
+
+                    _ = try self.expectNext(.newline);
+                    const n = try self.peek() orelse return;
+                    switch (n.tag) {
+                        .quoted_string => continue,
+                        else => return, //Shitty workaround to shitty syntax
+                        //Some multi-line strings (2 in base.fgd) terminate with a '+' with no string on the following line
+                        //Should be a syntax error
+                    }
+                },
+                else => break,
+            }
+        }
+    }
+
+    pub fn peek(self: *@This()) !?Token {
+        if (self.peeked) |p| return p;
+        self.peeked = try self.next();
+        return self.peeked;
+    }
+
+    pub fn nextA(self: *@This()) !Token {
+        return try self.next() orelse error.expectedToken;
+    }
+
+    pub fn next(self: *@This()) !?Token {
+        if (self.peeked) |p| {
+            defer self.peeked = null;
+            return p;
+        }
+        var state: enum {
+            start,
+            quoted_string,
+            comment,
+            at_string,
+            plain_string,
+        } = .start;
+        var res = Token{ .pos = .{ .start = self.pos, .end = self.pos }, .tag = .newline };
+        if (self.pos >= self.slice.len)
+            return null;
+        while (self.pos < self.slice.len) : (self.pos += 1) {
+            const ch = self.slice[self.pos];
+            self.char_counter += 1;
+            if (ch == '\n') {
+                self.line_counter += 1;
+                self.char_counter = 1;
+            }
+            switch (state) {
+                .start => {
+                    switch (ch) {
+                        '\r', '\n' => {
+                            if (self.last_tok != null and self.last_tok.? == .newline) { //A cheap way to handle \r\n returning multiple newline tokens
+                                state = .start;
+                                if (self.pos + 1 >= self.slice.len)
+                                    return null;
+                                res.pos.start = self.pos + 1;
+                                continue;
+                            }
+                            res.tag = .newline;
+                            self.pos += 1;
+                            res.pos.end = self.pos;
+                            break;
+                        },
+                        ' ', '\t' => res.pos.start = self.pos + 1,
+                        '\"' => {
+                            state = .quoted_string;
+                            res.pos.start = self.pos + 1;
+                        },
+                        '@' => state = .at_string,
+                        else => {
+                            if (controlChar(ch)) |cc| {
+                                res.tag = cc;
+                                self.pos += 1;
+                                res.pos.end = self.pos;
+                                break;
+                            }
+                            state = .plain_string;
+                            if (ch == '/' and self.pos + 1 < self.slice.len and self.slice[self.pos + 1] == '/')
+                                state = .comment;
+                        },
+                    }
+                },
+                .at_string => {
+                    if (controlChar(ch) != null) {
+                        res.tag = .at_string;
+                        res.pos.end = self.pos;
+                        break;
+                    }
+                    switch (ch) {
+                        '\r', '\n', ' ' => {
+                            res.tag = .at_string;
+                            res.pos.end = self.pos;
+                            break;
+                        },
+                        else => {},
+                    }
+                },
+                .plain_string => {
+                    if (controlChar(ch) != null) {
+                        res.tag = .plain_string;
+                        res.pos.end = self.pos;
+                        break;
+                    }
+                    switch (ch) {
+                        '\r', '\n', ' ', '\t' => {
+                            res.tag = .plain_string;
+                            res.pos.end = self.pos;
+                            break;
+                        },
+                        else => {},
+                    }
+                },
+                .quoted_string => {
+                    switch (ch) {
+                        '"' => {
+                            res.tag = .quoted_string;
+                            res.pos.end = self.pos;
+                            self.pos += 1; //Increment pos after to eat the closing "
+                            break;
+                        },
+                        '\r', '\n' => return error.noNewlineInString,
+                        else => {},
+                    }
+                },
+                .comment => {
+                    switch (ch) {
+                        '\r', '\n' => {
+                            if (self.pos + 1 >= self.slice.len)
+                                return null;
+                            res.pos.start = self.pos + 1;
+                            self.last_tok = null;
+                            state = .start;
+                            continue;
+                        },
+                        else => {},
+                    }
+                },
+            }
+        }
+        self.last_tok = res.tag;
+        return res;
+    }
+};
+
+const AtDirective = enum {
+    // these two are different.
+    mapsize, // parameters passed through paren arg list
+    include, // parameter is a single string with no separators
+    // :crying
+
+    //The following all have the same grammar
+    BaseClass,
+    PointClass,
+    NPCClass,
+    SolidClass,
+    FilterClass,
+    KeyFrameClass,
+    MoveClass,
+
+    //AutoVisGroup, //Similar to Classes but different.
+    //MaterialExclusion,
+
+    //In the future, design a new format for fgd files that doesn't suck as much.
+    //Should be easy to parse and extend with editor specific sections.
+    //
+    //fgd is extensible in that @strings are never nested so unknown @strings can just be ignored.
+};
+
+test {
+    const alloc = std.testing.allocator;
+    const base_dir = try std.fs.cwd().openDir("Half-Life 2/bin", .{});
+
+    //const in = try base_dir.openFile("base.fgd", .{});
+    const in = try base_dir.openFile("halflife2.fgd", .{});
+    defer in.close();
+
+    const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    defer alloc.free(slice);
+
+    var ctx = EntCtx.init(alloc);
+    defer ctx.deinit();
+
+    var tkz = FgdTokenizer.init(slice, alloc);
+    defer tkz.deinit();
+    crass(&ctx, &tkz, base_dir, alloc) catch |err| {
+        std.debug.print("Line: {d}:{d}\n", .{ tkz.line_counter, tkz.char_counter });
+        return err;
+    };
+}
+
+pub const EntCtx = struct {
+    const Self = @This();
+
+    string_alloc: std.heap.ArenaAllocator,
+    alloc: Allocator,
+    ents: std.ArrayList(EntClass),
+
+    base: std.StringHashMap(EntClass),
+
+    pub fn init(alloc: Allocator) Self {
+        return .{
+            .string_alloc = std.heap.ArenaAllocator.init(alloc),
+            .alloc = alloc,
+            .ents = std.ArrayList(EntClass).init(alloc),
+            .base = std.StringHashMap(EntClass).init(alloc),
+        };
+    }
+
+    pub fn dupeString(self: *Self, str: []const u8) ![]const u8 {
+        return try self.string_alloc.allocator().dupe(u8, str);
+    }
+
+    pub fn deinit(self: *Self) void {
+        var it = self.base.valueIterator();
+        while (it.next()) |item|
+            item.deinit();
+        self.base.deinit();
+        self.ents.deinit();
+        self.string_alloc.deinit();
+    }
+};
+
+pub const EntClass = struct {
+    const Self = @This();
+    pub const Field = struct {
+        pub const Type = union(enum) {
+            pub const KV = struct { []const u8, []const u8 };
+            pub const Flag = struct {
+                on: bool,
+                mask: u32,
+                name: []const u8,
+            };
+            choices: std.ArrayList(KV),
+            flags: std.ArrayList(Flag),
+            generic: void,
+        };
+        name: []const u8,
+        type: Type,
+        default: []const u8,
+        doc_string: []const u8,
+        is_derived: bool = false,
+
+        pub fn deinit(self: *@This()) void {
+            if (self.is_derived)
+                return;
+            switch (self.type) {
+                .choices => |cc| cc.deinit(),
+                .flags => |cc| cc.deinit(),
+                else => {},
+            }
+        }
+    };
+    fields: std.ArrayList(Field),
+    name: []const u8 = "",
+    doc: []const u8 = "",
+    iconsprite: []const u8 = "",
+
+    pub fn init(alloc: Allocator) Self {
+        return .{
+            .fields = std.ArrayList(Field).init(alloc),
+        };
+    }
+
+    pub fn inherit(self: *Self, parent: Self) !void {
+        for (parent.fields.items) |item| {
+            var cc = item;
+            cc.is_derived = true;
+            try self.fields.append(cc);
+        }
+        //TODO also inherit inputs and outputs, maybe check for override?
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.fields.items) |*item|
+            item.deinit();
+        self.fields.deinit();
+    }
+};
+
+pub fn loadFgd(ctx: *EntCtx, base_dir: std.fs.Dir, path: []const u8) !void {
+    const in = try base_dir.openFile(path, .{});
+    defer in.close();
+    const alloc = ctx.alloc;
+
+    const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    defer alloc.free(slice);
+
+    var tkz = FgdTokenizer.init(slice, alloc);
+    defer tkz.deinit();
+    crass(ctx, &tkz, base_dir, alloc) catch |err| {
+        std.debug.print("Line: {d}:{d}\n", .{ tkz.line_counter, tkz.char_counter });
+        return err;
+    };
+}
+
+pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allocator) !void {
+    var ignored_count: usize = 0;
+    defer std.debug.print("BAS ignored tok: {d}\n", .{ignored_count});
+    while (try tkz.next()) |tk| {
+        const tok = tkz.getSlice(tk);
+        //std.debug.print("{s}:{s}\n", .{ @tagName(tk.tag), slice[tk.pos.start..tk.pos.end] });
+        switch (tk.tag) {
+            .at_string => {
+                //+1 to strip the '@'
+                const ct = stringToEnum(AtDirective, tok[1..]) orelse {
+                    std.debug.print("UNSUPORTD {s}\n", .{tok});
+                    continue;
+                };
+                switch (ct) {
+                    .include => {
+                        //If you do cyclic includes, the stack will overflow.
+                        //TODO prevent cycles
+                        const include_file = try tkz.expectNext(.quoted_string);
+                        const in_f = try base_dir.openFile(tkz.getSlice(include_file), .{});
+                        defer in_f.close();
+                        const slice2 = try in_f.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+                        defer alloc.free(slice2);
+                        var tkz_inc = FgdTokenizer.init(slice2, alloc);
+                        defer tkz_inc.deinit();
+                        crass(ctx, &tkz_inc, base_dir, alloc) catch |err| {
+                            std.debug.print("Include : {s}, error line: {d}:{d}\n", .{ tkz.getSlice(include_file), tkz_inc.line_counter, tkz_inc.char_counter });
+                            return err;
+                        };
+                    },
+                    .mapsize => {
+                        _ = try tkz.expectNext(.l_paren);
+                        const width = try tkz.expectNext(.plain_string);
+                        _ = try tkz.expectNext(.comma);
+                        const height = try tkz.expectNext(.plain_string);
+                        _ = try tkz.expectNext(.r_paren);
+                        _ = width;
+                        _ = height;
+                    },
+                    .PointClass, .BaseClass, .NPCClass, .SolidClass, .FilterClass, .KeyFrameClass, .MoveClass => {
+                        var new_class = EntClass.init(alloc);
+                        while (try tkz.next()) |t| { //Parse all the inherited classes
+                            switch (t.tag) {
+                                .plain_string => {
+                                    const parent_name = tkz.getSlice(t);
+                                    //Dumb, yes. But this is the *only* one like it
+                                    //they probably hacked their fgd parser together without coming up with a sensible grammar
+                                    //All other parent classes take 0 or more arguments in parentheses, "halfgridsnap" has no arguments AND no ().
+                                    if (eql(u8, parent_name, "halfgridsnap")) {
+                                        continue;
+                                    }
+                                    _ = try tkz.expectNext(.l_paren);
+                                    tkz.params.clearRetainingCapacity();
+                                    while (true) {
+                                        const next = try tkz.next() orelse return error.syntax;
+                                        switch (next.tag) {
+                                            else => {
+                                                try tkz.params.append(next);
+                                            }, // add to param list
+                                            .r_paren => break,
+                                        }
+                                    }
+                                    if (stringToEnum(enum {
+                                        base,
+                                        iconsprite,
+                                    }, parent_name)) |en| {
+                                        const ps = tkz.params.items;
+                                        switch (en) {
+                                            .iconsprite => {
+                                                if (ps.len != 1 or ps[0].tag != .quoted_string) {
+                                                    std.debug.print("Invalid icon sprite\n", .{});
+                                                }
+                                                new_class.iconsprite = try ctx.dupeString(tkz.getSlice(ps[0]));
+                                            },
+                                            .base => {
+                                                var it = Token.orderedTokenIterator(.comma, ps);
+                                                while (it.next()) |tt| {
+                                                    const base = ctx.base.getPtr(tkz.getSlice(tt)) orelse {
+                                                        std.debug.print("INVALID CLASS {s}\n", .{tkz.getSlice(tt)});
+                                                        continue;
+                                                    };
+                                                    try new_class.inherit(base.*);
+                                                }
+                                            },
+                                        }
+                                    }
+                                },
+                                else => return error.invalidClassDef,
+                                .equals => break,
+                            }
+                        }
+
+                        const class_name = try tkz.expectNext(.plain_string);
+                        new_class.name = try ctx.dupeString(tkz.getSlice(class_name));
+                        //std.debug.print("Decl {s}\n", .{tkz.getSlice(class_name)});
+
+                        const n = try tkz.peek() orelse return error.syntax;
+                        switch (n.tag) {
+                            .colon => { //Parse docstring
+                                _ = try tkz.next();
+                                try tkz.eatNewline();
+                                try tkz.expectMultilineString();
+                            },
+                            .newline => {},
+                            .l_bracket => {},
+                            else => return error.syntax,
+                        }
+                        _ = try tkz.expectNextEatNewline(.l_bracket);
+
+                        { //Parse all the fields
+                            const FirstWord = enum {
+                                input,
+                                output,
+                            };
+                            while (try tkz.nextEatNewline()) |first| {
+                                if (first.tag == .r_bracket) break; //this class in done
+                                if (first.tag != .plain_string) return error.syntax;
+                                const fsl = tkz.getSlice(first);
+                                if (stringToEnum(FirstWord, fsl)) |fw| { //Input, output field
+                                    _ = try tkz.expectNext(.plain_string); //name of io
+                                    _ = fw;
+                                    _ = try tkz.expectNext(.l_paren);
+                                    _ = try tkz.expectNext(.plain_string); //type
+                                    _ = try tkz.expectNext(.r_paren);
+                                    const n1 = try tkz.peek() orelse return error.syntax;
+                                    if (n1.tag == .colon) {
+                                        _ = try tkz.next(); //eat peek
+                                        try tkz.expectMultilineString(); // description
+                                    }
+                                } else { // A regular field
+                                    //std.debug.print("\t{s}\n", .{fsl});
+                                    _ = try tkz.expectNext(.l_paren);
+                                    const type_tok = try tkz.expectNext(.plain_string); //Type must be a plain string
+                                    _ = try tkz.expectNext(.r_paren);
+                                    while (true) { // Read modifiers
+                                        const n1 = try tkz.peek() orelse return error.syntax;
+                                        switch (n1.tag) {
+                                            .plain_string => {
+                                                const Mods = enum {
+                                                    readonly,
+                                                    report,
+                                                };
+                                                const pl = tkz.getSlice(n1);
+                                                _ = stringToEnum(Mods, pl) orelse {
+                                                    std.debug.print("MODIFIER '{s}'\n", .{pl});
+                                                    return error.invalidModifier;
+                                                };
+                                                _ = try tkz.next();
+                                            },
+                                            else => break,
+                                        }
+                                    }
+
+                                    var index: i32 = -1;
+                                    while (true) {
+                                        const n1 = try tkz.peek() orelse return error.syntax;
+                                        switch (n1.tag) {
+                                            else => break,
+                                            .colon => {
+                                                _ = try tkz.next();
+                                                index += 1;
+                                            },
+                                            .plain_string, .quoted_string => {
+                                                switch (index) {
+                                                    0 => { //prop name
+                                                        _ = try tkz.next();
+                                                    },
+                                                    1 => { //default value
+                                                        _ = try tkz.next();
+                                                    },
+                                                    2 => { //doc string
+                                                        try tkz.expectMultilineString();
+                                                        break;
+                                                    },
+                                                    else => return error.syntax,
+                                                }
+                                                //TODO put the data in index
+                                            },
+                                        }
+                                    }
+                                    const TypeStr = enum {
+                                        choices,
+                                        Choices,
+                                        flags,
+                                        Flags,
+
+                                        string,
+                                        float,
+                                        integer,
+                                        boolean,
+                                    };
+                                    var new_type = EntClass.Field.Type{ .generic = {} };
+                                    //random modifier here, random modifier there, random modifiers every-fucking-where.
+                                    if (stringToEnum(TypeStr, tkz.getSlice(type_tok))) |st| {
+                                        switch (st) {
+                                            .choices, .Choices => {
+                                                var new_choices = std.ArrayList(EntClass.Field.Type.KV).init(alloc);
+                                                _ = try tkz.expectNext(.equals);
+                                                _ = try tkz.expectNextEatNewline(.l_bracket);
+                                                while (true) {
+                                                    const n1 = try tkz.nextEatNewline() orelse return error.choiceMis;
+                                                    switch (n1.tag) {
+                                                        .plain_string, .quoted_string => {
+                                                            _ = try tkz.expectNext(.colon);
+                                                            const val = try tkz.expectNext(.quoted_string);
+                                                            try new_choices.append(.{
+                                                                try ctx.dupeString(tkz.getSlice(n1)),
+                                                                try ctx.dupeString(tkz.getSlice(val)),
+                                                            });
+                                                        },
+                                                        .r_bracket => break,
+                                                        else => return error.choiceSyntax,
+                                                    }
+                                                }
+                                                new_type = .{ .choices = new_choices };
+                                            },
+                                            .flags, .Flags => {
+                                                _ = try tkz.expectNext(.equals);
+                                                _ = try tkz.expectNextEatNewline(.l_bracket);
+                                                while (true) {
+                                                    const n1 = try tkz.nextEatNewline() orelse return error.choiceMis;
+                                                    switch (n1.tag) {
+                                                        .plain_string => {
+                                                            _ = try tkz.expectNext(.colon);
+                                                            _ = try tkz.expectNext(.quoted_string);
+                                                            _ = try tkz.expectNext(.colon);
+                                                            _ = try tkz.expectNext(.plain_string);
+                                                        },
+                                                        .r_bracket => break,
+                                                        else => return error.flagSyntax,
+                                                    }
+                                                }
+                                            },
+                                            else => {},
+                                        }
+                                    } else {
+                                        std.debug.print("TYPE {s}\n", .{tkz.getSlice(type_tok)});
+                                        //_ = try tkz.expectNext(.newline);
+                                    }
+                                    try new_class.fields.append(.{
+                                        .name = try ctx.dupeString(fsl),
+                                        .type = new_type,
+                                        .default = "",
+                                        .doc_string = "",
+                                    });
+                                }
+                            }
+                        }
+                        switch (ct) {
+                            else => try ctx.base.put(new_class.name, new_class),
+                            //else => try ctx.ents.append(new_class),
+                        }
+                    },
+                }
+            },
+            .newline => {},
+            else => {
+                ignored_count += 1;
+                //return error.br;
+            },
+        }
+    }
+}

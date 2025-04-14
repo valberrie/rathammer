@@ -96,10 +96,16 @@ pub const Solid = struct {
     }
 };
 
+pub const Entity = struct {
+    origin: Vec3,
+    class: []const u8,
+};
+
 pub const Context = struct {
     const Self = @This();
     const SolidSet = SparseSet(Solid, u32);
 
+    ents: std.ArrayList(Entity),
     set: SolidSet,
     csgctx: csg.Context,
     vpkctx: vpk.Context,
@@ -112,6 +118,7 @@ pub const Context = struct {
     pub fn init(alloc: std.mem.Allocator) !Self {
         return .{
             .alloc = alloc,
+            .ents = std.ArrayList(Entity).init(alloc),
             .name_arena = std.heap.ArenaAllocator.init(alloc),
             .set = try SolidSet.init(alloc),
             .csgctx = try csg.Context.init(alloc),
@@ -131,6 +138,7 @@ pub const Context = struct {
         self.set.deinit();
         self.lower_buf.deinit();
         self.scratch_buf.deinit();
+        self.ents.deinit();
         self.csgctx.deinit();
         self.vpkctx.deinit();
         var it = self.meshmap.iterator();

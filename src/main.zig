@@ -9,8 +9,12 @@ const vdf = @import("vdf.zig");
 const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
 const vtf = @import("vtf.zig");
+const fgd = @import("fgd.zig");
 const Editor = @import("editor.zig").Context;
+const Vec3 = V3f;
 const util3d = @import("util_3d.zig");
+const Os9Gui = graph.gui_app.Os9Gui;
+const Gui = graph.Gui;
 
 const LoadCtx = struct {
     buffer: [256]u8 = undefined,
@@ -80,6 +84,9 @@ pub fn main() !void {
         .win = &win,
         .timer = try std.time.Timer.start(),
     };
+    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), 2);
+    defer os9gui.deinit();
+    var crass_scroll: graph.Vec2f = .{ .x = 0, .y = 0 };
     loadctx.cb("Loading");
 
     //const root = try std.fs.cwd().openDir("tf", .{});
@@ -96,6 +103,11 @@ pub fn main() !void {
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
+
+    var fgd_ctx = fgd.EntCtx.init(alloc);
+    defer fgd_ctx.deinit();
+    try fgd.loadFgd(&fgd_ctx, try std.fs.cwd().openDir("Half-Life 2/bin", .{}), "halflife2.fgd");
+
     //const infile = try std.fs.cwd().openFile("sdk_materials.vmf", .{});
     const infile = try std.fs.cwd().openFile(args.vmf orelse "sdk_materials.vmf", .{});
     defer infile.close();
@@ -127,6 +139,10 @@ pub fn main() !void {
             loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
             for (ent.solid) |solid|
                 try editor.putSolidFromVmf(solid);
+            try editor.ents.append(.{
+                .origin = ent.origin.v,
+                .class = ent.classname,
+            });
             //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
         }
         try editor.rebuildAllMeshes();
@@ -141,6 +157,7 @@ pub fn main() !void {
     const RcastItem = struct {
         id: u32,
         dist: f32,
+        point: graph.za.Vec3 = undefined,
 
         pub fn lessThan(_: void, a: @This(), b: @This()) bool {
             return a.dist < b.dist;
@@ -152,6 +169,7 @@ pub fn main() !void {
     var raycast_pot_fine = std.ArrayList(RcastItem).init(alloc);
     defer raycast_pot_fine.deinit();
 
+    var frame: usize = 0;
     var cam = graph.Camera3D{};
     cam.up = .z;
     cam.move_speed = 50;
@@ -159,20 +177,36 @@ pub fn main() !void {
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
 
+    var ort = graph.Rec(0, 0, 200, 200);
+    var grab_mouse = true;
+    var show_gui: bool = false;
+
     win.grabMouse(true);
     while (!win.should_exit) {
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
+        win.grabMouse(grab_mouse);
         win.pumpEvents(.poll);
+        if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
+            graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
+        const last_frame_grabbed = grab_mouse;
+        grab_mouse = !win.keyHigh(.LSHIFT);
+        if (last_frame_grabbed and !grab_mouse) { //Mouse just ungrabbed
+            graph.c.SDL_WarpMouseInWindow(win.win, draw.screen_dimensions.x / 2, draw.screen_dimensions.y / 2);
+        }
+        const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
+        if (win.keyRising(._1))
+            show_gui = !show_gui;
+
         if (win.keyRising(.TAB))
             draw_tools = !draw_tools;
         cam.updateDebugMove(.{
-            .down = win.keyHigh(.LSHIFT),
+            .down = win.keyHigh(.LCTRL),
             .up = win.keyHigh(.SPACE),
             .left = win.keyHigh(.A),
             .right = win.keyHigh(.D),
             .fwd = win.keyHigh(.W),
             .bwd = win.keyHigh(.S),
-            .mouse_delta = win.mouse.delta,
+            .mouse_delta = if (grab_mouse) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
         });
         if (win.keyRising(._8)) {
@@ -191,10 +225,12 @@ pub fn main() !void {
 
         //draw.rectTex(Rec(0, 0, 1000, 1000), my_tex.rect(), my_tex);
         draw.cube(V3f.new(0, 0, 0), V3f.new(1, 1, 1), 0xffffffff);
-        //graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
         const view_3d = cam.getMatrix(draw.screen_dimensions.x / draw.screen_dimensions.y, 0.1, 100000);
         var it = editor.meshmap.iterator();
         const mat = graph.za.Mat4.identity();
+        //graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+        //graph.c.glViewport(0, 0, @divFloor(win.screen_dimensions.x, 2), @divFloor(win.screen_dimensions.y, 2));
+        //graph.c.glScissor(0, 0, @divFloor(win.screen_dimensions.x, 2), @divFloor(win.screen_dimensions.y, 2));
         //.rotate(-90, graph.za.Vec3.new(1, 0, 0));
         graph.c.glEnable(graph.c.GL_BLEND);
         while (it.next()) |mesh| {
@@ -202,7 +238,7 @@ pub fn main() !void {
                 continue;
             mesh.value_ptr.mesh.drawSimple(view_3d, mat, basic_shader);
         }
-        if (win.mouse.left == .rising) {
+        if (win.keyRising(.E)) {
             raycast_pot.clearRetainingCapacity();
             for (editor.set.dense.items, 0..) |solid, i| {
                 const bb = &solid.bounding_box;
@@ -219,23 +255,23 @@ pub fn main() !void {
                     for (solid.sides.items) |side| {
                         if (side.verts.items.len < 3) continue;
                         const plane = util3d.trianglePlane(side.verts.items[0..3].*);
-                        if (util3d.doesRayIntersectConvexPlanarPolygon(
+                        if (util3d.doesRayIntersectConvexPolygon(
                             cam.pos,
                             cam.front,
                             plane,
                             side.verts.items,
                         )) |point| {
                             const len = point.distance(cam.pos);
-                            try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len });
+                            try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = point });
                         }
                     }
                 }
 
                 std.sort.insertion(RcastItem, raycast_pot_fine.items, {}, RcastItem.lessThan);
                 if (raycast_pot_fine.items.len > 0) {
-                    std.debug.print("Count {d} {d}\n", .{ raycast_pot.items.len, raycast_pot_fine.items.len });
-                    for (raycast_pot_fine.items) |itt|
-                        std.debug.print("ID: {d} {d}\n", .{ itt.id, itt.dist });
+                    // std.debug.print("Count {d} {d}\n", .{ raycast_pot.items.len, raycast_pot_fine.items.len });
+                    // for (raycast_pot_fine.items) |itt|
+                    //     std.debug.print("ID: {d} {d} {}\n", .{ itt.id, itt.dist, itt.point });
                     id = raycast_pot_fine.items[0].id;
                 }
             } else {
@@ -247,6 +283,33 @@ pub fn main() !void {
         }
 
         try draw.flush(null, cam);
+        if (false) {
+            const w = @divFloor(win.screen_dimensions.x, 2);
+            const h = @divFloor(win.screen_dimensions.y, 2);
+            graph.c.glViewport(w, 0, w, h);
+            graph.c.glScissor(w, 0, w, h);
+            if (win.mouse.middle == .high) {
+                ort.x += win.mouse.delta.x;
+                ort.y += win.mouse.delta.y;
+            }
+            const ortho = graph.za.Mat4.orthographic(-400 + ort.x, 1000 + ort.x, -1000 + ort.y, 1000 + ort.y, -100, 1000);
+            var it2 = editor.meshmap.iterator();
+            graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
+            while (it2.next()) |mesh| {
+                if (!draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
+                    continue;
+                mesh.value_ptr.mesh.drawSimple(ortho, mat, basic_shader);
+            }
+            graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_FILL);
+            //try draw.flush(null, null);
+        }
+        for (editor.ents.items) |ent| {
+            draw.cube(ent.origin, Vec3.new(16, 16, 16), 0x00ffffff);
+            //if(fgd_ctx.base.get(ent.classname))|base|{
+            //}
+        }
+
+        graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
         const cw = 4;
         graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
         draw.rect(graph.Rec(draw.screen_dimensions.x / 2 - cw, draw.screen_dimensions.y / 2 - cw, cw * 2, cw * 2), 0xffffffff);
@@ -254,16 +317,41 @@ pub fn main() !void {
             if (editor.set.getOpt(id)) |solid| {
                 //const bb = &solid.bounding_box;
                 //draw.cube(bb.a, bb.b.sub(bb.a), 0xffffffff);
-                for (solid.sides.items) |side| {
+                for (solid.sides.items, 0..) |side, i| {
                     const v = side.verts.items;
                     for (0..@divFloor(side.verts.items.len, 2)) |ti| {
                         draw.line3D(v[ti], v[ti + 1], 0xff00ff);
                     }
-                    for (side.verts.items) |v1|
+
+                    if (i == 0) {
+                        const v1 = v[(frame / 10) % v.len];
                         draw.point3D(v1, 0xff0000ff);
+                        frame += 1;
+                    }
                 }
             }
             //id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
+        }
+        if (show_gui) {
+            try os9gui.beginFrame(is, &win);
+            const win_rect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
+            if (try os9gui.beginTlWindow(win_rect)) {
+                defer os9gui.endTlWindow();
+                const gui = &os9gui.gui;
+                if (gui.getArea()) |win_area| {
+                    const area = win_area.inset(6 * os9gui.scale);
+                    _ = try gui.beginLayout(Gui.SubRectLayout, .{ .rect = area }, .{});
+                    defer gui.endLayout();
+                    if (try os9gui.beginVScroll(&crass_scroll, .{ .sw = area.w })) |scr| {
+                        defer os9gui.endVScroll(scr);
+                        var ent_it = fgd_ctx.base.iterator();
+                        while (ent_it.next()) |ent|
+                            _ = os9gui.button(ent.key_ptr.*);
+                    }
+                }
+            }
+            try os9gui.endFrame(&draw);
+            graph.c.glDisable(graph.c.GL_STENCIL_TEST);
         }
         try draw.end(cam);
         win.swap();
