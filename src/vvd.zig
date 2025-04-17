@@ -109,6 +109,24 @@ const Vtx = struct {
         num_bone_state: u32,
         bone_state_offset: u32,
     };
+
+    pub const Vertex = struct {
+        bone_weight_index: [3]u8,
+        num_bones: u8,
+        orig_mesh_vert_id: u16,
+
+        bone_id: [3]u8,
+    };
+
+    pub const MaterialReplacmentHdr = struct {
+        num: u32,
+        offset: u32,
+    };
+
+    pub const MaterialReplacment = struct {
+        matid: u16,
+        name_offset: u32,
+    };
 };
 
 test "cr" {
@@ -135,10 +153,13 @@ test "cr" {
         defer alloc.free(slice);
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
         const r1 = fbs.reader();
+        const header_pos = fbs.pos;
         const hv1 = try parseStruct(Vtx.VtxHeader, .little, r1);
         if (hv1.version >= 49)
             std.debug.print("NEW VERSION {d}\n", .{hv1.version});
-        if (hv1.bodyPartOffset != 36) return error.crappyVtxParser;
+        std.debug.print("{}\n", .{hv1});
+        fbs.pos = header_pos + hv1.bodyPartOffset;
+        //if (hv1.bodyPartOffset != 36) return error.crappyVtxParser;
 
         for (0..hv1.numBodyParts) |_| {
             const bp = try parseStruct(Vtx.BodyPart_h1, .little, r1);
@@ -168,16 +189,27 @@ test "cr" {
             if (fbs.pos - sg_start != 25) return error.boro;
             try r1.skipBytes(vs.index_offset - 25, .{});
             for (0..vs.num_index) |_| {
-                try indices.append(try r1.readInt(u16, .little) + 1);
+                try indices.append(try r1.readInt(u16, .little));
+            }
+            var vert_table = std.ArrayList(u16).init(alloc);
+            defer vert_table.deinit();
+
+            fbs.pos = sg_start + vs.vert_offset;
+            for (0..vs.num_verts) |_| {
+                const v = try parseStruct(Vtx.Vertex, .little, r1);
+                try vert_table.append(v.orig_mesh_vert_id);
             }
 
-            for (0..@divFloor(indices.items.len, 3)) |i| {
-                try w.print("f {d} {d} {d}\n", .{
-                    indices.items[i],
-                    indices.items[i + 1],
-                    indices.items[i + 2],
-                });
-            }
+            const vtt = vert_table.items;
+            //for (0..@divFloor(indices.items.len, 3)) |i| {
+            //    try w.print("f {d} {d} {d}\n", .{
+            //        vtt[indices.items[i]],
+            //        vtt[indices.items[i + 1]],
+            //        vtt[indices.items[i + 2]],
+            //    });
+            //}
+            //if (true)
+            //    return;
 
             fbs.pos = sg_start + vs.strip_offset;
             for (0..vs.num_strips) |_| {
@@ -192,9 +224,9 @@ test "cr" {
                         for (0..@divFloor(sl.len, 3)) |i| {
                             const j = i * 3;
                             try w.print("f {d} {d} {d}\n", .{
-                                sl[j],
-                                sl[j + 1],
-                                sl[j + 2],
+                                vtt[sl[j]] + 1,
+                                vtt[sl[j + 1]] + 1,
+                                vtt[sl[j + 2]] + 1,
                             });
                         }
                     },
@@ -202,6 +234,19 @@ test "cr" {
                 }
                 //fbs.pos = start + hh.index_offset;
                 break; //do the first
+            }
+
+            {
+                fbs.pos = header_pos + hv1.materialReplacementListOffset;
+                const mathdr = try parseStruct(Vtx.MaterialReplacmentHdr, .little, r1);
+                std.debug.print("{}\n", .{mathdr});
+                for (0..mathdr.num) |_| {
+                    const start = fbs.pos;
+                    const rep = try parseStruct(Vtx.MaterialReplacment, .little, r1);
+                    std.debug.print("{}\n", .{rep});
+                    const str: [*c]const u8 = &slice[start + rep.name_offset];
+                    std.debug.print("{s}\n", .{str});
+                }
             }
 
             break; //Read the first only

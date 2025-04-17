@@ -97,13 +97,14 @@ pub fn main() !void {
 
     try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
     try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
+    try editor.vpkctx.addDir(hl_root, "hl2_pak.vpk");
     //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //materials/nature/red_grass
     if (false) {
         //models/props_junk/garbage_glassbottle001a
-        const n = "garbage_glassbottle001a";
+        const n = "alyx";
         const names = [_][]const u8{ n, n, n ++ ".dx90" };
-        const path = "models/props_junk";
+        const path = "models";
         const exts = [_][]const u8{ "mdl", "vvd", "vtx" };
         var buf: [256]u8 = undefined;
         var bb = std.io.FixedBufferStream([]u8){ .pos = 0, .buffer = &buf };
@@ -219,6 +220,8 @@ pub fn main() !void {
     var ort = graph.Rec(0, 0, 200, 200);
     var grab_mouse = true;
     var show_gui: bool = false;
+    var textbox = Os9Gui.DynamicTextbox.init(alloc);
+    defer textbox.deinit();
     var index: u32 = 0;
     var expanded = std.ArrayList(bool).init(alloc);
     try expanded.appendNTimes(false, editor.vpkctx.extensions.count());
@@ -392,7 +395,7 @@ pub fn main() !void {
 
                     _ = try os9gui.beginH(2);
                     defer os9gui.endL();
-                    if (try os9gui.beginVScroll(&crass_scroll, .{ .sw = area.w })) |scr| {
+                    if (try os9gui.beginVScroll(&crass_scroll, .{ .sw = area.w, .sh = 1000000 })) |scr| {
                         defer os9gui.endVScroll(scr);
                         scr.layout.padding.top = 0;
                         scr.layout.padding.bottom = 0;
@@ -408,6 +411,8 @@ pub fn main() !void {
                                     var pm = item.value_ptr.iterator();
                                     while (pm.next()) |p| {
                                         var cc = p.value_ptr.iterator();
+                                        if (!std.mem.startsWith(u8, p.key_ptr.*, textbox.arraylist.items))
+                                            continue;
                                         _ = os9gui.label("{s}", .{p.key_ptr.*});
                                         while (cc.next()) |c| {
                                             if (os9gui.buttonEx("        {s}", .{c.key_ptr.*}, .{})) {
@@ -430,6 +435,8 @@ pub fn main() !void {
                     {
                         _ = try os9gui.beginV();
                         defer os9gui.endL();
+                        try os9gui.textbox2(&textbox, .{});
+
                         const ar = os9gui.gui.getArea().?;
                         os9gui.gui.drawText(displayed_slice.items, ar.pos(), 40, 0xff, os9gui.font);
                     }

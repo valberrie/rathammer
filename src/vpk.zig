@@ -75,9 +75,9 @@ pub const Context = struct {
         defer timer.end();
         const aa = self.arena.allocator();
         const prefix = vpk_set[0 .. vpk_set.len - ".vpk".len];
-        const new_dir = Dir.init(self.alloc, try aa.dupe(u8, prefix), root);
+        var new_dir = Dir.init(self.alloc, try aa.dupe(u8, prefix), root);
         const dir_index = self.dirs.items.len;
-        try self.dirs.append(new_dir);
+
         var strbuf = std.ArrayList(u8).init(self.alloc);
         defer strbuf.deinit();
         try strbuf.writer().print("{s}_dir.vpk", .{prefix});
@@ -92,12 +92,18 @@ pub const Context = struct {
             },
             else => return err,
         };
-        defer infile.close();
+        try new_dir.fds.put(0x7fff, infile);
+        try self.dirs.append(new_dir);
         const r = infile.reader();
         const sig = try r.readInt(u32, .little);
         if (sig != VPK_FILE_SIG)
             return error.invalidVpk;
         const version = try r.readInt(u32, .little);
+        const header_size: u32 = switch (version) {
+            1 => 12,
+            2 => 28,
+            else => return error.unsupportedVpkVersion,
+        };
         switch (version) {
             //1 => {},
             2 => {
@@ -109,9 +115,9 @@ pub const Context = struct {
                 _ = sig_sec_size;
                 _ = archive_md5_sec_size;
                 _ = filedata_section_size;
-                _ = tree_size;
 
                 if (other_md5_sec_size != 48) return error.invalidMd5Size;
+
                 //std.debug.print("{d} {d} {d} {d}\n", .{ tree_size, filedata_section_size, archive_md5_sec_size, sig_sec_size });
 
                 while (true) {
@@ -140,13 +146,16 @@ pub const Context = struct {
                             _ = try r.readInt(u32, .little); //CRC
                             _ = try r.readInt(u16, .little); //preload bytes
                             const arch_index = try r.readInt(u16, .little); //archive index
-                            const offset = try r.readInt(u32, .little);
+                            var offset = try r.readInt(u32, .little);
                             const entry_len = try r.readInt(u32, .little);
 
                             const term = try r.readInt(u16, .little);
                             if (term != 0xffff) return error.badBytes;
                             //std.debug.print("\t\t{s}: {d}bytes, i:{d}\n", .{ fname, entry_len, arch_index });
-                            if (arch_index == 0x7fff) return error.unsupportedInlineVpk;
+                            if (arch_index == 0x7fff) {
+                                //TODO put a dir with arch_index 0x7ff do it .
+                                offset += tree_size + header_size;
+                            }
 
                             const entry_res = try path_res.value_ptr.getOrPutAdapted(fname, StrCtx{});
                             if (!entry_res.found_existing) {

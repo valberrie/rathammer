@@ -178,13 +178,25 @@ const Studiohdr_03 = struct {
 
 };
 
+pub const StudioTexture = struct {
+    name_offset: u32,
+    flags: u32,
+    used: u32,
+    unused: u32,
+
+    material: u32,
+    client_mat: u32,
+    unused2: [10]u32,
+};
+
 test "mdl" {
     const log = std.log.scoped(.mdl);
-    //const alloc = std.testing.alloc;
+    const alloc = std.testing.allocator;
     const in = try std.fs.cwd().openFile("mdl/out.mdl", .{});
-    // const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
-    // defer alloc.free(slice);
-    const r = in.reader();
+    const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    defer alloc.free(slice);
+    var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
+    const r = fbs.reader();
     const o1 = try parseStruct(Studiohdr_01, .little, r);
     if (!std.mem.eql(u8, &o1.id, MDL_MAGIC_STRING))
         return error.notMdl;
@@ -196,4 +208,19 @@ test "mdl" {
     std.debug.print("{}\n", .{h2});
     const h3 = try parseStruct(Studiohdr_03, .little, r);
     std.debug.print("{}\n", .{h3});
+
+    fbs.pos = h3.texture_offset;
+    for (0..h3.texture_count) |_| {
+        const start = fbs.pos;
+        const tex = try parseStruct(StudioTexture, .little, r);
+        const name: [*c]const u8 = &slice[start + tex.name_offset];
+        std.debug.print("{s} {}\n", .{ name, tex });
+    }
+
+    fbs.pos = h3.texturedir_offset;
+    for (0..h3.texturedir_count) |_| {
+        const int = try r.readInt(u32, .little);
+        const name: [*c]const u8 = &slice[int];
+        std.debug.print("NAME {s}\n", .{name});
+    }
 }
