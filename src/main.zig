@@ -181,7 +181,7 @@ pub fn main() !void {
             for (ent.solid) |solid|
                 try editor.putSolidFromVmf(solid);
             try editor.ents.append(.{
-                .origin = ent.origin.v.scale(2),
+                .origin = ent.origin.v.scale(1),
                 .class = ent.classname,
             });
             //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
@@ -353,6 +353,7 @@ pub fn main() !void {
             //try draw.flush(null, null);
         }
         for (editor.ents.items) |ent| {
+            draw.cubeFrame(ent.origin.sub(V3f.new(8, 8, 8)), graph.za.Vec3.new(16, 16, 16), 0x00ff00ff);
             if (fgd_ctx.base.get(ent.class)) |base| {
                 if (icon_map.get(base.iconsprite)) |isp| {
                     draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, cam);

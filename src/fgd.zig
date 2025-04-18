@@ -169,7 +169,7 @@ pub const FgdTokenizer = struct {
                     const n = try self.peek() orelse return;
                     switch (n.tag) {
                         .quoted_string => continue,
-                        else => return, //Shitty workaround to shitty syntax
+                        else => return, //Shitty workaround to ill defined syntax
                         //Some multi-line strings (2 in base.fgd) terminate with a '+' with no string on the following line
                         //Should be a syntax error
                     }
@@ -312,7 +312,6 @@ const AtDirective = enum {
     // these two are different.
     mapsize, // parameters passed through paren arg list
     include, // parameter is a single string with no separators
-    // :crying
 
     //The following all have the same grammar
     BaseClass,
@@ -325,11 +324,6 @@ const AtDirective = enum {
 
     //AutoVisGroup, //Similar to Classes but different.
     //MaterialExclusion,
-
-    //In the future, design a new format for fgd files that doesn't suck as much.
-    //Should be easy to parse and extend with editor specific sections.
-    //
-    //fgd is extensible in that @strings are never nested so unknown @strings can just be ignored.
 };
 
 test {
@@ -469,7 +463,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
             .at_string => {
                 //+1 to strip the '@'
                 const ct = stringToEnum(AtDirective, tok[1..]) orelse {
-                    std.debug.print("UNSUPORTD {s}\n", .{tok});
+                    std.debug.print("Unsupported fgd directive: {s}\n", .{tok});
                     continue;
                 };
                 switch (ct) {
@@ -504,7 +498,6 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                 .plain_string => {
                                     const parent_name = tkz.getSlice(t);
                                     //Dumb, yes. But this is the *only* one like it
-                                    //they probably hacked their fgd parser together without coming up with a sensible grammar
                                     //All other parent classes take 0 or more arguments in parentheses, "halfgridsnap" has no arguments AND no ().
                                     if (eql(u8, parent_name, "halfgridsnap")) {
                                         continue;
@@ -650,7 +643,6 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         boolean,
                                     };
                                     var new_type = EntClass.Field.Type{ .generic = {} };
-                                    //random modifier here, random modifier there, random modifiers every-fucking-where.
                                     if (stringToEnum(TypeStr, tkz.getSlice(type_tok))) |st| {
                                         switch (st) {
                                             .choices, .Choices => {
