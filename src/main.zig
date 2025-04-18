@@ -101,10 +101,11 @@ pub fn main() !void {
     //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //materials/nature/red_grass
     if (false) {
+        //canal_dock02a
         //models/props_junk/garbage_glassbottle001a
-        const n = "alyx";
+        const n = "canal_dock02a";
         const names = [_][]const u8{ n, n, n ++ ".dx90" };
-        const path = "models";
+        const path = "models/props_docks";
         const exts = [_][]const u8{ "mdl", "vvd", "vtx" };
         var buf: [256]u8 = undefined;
         var bb = std.io.FixedBufferStream([]u8){ .pos = 0, .buffer = &buf };

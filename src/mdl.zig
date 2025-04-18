@@ -223,4 +223,10 @@ test "mdl" {
         const name: [*c]const u8 = &slice[int];
         std.debug.print("NAME {s}\n", .{name});
     }
+
+    fbs.pos = h3.skinreference_index;
+    for (0..h3.skinreference_count) |_| {
+        std.debug.print("crass {d}\n", .{try r.readInt(i16, .little)});
+    }
+    //shortpSkinref( int i ) const { return (short *)(((byte *)this) + skinindex) + i; };
 }
