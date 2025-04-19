@@ -605,6 +605,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                     }
 
                                     var index: i32 = -1;
+                                    var default_str: []const u8 = "";
                                     while (true) {
                                         const n1 = try tkz.peek() orelse return error.syntax;
                                         switch (n1.tag) {
@@ -619,7 +620,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                                         _ = try tkz.next();
                                                     },
                                                     1 => { //default value
-                                                        _ = try tkz.next();
+                                                        const t = (try tkz.next()) orelse return error.syntax;
+                                                        default_str = try ctx.dupeString(tkz.getSlice(t));
                                                     },
                                                     2 => { //doc string
                                                         try tkz.expectMultilineString();
@@ -692,7 +694,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                     try new_class.fields.append(.{
                                         .name = try ctx.dupeString(fsl),
                                         .type = new_type,
-                                        .default = "",
+                                        .default = default_str,
                                         .doc_string = "",
                                     });
                                 }

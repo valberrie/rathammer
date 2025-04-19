@@ -22,7 +22,7 @@ Render the skybox !
 
 Rendering:
 what is a good way to submit meshes?
-All meshes need to be drawn multiple times: (gbuffer, shadow)
+some meshes need to be drawn multiple times: (gbuffer, shadow)
 Figure out a upper bound on the number of draw calls you can make on the laptop
 Maybe a vtable? so we can store an array of pointers to implementers of imesh
 With comptime polymoporhs its harder to store generic state for later use
@@ -47,4 +47,10 @@ body parts:
 sheesh
 
 
+we can either work on: 
+model loading
+3d editing.
+2d editing.
+drawing interface
+gui kv's
 

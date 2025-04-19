@@ -59,10 +59,10 @@ pub const Context = struct {
         self.clip_winding_dists.deinit();
     }
 
-    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator, id: u32) !editor.Solid {
+    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator) !editor.Solid {
         const MAPSIZE = std.math.maxInt(i32);
         var timer = try std.time.Timer.start();
-        var ret = editor.Solid.init(alloc, id);
+        var ret = editor.Solid.init(alloc);
         try ret.sides.resize(sides.len);
         for (sides, 0..) |side, si| {
             const plane = Plane.fromTri(side.plane.tri);

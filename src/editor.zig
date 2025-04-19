@@ -7,7 +7,9 @@ const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
 const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
+const fgd = @import("fgd.zig");
 const profile = @import("profile.zig");
+const Gui = graph.Gui;
 
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
@@ -36,27 +38,19 @@ pub const Side = struct {
 };
 
 pub const AABB = struct {
-    a: Vec3,
-    b: Vec3,
+    a: Vec3 = Vec3.zero(),
+    b: Vec3 = Vec3.zero(),
 };
 
 pub const Solid = struct {
     const Self = @This();
     sides: std.ArrayList(Side),
-    id: u32,
 
     /// Bounding box is used during broad phase ray tracing
     /// they are recomputed along with vertex arrays
-    bounding_box: AABB,
-
-    pub fn init(alloc: std.mem.Allocator, id: u32) Solid {
+    pub fn init(alloc: std.mem.Allocator) Solid {
         return .{
-            .id = id,
             .sides = std.ArrayList(Side).init(alloc),
-            .bounding_box = .{
-                .a = Vec3.zero(),
-                .b = Vec3.zero(),
-            },
         };
     }
 
@@ -66,7 +60,7 @@ pub const Solid = struct {
         self.sides.deinit();
     }
 
-    pub fn recomputeBounds(self: *Self) void {
+    pub fn recomputeBounds(self: *Self, aabb: *AABB) void {
         //var lx: f32 = std.math.floatMax(f32);
         //var ly: f32 = std.math.floatMax(f32);
         //var lz: f32 = std.math.floatMax(f32);
@@ -89,8 +83,8 @@ pub const Solid = struct {
                 //gz = @max(gz, s.z());
             }
         }
-        self.bounding_box.a = min;
-        self.bounding_box.b = max;
+        aabb.a = min;
+        aabb.b = max;
         //self.bounding_box.a = graph.za.Vec3.new(lx, ly, lz);
         //self.bounding_box.b = graph.za.Vec3.new(gx, gy, gz);
     }
@@ -101,12 +95,16 @@ pub const Entity = struct {
     class: []const u8,
 };
 
+const Comp = graph.Ecs.Component;
+pub const EcsT = graph.Ecs.Registry(&.{
+    Comp("bounding_box", AABB),
+    Comp("solid", Solid),
+    Comp("entity", Entity),
+});
+
 pub const Context = struct {
     const Self = @This();
-    const SolidSet = SparseSet(Solid, u32);
 
-    ents: std.ArrayList(Entity),
-    set: SolidSet,
     csgctx: csg.Context,
     vpkctx: vpk.Context,
     meshmap: MeshMap,
@@ -115,30 +113,54 @@ pub const Context = struct {
     alloc: std.mem.Allocator,
     name_arena: std.heap.ArenaAllocator,
 
+    fgd_ctx: fgd.EntCtx,
+    icon_map: std.StringHashMap(graph.Texture),
+
+    ecs: EcsT,
+
+    draw_state: struct {
+        draw_tools: bool = true,
+        basic_shader: graph.glID,
+        cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100 },
+    },
+
+    edit_state: struct {
+        id: EcsT.Id = 0,
+    } = .{},
+
+    misc_gui_state: struct {
+        scroll_a: graph.Vec2f = .{ .x = 0, .y = 0 },
+    } = .{},
+
     pub fn init(alloc: std.mem.Allocator) !Self {
         return .{
             .alloc = alloc,
-            .ents = std.ArrayList(Entity).init(alloc),
+            .fgd_ctx = fgd.EntCtx.init(alloc),
             .name_arena = std.heap.ArenaAllocator.init(alloc),
-            .set = try SolidSet.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = vpk.Context.init(alloc),
             .meshmap = MeshMap.init(alloc),
+            .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
+
+            .icon_map = std.StringHashMap(graph.Texture).init(alloc),
+
+            .draw_state = .{
+                .basic_shader = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
+                    .{ .path = "ratgraph/asset/shader/gbuffer.vert", .t = .vert },
+                    .{ .path = "src/basic.frag", .t = .frag },
+                }),
+            },
         };
     }
 
     pub fn deinit(self: *Self) void {
-        {
-            var it = self.set.denseIterator();
-            while (it.next()) |item|
-                item.deinit();
-        }
-        self.set.deinit();
+        self.ecs.deinit();
+        self.fgd_ctx.deinit();
+        self.icon_map.deinit();
         self.lower_buf.deinit();
         self.scratch_buf.deinit();
-        self.ents.deinit();
         self.csgctx.deinit();
         self.vpkctx.deinit();
         var it = self.meshmap.iterator();
@@ -159,9 +181,10 @@ pub const Context = struct {
             }
         }
         { //Iterate all solids and add
-            var it = self.set.denseIterator();
+            var it = self.ecs.iterator(.solid);
             while (it.next()) |solid| {
-                solid.recomputeBounds();
+                const bb = (try self.ecs.getOptPtr(it.i, .bounding_box)) orelse continue;
+                solid.recomputeBounds(bb);
                 for (solid.sides.items) |side| {
                     const batch = self.meshmap.getPtr(side.material) orelse continue;
                     const mesh = &batch.mesh;
@@ -222,9 +245,12 @@ pub const Context = struct {
         const newsolid = try self.csgctx.genMesh(
             solid.side,
             self.alloc,
-            @intCast(self.set.sparse.items.len),
+            //@intCast(self.set.sparse.items.len),
         );
-        try self.set.insert(newsolid.id, newsolid);
+        const new = try self.ecs.createEntity();
+        try self.ecs.attach(new, .solid, newsolid);
+        try self.ecs.attach(new, .bounding_box, .{});
+        //try self.set.insert(newsolid.id, newsolid);
     }
 
     pub fn loadTextureFromVpk(self: *Self, material: []const u8) !graph.Texture {
@@ -250,6 +276,156 @@ pub const Context = struct {
         };
         //defer bmp.deinit();
         //break :blk graph.Texture.initFromBitmap(bmp, .{});
+    }
+
+    pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext) !void {
+        const ENT_RENDER_DIST = 64 * 10;
+        const x: i32 = @intFromFloat(screen_area.x);
+        const y: i32 = @intFromFloat(screen_area.y);
+        const w: i32 = @intFromFloat(screen_area.w);
+        const h: i32 = @intFromFloat(screen_area.h);
+        graph.c.glViewport(x, y, w, h);
+        graph.c.glScissor(x, y, w, h);
+        const old_screen_dim = draw.screen_dimensions;
+        defer draw.screen_dimensions = old_screen_dim;
+        draw.screen_dimensions = .{ .x = screen_area.w, .y = screen_area.h };
+
+        graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+        defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+        const mat = graph.za.Mat4.identity();
+
+        const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, 1, 64 * 512);
+
+        var it = self.meshmap.iterator();
+        while (it.next()) |mesh| {
+            if (!self.draw_state.draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
+                continue;
+            mesh.value_ptr.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
+        }
+
+        graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
+        //Crosshair
+        const cw = 4;
+        const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
+        draw.rect(graph.Rec(
+            crossp.x,
+            crossp.y,
+            cw * 2,
+            cw * 2,
+        ), 0xffffffff);
+        var ent_it = self.ecs.iterator(.entity);
+        while (ent_it.next()) |ent| {
+            const dist = ent.origin.distance(self.draw_state.cam3d.pos);
+            if (dist > ENT_RENDER_DIST)
+                continue;
+            if (self.fgd_ctx.base.get(ent.class)) |base| {
+                if (self.icon_map.get(base.iconsprite)) |isp| {
+                    draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+                    draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
+                }
+            }
+        }
+        {
+            if (try self.ecs.getOpt(self.edit_state.id, .solid)) |solid| {
+                //const bb = &solid.bounding_box;
+                //draw.cube(bb.a, bb.b.sub(bb.a), 0xffffffff);
+                for (solid.sides.items) |side| {
+                    const v = side.verts.items;
+                    //for (0..@divFloor(side.verts.items.len, 2)) |ti| {
+                    //    draw.line3D(v[ti], v[ti + 1], 0xff00ff);
+                    //}
+                    if (side.verts.items.len > 0) {
+                        var last = side.verts.items[side.verts.items.len - 1];
+                        for (0..side.verts.items.len) |ti| {
+                            draw.line3D(last, v[ti], 0xff00ff);
+                            draw.point3D(v[ti], 0xff0000ff);
+                            last = v[ti];
+                        }
+                    }
+                }
+            }
+            if (try self.ecs.getOpt(self.edit_state.id, .bounding_box)) |bb| {
+                draw.cube(bb.a, bb.b.sub(bb.a), 0xffffff77);
+            }
+            //id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
+        }
+        try draw.flush(null, self.draw_state.cam3d);
+    }
+
+    pub fn drawInspector(self: *Self, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {
+        if (try os9gui.beginTlWindow(screen_area)) {
+            defer os9gui.endTlWindow();
+            const gui = &os9gui.gui;
+            if (gui.getArea()) |win_area| {
+                const area = win_area.inset(6 * os9gui.scale);
+                _ = try gui.beginLayout(Gui.SubRectLayout, .{ .rect = area }, .{});
+                defer gui.endLayout();
+
+                //_ = try os9gui.beginH(2);
+                //defer os9gui.endL();
+                if (try os9gui.beginVScroll(&self.misc_gui_state.scroll_a, .{ .sw = area.w, .sh = 1000000 })) |scr| {
+                    defer os9gui.endVScroll(scr);
+                    if (try self.ecs.getOptPtr(self.edit_state.id, .entity)) |ent| {
+                        if (self.fgd_ctx.base.get(ent.class)) |base| {
+                            os9gui.label("{s}", .{base.name});
+                            scr.layout.pushHeight(400);
+                            _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 30 });
+                            for (base.fields.items) |f| {
+                                os9gui.label("{s}", .{f.name});
+                                switch (f.type) {
+                                    //.choices => {},
+                                    else => os9gui.label("{s}", .{f.default}),
+                                }
+                            }
+                            os9gui.endL();
+                        }
+                    }
+                    if (try self.ecs.getOptPtr(self.edit_state.id, .solid)) |solid| {
+                        os9gui.label("Solid with {d} sides", .{solid.sides.items.len});
+                    }
+                    //scr.layout.padding.top = 0;
+                    //scr.layout.padding.bottom = 0;
+                    //{
+                    //    var eit = self.vpkctx.extensions.iterator();
+                    //    var i: usize = 0;
+                    //    while (eit.next()) |item| {
+                    //        if (os9gui.button(item.key_ptr.*))
+                    //            expanded.items[i] = !expanded.items[i];
+
+                    //        if (expanded.items[i]) {
+                    //            var pm = item.value_ptr.iterator();
+                    //            while (pm.next()) |p| {
+                    //                var cc = p.value_ptr.iterator();
+                    //                if (!std.mem.startsWith(u8, p.key_ptr.*, textbox.arraylist.items))
+                    //                    continue;
+                    //                _ = os9gui.label("{s}", .{p.key_ptr.*});
+                    //                while (cc.next()) |c| {
+                    //                    if (os9gui.buttonEx("        {s}", .{c.key_ptr.*}, .{})) {
+                    //                        const sl = try self.vpkctx.getFileTemp(item.key_ptr.*, p.key_ptr.*, c.key_ptr.*);
+                    //                        displayed_slice.clearRetainingCapacity();
+                    //                        try displayed_slice.appendSlice(sl.?);
+                    //                    }
+                    //                }
+                    //            }
+                    //        }
+                    //        i += 1;
+                    //    }
+                    //}
+
+                    //os9gui.slider(&index, 0, 1000);
+                    //scr.layout.pushHeight(area.w);
+                    //const ar = gui.getArea() orelse return;
+                    //gui.drawRectTextured(ar, 0xffffffff, graph.Rec(0, 0, 1, 1), .{ .id = index, .w = 1, .h = 1 });
+                }
+                {
+                    _ = try os9gui.beginV();
+                    defer os9gui.endL();
+                    //try os9gui.textbox2(&textbox, .{});
+
+                    //os9gui.gui.drawText(displayed_slice.items, ar.pos(), 40, 0xff, os9gui.font);
+                }
+            }
+        }
     }
 };
 
