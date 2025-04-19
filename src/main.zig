@@ -8,7 +8,6 @@ const csg = @import("csg.zig");
 const vdf = @import("vdf.zig");
 const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
-const vtf = @import("vtf.zig");
 const fgd = @import("fgd.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
@@ -17,36 +16,6 @@ const util3d = @import("util_3d.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const Gui = graph.Gui;
-
-const LoadCtx = struct {
-    buffer: [256]u8 = undefined,
-    timer: std.time.Timer,
-    draw: *graph.ImmediateDrawingContext,
-    win: *graph.SDL.Window,
-    font: *graph.Font,
-
-    fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
-        //No need for high fps when loading, this is 15fps
-        if (self.timer.read() / std.time.ns_per_ms < 66) {
-            return;
-        }
-        var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
-        fbs.writer().print(fmt, args) catch return;
-        self.cb(fbs.getWritten());
-    }
-
-    fn cb(self: *@This(), message: []const u8) void {
-        if (self.timer.read() / std.time.ns_per_ms < 8) {
-            return;
-        }
-        self.timer.reset();
-        self.win.pumpEvents(.poll);
-        self.draw.begin(0x222222ff, self.win.screen_dimensions.toF()) catch return;
-        self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
-        self.draw.end(null) catch return;
-        self.win.swap(); //So the window doesn't look too broken while loading
-    }
-};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
@@ -79,7 +48,7 @@ pub fn main() !void {
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
-    var loadctx = LoadCtx{
+    var loadctx = edit.LoadCtx{
         .draw = &draw,
         .font = &font,
         .win = &win,
@@ -99,7 +68,6 @@ pub fn main() !void {
     try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
     try editor.vpkctx.addDir(hl_root, "hl2_pak.vpk");
     //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
-    //materials/nature/red_grass
     if (false) {
         //canal_dock02a
         //models/props_junk/garbage_glassbottle001a
@@ -121,8 +89,7 @@ pub fn main() !void {
             try mdl.writer().writeAll(vmt);
         }
         //std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
-        if (true)
-            return;
+        return;
     }
     loadctx.cb("Vpk's mounted");
 
@@ -136,61 +103,15 @@ pub fn main() !void {
             if (class.iconsprite.len == 0) continue;
             const res = try editor.icon_map.getOrPut(class.iconsprite);
             if (!res.found_existing) {
-                const n = class.iconsprite[0 .. class.iconsprite.len - 4];
-                std.debug.print("sprite {s}\n", .{n});
-                res.value_ptr.* = try editor.loadTextureFromVpk(n);
+                var sl = class.iconsprite;
+                if (std.mem.endsWith(u8, class.iconsprite, ".vmt"))
+                    sl = class.iconsprite[0 .. class.iconsprite.len - 4];
+                res.value_ptr.* = try editor.loadTextureFromVpk(sl);
             }
         }
     }
 
-    //const infile = try std.fs.cwd().openFile("sdk_materials.vmf", .{});
-    const infile = try std.fs.cwd().openFile(args.vmf orelse "sdk_materials.vmf", .{});
-    defer infile.close();
-
-    const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
-    defer alloc.free(slice);
-
-    var obj = try vdf.parse(alloc, slice);
-    defer obj.deinit();
-    loadctx.cb("vmf parsed");
-
-    var aa = std.heap.ArenaAllocator.init(alloc);
-    defer aa.deinit();
-    const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator());
-    {
-        var gen_timer = try std.time.Timer.start();
-        for (vmf_.world.solid, 0..) |solid, si| {
-            try editor.putSolidFromVmf(solid);
-            //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
-            loadctx.printCb("csg generated {d} / {d}", .{ si, vmf_.world.solid.len });
-            //try meshes.append(try csg.genMesh(solid.side, alloc));
-        }
-        for (vmf_.entity, 0..) |ent, ei| {
-            loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
-            for (ent.solid) |solid|
-                try editor.putSolidFromVmf(solid);
-            {
-                const new = try editor.ecs.createEntity();
-                try editor.ecs.attach(new, .entity, .{
-                    .origin = ent.origin.v,
-                    .class = ent.classname,
-                });
-                try editor.ecs.attach(new, .bounding_box, .{
-                    .a = ent.origin.v.sub(Vec3.new(8, 8, 8)),
-                    .b = ent.origin.v.add(Vec3.new(8, 8, 8)),
-                });
-            }
-
-            //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
-        }
-        try editor.rebuildAllMeshes();
-        const nm = editor.meshmap.count();
-        const whole_time = gen_timer.read();
-
-        std.debug.print("csg took {d} {d:.2} us\n", .{ nm, csg.gen_time / std.time.ns_per_us / nm });
-        std.debug.print("Generated {d} meshes in {d:.2} ms\n", .{ nm, whole_time / std.time.ns_per_ms });
-    }
-    loadctx.cb("csg generated");
+    try editor.loadVmf(std.fs.cwd(), args.vmf orelse "sdk_materials.vmf", &loadctx);
 
     const RcastItem = struct {
         id: edit.EcsT.Id,

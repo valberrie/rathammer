@@ -455,7 +455,7 @@ pub fn loadFgd(ctx: *EntCtx, base_dir: std.fs.Dir, path: []const u8) !void {
 
 pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allocator) !void {
     var ignored_count: usize = 0;
-    defer std.debug.print("BAS ignored tok: {d}\n", .{ignored_count});
+    //defer std.debug.print("BAS ignored tok: {d}\n", .{ignored_count});
     while (try tkz.next()) |tk| {
         const tok = tkz.getSlice(tk);
         //std.debug.print("{s}:{s}\n", .{ @tagName(tk.tag), slice[tk.pos.start..tk.pos.end] });

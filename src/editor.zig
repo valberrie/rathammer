@@ -4,12 +4,14 @@ const Vec3 = graph.za.Vec3;
 const SparseSet = graph.SparseSet;
 const meshutil = graph.meshutil;
 const vmf = @import("vmf.zig");
+const vdf = @import("vdf.zig");
 const vpk = @import("vpk.zig");
 const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
 const fgd = @import("fgd.zig");
 const profile = @import("profile.zig");
 const Gui = graph.Gui;
+const StringStorage = @import("string.zig").StringStorage;
 
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
@@ -61,32 +63,16 @@ pub const Solid = struct {
     }
 
     pub fn recomputeBounds(self: *Self, aabb: *AABB) void {
-        //var lx: f32 = std.math.floatMax(f32);
-        //var ly: f32 = std.math.floatMax(f32);
-        //var lz: f32 = std.math.floatMax(f32);
-
-        //var gx: f32 = -std.math.floatMax(f32);
-        //var gy: f32 = -std.math.floatMax(f32);
-        //var gz: f32 = -std.math.floatMax(f32);
         var min = Vec3.set(std.math.floatMax(f32));
         var max = Vec3.set(-std.math.floatMax(f32));
         for (self.sides.items) |side| {
             for (side.verts.items) |s| {
                 min = min.min(s);
                 max = max.max(s);
-                //lx = @min(lx, s.x());
-                //ly = @min(ly, s.y());
-                //lz = @min(lz, s.z());
-
-                //gx = @max(gx, s.x());
-                //gy = @max(gy, s.y());
-                //gz = @max(gz, s.z());
             }
         }
         aabb.a = min;
         aabb.b = max;
-        //self.bounding_box.a = graph.za.Vec3.new(lx, ly, lz);
-        //self.bounding_box.b = graph.za.Vec3.new(gx, gy, gz);
     }
 };
 
@@ -102,6 +88,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("entity", Entity),
 });
 
+const log = std.log.scoped(.rathammer);
 pub const Context = struct {
     const Self = @This();
 
@@ -112,6 +99,7 @@ pub const Context = struct {
     scratch_buf: std.ArrayList(u8),
     alloc: std.mem.Allocator,
     name_arena: std.heap.ArenaAllocator,
+    string_storage: StringStorage,
 
     fgd_ctx: fgd.EntCtx,
     icon_map: std.StringHashMap(graph.Texture),
@@ -125,7 +113,7 @@ pub const Context = struct {
     },
 
     edit_state: struct {
-        id: EcsT.Id = 0,
+        id: ?EcsT.Id = null,
     } = .{},
 
     misc_gui_state: struct {
@@ -136,9 +124,10 @@ pub const Context = struct {
         return .{
             .alloc = alloc,
             .fgd_ctx = fgd.EntCtx.init(alloc),
+            .string_storage = StringStorage.init(alloc),
             .name_arena = std.heap.ArenaAllocator.init(alloc),
             .csgctx = try csg.Context.init(alloc),
-            .vpkctx = vpk.Context.init(alloc),
+            .vpkctx = try vpk.Context.init(alloc),
             .meshmap = MeshMap.init(alloc),
             .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
@@ -160,6 +149,7 @@ pub const Context = struct {
         self.fgd_ctx.deinit();
         self.icon_map.deinit();
         self.lower_buf.deinit();
+        self.string_storage.deinit();
         self.scratch_buf.deinit();
         self.csgctx.deinit();
         self.vpkctx.deinit();
@@ -228,13 +218,11 @@ pub const Context = struct {
 
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
-        for (solid.side) |side| {
-            const res = try self.meshmap.getOrPut(side.material);
+        const StrCtx = std.hash_map.StringContext;
+        for (solid.side) |*side| {
+            const res = try self.meshmap.getOrPutAdapted(side.material, StrCtx{});
             if (!res.found_existing) {
-                //var t = try std.time.Timer.start();
-                //try self.lower_buf.ensureTotalCapacity(side.material.len);
-                //try self.lower_buf.resize(side.material.len);
-                //const lower = std.ascii.lowerString(self.lower_buf.items, side.material);
+                res.key_ptr.* = try self.storeString(side.material);
                 res.value_ptr.* = .{
                     .tex = try self.loadTextureFromVpk(side.material),
                     .mesh = undefined,
@@ -245,6 +233,7 @@ pub const Context = struct {
         const newsolid = try self.csgctx.genMesh(
             solid.side,
             self.alloc,
+            &self.string_storage,
             //@intCast(self.set.sparse.items.len),
         );
         const new = try self.ecs.createEntity();
@@ -253,25 +242,100 @@ pub const Context = struct {
         //try self.set.insert(newsolid.id, newsolid);
     }
 
+    pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        const infile = try path.openFile(filename, .{});
+        defer infile.close();
+
+        const slice = try infile.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
+        defer self.alloc.free(slice);
+        var aa = std.heap.ArenaAllocator.init(self.alloc);
+        var obj = try vdf.parse(self.alloc, slice);
+        defer obj.deinit();
+        loadctx.cb("vmf parsed");
+        const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator());
+        {
+            var gen_timer = try std.time.Timer.start();
+            for (vmf_.world.solid, 0..) |solid, si| {
+                try self.putSolidFromVmf(solid);
+                loadctx.printCb("csg generated {d} / {d}", .{ si, vmf_.world.solid.len });
+            }
+            for (vmf_.entity, 0..) |ent, ei| {
+                loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
+                for (ent.solid) |solid|
+                    try self.putSolidFromVmf(solid);
+                {
+                    const new = try self.ecs.createEntity();
+                    try self.ecs.attach(new, .entity, .{
+                        .origin = ent.origin.v,
+                        .class = try self.storeString(ent.classname),
+                    });
+                    try self.ecs.attach(new, .bounding_box, .{
+                        .a = ent.origin.v.sub(Vec3.new(8, 8, 8)),
+                        .b = ent.origin.v.add(Vec3.new(8, 8, 8)),
+                    });
+                }
+
+                //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
+            }
+            try self.rebuildAllMeshes();
+            const nm = self.meshmap.count();
+            const whole_time = gen_timer.read();
+
+            log.info("csg took {d} {d:.2} us", .{ nm, csg.gen_time / std.time.ns_per_us / nm });
+            log.info("Generated {d} meshes in {d:.2} ms", .{ nm, whole_time / std.time.ns_per_ms });
+        }
+        aa.deinit();
+        loadctx.cb("csg generated");
+    }
+
+    pub fn storeString(self: *Self, string: []const u8) ![]const u8 {
+        return try self.string_storage.store(string);
+    }
+
     pub fn loadTextureFromVpk(self: *Self, material: []const u8) !graph.Texture {
-        try self.lower_buf.ensureTotalCapacity(material.len);
-        try self.lower_buf.resize(material.len);
-        const lower = std.ascii.lowerString(self.lower_buf.items, material);
-        self.scratch_buf.clearRetainingCapacity();
-        try self.scratch_buf.writer().print("materials/{s}", .{lower});
-        const sl = self.scratch_buf.items;
         const err = in: {
-            const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
-            //if (try self.vpkctx.getFileTemp("vmt", sl[0..slash], sl[slash + 1 ..])) |tt| {
-            //    //std.debug.print("{s}\n", .{tt});
-            //}
+            //const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
+            if (try self.vpkctx.getFileTempFmt("vmt", "materials/{s}", .{material})) |tt| {
+                var obj = try vdf.parse(self.alloc, tt);
+                defer obj.deinit();
+                //All vmt are a single root object with a shader name as key
+                if (obj.value.list.items.len > 0) {
+                    const fallback_keys = [_][]const u8{
+                        "$basetexture", "%tooltexture",
+                    };
+                    const ob = obj.value.list.items[0].val;
+                    switch (ob) {
+                        .obj => |o| {
+                            for (fallback_keys) |fbkey| {
+                                if (o.getFirst(fbkey)) |base| {
+                                    if (base == .literal) {
+                                        break :in vtf.loadTexture(
+                                            (self.vpkctx.getFileTempFmt(
+                                                "vtf",
+                                                "materials/{s}",
+                                                .{base.literal},
+                                            ) catch |err| break :in err) orelse {
+                                                break :in error.notfound;
+                                            },
+                                            self.alloc,
+                                        ) catch |err| break :in err;
+                                    }
+                                }
+                            }
+                        },
+                        else => {},
+                    }
+                }
+            }
+
             break :in vtf.loadTexture(
-                (self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
+                (self.vpkctx.getFileTempFmt("vtf", "materials/{s}", .{material}) catch |err| break :in err) orelse break :in error.notfoundGeneric,
+                //(self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
                 self.alloc,
             ) catch |err| break :in err;
         };
         return err catch |e| {
-            std.debug.print("{} for {s}\n", .{ e, sl });
+            log.warn("{} for {s}", .{ e, material });
             return missingTexture();
         };
         //defer bmp.deinit();
@@ -325,8 +389,8 @@ pub const Context = struct {
                 }
             }
         }
-        {
-            if (try self.ecs.getOpt(self.edit_state.id, .solid)) |solid| {
+        if (self.edit_state.id) |id| {
+            if (try self.ecs.getOpt(id, .solid)) |solid| {
                 //const bb = &solid.bounding_box;
                 //draw.cube(bb.a, bb.b.sub(bb.a), 0xffffffff);
                 for (solid.sides.items) |side| {
@@ -344,7 +408,7 @@ pub const Context = struct {
                     }
                 }
             }
-            if (try self.ecs.getOpt(self.edit_state.id, .bounding_box)) |bb| {
+            if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
                 draw.cube(bb.a, bb.b.sub(bb.a), 0xffffff77);
             }
             //id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
@@ -365,57 +429,91 @@ pub const Context = struct {
                 //defer os9gui.endL();
                 if (try os9gui.beginVScroll(&self.misc_gui_state.scroll_a, .{ .sw = area.w, .sh = 1000000 })) |scr| {
                     defer os9gui.endVScroll(scr);
-                    if (try self.ecs.getOptPtr(self.edit_state.id, .entity)) |ent| {
-                        if (self.fgd_ctx.base.get(ent.class)) |base| {
-                            os9gui.label("{s}", .{base.name});
-                            scr.layout.pushHeight(400);
-                            _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 30 });
-                            for (base.fields.items) |f| {
-                                os9gui.label("{s}", .{f.name});
-                                switch (f.type) {
-                                    //.choices => {},
-                                    else => os9gui.label("{s}", .{f.default}),
+                    if (self.edit_state.id) |id| {
+                        if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+                            if (self.fgd_ctx.base.get(ent.class)) |base| {
+                                os9gui.label("{s}", .{base.name});
+                                scr.layout.pushHeight(400);
+                                _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 30 });
+                                for (base.fields.items) |f| {
+                                    os9gui.label("{s}", .{f.name});
+                                    switch (f.type) {
+                                        .choices => |ch| {
+                                            if (ch.items.len == 2 and std.mem.eql(u8, ch.items[0][0], "0")) {
+                                                var chekd: bool = false;
+                                                _ = os9gui.checkbox("", &chekd);
+
+                                                continue;
+                                            }
+                                            const Ctx = struct {
+                                                kvs: []const fgd.EntClass.Field.Type.KV,
+                                                index: usize = 0,
+                                                pub fn next(ctx: *@This()) ?struct { usize, []const u8 } {
+                                                    if (ctx.index >= ctx.kvs.len)
+                                                        return null;
+                                                    defer ctx.index += 1;
+                                                    return .{ ctx.index, ctx.kvs[ctx.index][1] };
+                                                }
+                                            };
+                                            var index: usize = 0;
+                                            var ctx = Ctx{
+                                                .kvs = ch.items,
+                                            };
+                                            try os9gui.combo(
+                                                "{s}",
+                                                .{ch.items[0][1]},
+                                                &index,
+                                                ch.items.len,
+                                                &ctx,
+                                                Ctx.next,
+                                            );
+                                        },
+                                        else => os9gui.label("{s}", .{f.default}),
+                                    }
                                 }
+                                os9gui.endL();
                             }
-                            os9gui.endL();
                         }
-                    }
-                    if (try self.ecs.getOptPtr(self.edit_state.id, .solid)) |solid| {
-                        os9gui.label("Solid with {d} sides", .{solid.sides.items.len});
-                    }
-                    //scr.layout.padding.top = 0;
-                    //scr.layout.padding.bottom = 0;
-                    //{
-                    //    var eit = self.vpkctx.extensions.iterator();
-                    //    var i: usize = 0;
-                    //    while (eit.next()) |item| {
-                    //        if (os9gui.button(item.key_ptr.*))
-                    //            expanded.items[i] = !expanded.items[i];
+                        if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+                            os9gui.label("Solid with {d} sides", .{solid.sides.items.len});
+                            for (solid.sides.items) |side| {
+                                os9gui.label("Texture: {s}", .{side.material});
+                            }
+                        }
+                        //scr.layout.padding.top = 0;
+                        //scr.layout.padding.bottom = 0;
+                        //{
+                        //    var eit = self.vpkctx.extensions.iterator();
+                        //    var i: usize = 0;
+                        //    while (eit.next()) |item| {
+                        //        if (os9gui.button(item.key_ptr.*))
+                        //            expanded.items[i] = !expanded.items[i];
 
-                    //        if (expanded.items[i]) {
-                    //            var pm = item.value_ptr.iterator();
-                    //            while (pm.next()) |p| {
-                    //                var cc = p.value_ptr.iterator();
-                    //                if (!std.mem.startsWith(u8, p.key_ptr.*, textbox.arraylist.items))
-                    //                    continue;
-                    //                _ = os9gui.label("{s}", .{p.key_ptr.*});
-                    //                while (cc.next()) |c| {
-                    //                    if (os9gui.buttonEx("        {s}", .{c.key_ptr.*}, .{})) {
-                    //                        const sl = try self.vpkctx.getFileTemp(item.key_ptr.*, p.key_ptr.*, c.key_ptr.*);
-                    //                        displayed_slice.clearRetainingCapacity();
-                    //                        try displayed_slice.appendSlice(sl.?);
-                    //                    }
-                    //                }
-                    //            }
-                    //        }
-                    //        i += 1;
-                    //    }
-                    //}
+                        //        if (expanded.items[i]) {
+                        //            var pm = item.value_ptr.iterator();
+                        //            while (pm.next()) |p| {
+                        //                var cc = p.value_ptr.iterator();
+                        //                if (!std.mem.startsWith(u8, p.key_ptr.*, textbox.arraylist.items))
+                        //                    continue;
+                        //                _ = os9gui.label("{s}", .{p.key_ptr.*});
+                        //                while (cc.next()) |c| {
+                        //                    if (os9gui.buttonEx("        {s}", .{c.key_ptr.*}, .{})) {
+                        //                        const sl = try self.vpkctx.getFileTemp(item.key_ptr.*, p.key_ptr.*, c.key_ptr.*);
+                        //                        displayed_slice.clearRetainingCapacity();
+                        //                        try displayed_slice.appendSlice(sl.?);
+                        //                    }
+                        //                }
+                        //            }
+                        //        }
+                        //        i += 1;
+                        //    }
+                        //}
 
-                    //os9gui.slider(&index, 0, 1000);
-                    //scr.layout.pushHeight(area.w);
-                    //const ar = gui.getArea() orelse return;
-                    //gui.drawRectTextured(ar, 0xffffffff, graph.Rec(0, 0, 1, 1), .{ .id = index, .w = 1, .h = 1 });
+                        //os9gui.slider(&index, 0, 1000);
+                        //scr.layout.pushHeight(area.w);
+                        //const ar = gui.getArea() orelse return;
+                        //gui.drawRectTextured(ar, 0xffffffff, graph.Rec(0, 0, 1, 1), .{ .id = index, .w = 1, .h = 1 });
+                    }
                 }
                 {
                     _ = try os9gui.beginV();
@@ -426,6 +524,36 @@ pub const Context = struct {
                 }
             }
         }
+    }
+};
+
+pub const LoadCtx = struct {
+    buffer: [256]u8 = undefined,
+    timer: std.time.Timer,
+    draw: *graph.ImmediateDrawingContext,
+    win: *graph.SDL.Window,
+    font: *graph.Font,
+
+    pub fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
+        //No need for high fps when loading, this is 15fps
+        if (self.timer.read() / std.time.ns_per_ms < 66) {
+            return;
+        }
+        var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
+        fbs.writer().print(fmt, args) catch return;
+        self.cb(fbs.getWritten());
+    }
+
+    pub fn cb(self: *@This(), message: []const u8) void {
+        if (self.timer.read() / std.time.ns_per_ms < 8) {
+            return;
+        }
+        self.timer.reset();
+        self.win.pumpEvents(.poll);
+        self.draw.begin(0x222222ff, self.win.screen_dimensions.toF()) catch return;
+        self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
+        self.draw.end(null) catch return;
+        self.win.swap(); //So the window doesn't look too broken while loading
     }
 };
 

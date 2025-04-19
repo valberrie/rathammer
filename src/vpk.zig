@@ -5,6 +5,9 @@ const VPK_FILE_SIG: u32 = 0x55aa1234;
 pub threadlocal var timer = profile.BasicProfiler.init();
 threadlocal var error_msg_buffer: [1024]u8 = undefined;
 
+const config = @import("config");
+const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
+
 /// Given one or more vpk dir files, allows you to request file contents
 pub const Context = struct {
     const log = std.log.scoped(.vpk);
@@ -49,17 +52,59 @@ pub const Context = struct {
     arena: std.heap.ArenaAllocator,
     alloc: std.mem.Allocator,
     strbuf: std.ArrayList(u8),
+    split_buf: std.ArrayList(u8),
     filebuf: std.ArrayList(u8),
+    vpk_dump_file: vpk_dump_file_t,
 
-    pub fn init(alloc: std.mem.Allocator) Self {
+    pub fn init(alloc: std.mem.Allocator) !Self {
         return .{
             .strbuf = std.ArrayList(u8).init(alloc),
+            .split_buf = std.ArrayList(u8).init(alloc),
             .dirs = std.ArrayList(Dir).init(alloc),
             .extensions = ExtensionMap.init(alloc),
             .filebuf = std.ArrayList(u8).init(alloc),
             .arena = std.heap.ArenaAllocator.init(alloc),
             .alloc = alloc,
+            .vpk_dump_file = if (config.dump_vpk) try std.fs.cwd().createFile("vpkdump.txt", .{}) else {},
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        if (config.dump_vpk)
+            self.vpk_dump_file.close();
+        var it = self.extensions.valueIterator();
+        while (it.next()) |ext| {
+            var pit = ext.valueIterator();
+            while (pit.next()) |p| {
+                p.deinit();
+            }
+            ext.deinit();
+        }
+        self.extensions.deinit();
+        self.arena.deinit();
+        for (self.dirs.items) |*dir| {
+            dir.deinit();
+        }
+        self.dirs.deinit();
+        self.strbuf.deinit();
+        self.filebuf.deinit();
+        self.split_buf.deinit();
+    }
+
+    pub fn sanatizeVpkString(str: []u8) void {
+        for (str) |*ch| {
+            ch.* = switch (ch.*) {
+                '\\' => '/',
+                'A'...'Z' => ch.* | 0b00100000,
+                else => ch.*,
+            };
+        }
+    }
+
+    fn writeDump(self: *Self, comptime fmt: []const u8, args: anytype) void {
+        if (config.dump_vpk) {
+            self.vpk_dump_file.writer().print(fmt, args) catch return;
+        }
     }
 
     /// the vpk_set: hl2_pak.vpk -> hl2_pak_dir.vpk . This matches the way gameinfo.txt does it
@@ -81,6 +126,7 @@ pub const Context = struct {
         var strbuf = std.ArrayList(u8).init(self.alloc);
         defer strbuf.deinit();
         try strbuf.writer().print("{s}_dir.vpk", .{prefix});
+        self.writeDump("VPK NAME: {s}\n", .{prefix});
 
         const file_name = try aa.dupe(u8, strbuf.items);
         const infile = root.openFile(strbuf.items, .{}) catch |err| switch (err) {
@@ -122,24 +168,31 @@ pub const Context = struct {
 
                 while (true) {
                     const ext = try readString(r, &strbuf);
+                    self.writeDump("{s}\n", .{ext});
                     if (ext.len == 0)
                         break;
                     const ext_res = try self.extensions.getOrPutAdapted(ext, StrCtx{});
                     if (!ext_res.found_existing) {
                         ext_res.value_ptr.* = PathMap.init(self.alloc);
-                        ext_res.key_ptr.* = try aa.dupe(u8, ext);
+                        const ext_d = try aa.dupe(u8, ext);
+                        sanatizeVpkString(ext_d);
+                        ext_res.key_ptr.* = ext_d;
                     }
                     while (true) {
                         const path = try readString(r, &strbuf);
+                        self.writeDump("    {s}\n", .{path});
                         if (path.len == 0)
                             break;
                         const path_res = try ext_res.value_ptr.getOrPutAdapted(path, StrCtx{});
                         if (!path_res.found_existing) {
                             path_res.value_ptr.* = EntryMap.init(self.alloc);
-                            path_res.key_ptr.* = try aa.dupe(u8, path);
+                            const path_d = try aa.dupe(u8, path);
+                            sanatizeVpkString(path_d);
+                            path_res.key_ptr.* = path_d;
                         }
                         while (true) {
                             const fname = try readString(r, &strbuf);
+                            self.writeDump("        {s}\n", .{fname});
                             if (fname.len == 0)
                                 break;
 
@@ -159,7 +212,9 @@ pub const Context = struct {
 
                             const entry_res = try path_res.value_ptr.getOrPutAdapted(fname, StrCtx{});
                             if (!entry_res.found_existing) {
-                                entry_res.key_ptr.* = try aa.dupe(u8, fname);
+                                const entry_d = try aa.dupe(u8, fname);
+                                sanatizeVpkString(entry_d);
+                                entry_res.key_ptr.* = entry_d;
                                 entry_res.value_ptr.* = Entry{
                                     .dir_index = @intCast(dir_index),
                                     .archive_index = arch_index,
@@ -179,6 +234,16 @@ pub const Context = struct {
                 return error.unsupportedVpkVersion;
             },
         }
+    }
+
+    pub fn getFileTempFmt(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype) !?[]const u8 {
+        self.split_buf.clearRetainingCapacity();
+        try self.split_buf.writer().print(fmt, args);
+        sanatizeVpkString(self.split_buf.items);
+        //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
+        const sl = self.split_buf.items;
+        const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;
+        return try self.getFileTemp(extension, sl[0..slash], sl[slash + 1 ..]);
     }
 
     /// Returns a buffer owned by Self which will be clobberd on next getFileTemp call
@@ -220,25 +285,6 @@ pub const Context = struct {
             return &self.dirs.items[dir_index];
         }
         return null;
-    }
-
-    pub fn deinit(self: *Self) void {
-        var it = self.extensions.valueIterator();
-        while (it.next()) |ext| {
-            var pit = ext.valueIterator();
-            while (pit.next()) |p| {
-                p.deinit();
-            }
-            ext.deinit();
-        }
-        self.extensions.deinit();
-        self.arena.deinit();
-        for (self.dirs.items) |*dir| {
-            dir.deinit();
-        }
-        self.dirs.deinit();
-        self.strbuf.deinit();
-        self.filebuf.deinit();
     }
 };
 

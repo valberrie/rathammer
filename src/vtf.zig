@@ -36,9 +36,9 @@ const ImageFormat = enum(i32) {
         return switch (self) {
             .IMAGE_FORMAT_NONE => 0,
             .IMAGE_FORMAT_DXT1 => 4,
-            .IMAGE_FORMAT_A8 => 8,
             .IMAGE_FORMAT_DXT3 => 8,
             .IMAGE_FORMAT_DXT5 => 8,
+            .IMAGE_FORMAT_A8 => 8,
             .IMAGE_FORMAT_I8 => 8,
             .IMAGE_FORMAT_P8 => 8,
             .IMAGE_FORMAT_BGR565 => 16,
@@ -71,7 +71,11 @@ const ImageFormat = enum(i32) {
             .IMAGE_FORMAT_DXT5 => graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
             .IMAGE_FORMAT_DXT1 => graph.c.GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,
             .IMAGE_FORMAT_DXT3 => graph.c.GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,
-            else => error.formatNotSupported,
+            .IMAGE_FORMAT_BGRA8888 => graph.c.GL_BGRA,
+            .IMAGE_FORMAT_RGBA8888 => graph.c.GL_RGBA,
+            .IMAGE_FORMAT_BGR888 => graph.c.GL_BGR,
+            .IMAGE_FORMAT_RGB888 => graph.c.GL_RGB,
+            else => error.formatNotSupported, //Most formats can be supported trivially by adding the correct mapping to gl enums
         };
     }
     pub fn isCompressed(self: @This()) bool {
@@ -203,7 +207,7 @@ pub fn loadTexture(buffer: []const u8, alloc: std.mem.Allocator) !graph.Texture 
     const header_size = try r.readInt(u32, .little);
 
     const h1 = try parseStruct(VtfHeader01, .little, r);
-    errdefer std.debug.print("{}\n", .{h1});
+    errdefer log.err("{}\n", .{h1});
 
     //var flags = std.enums.EnumSet(CompiledVtfFlags).initEmpty();
     //flags.bits.mask = h1.flags;
@@ -212,7 +216,7 @@ pub fn loadTexture(buffer: []const u8, alloc: std.mem.Allocator) !graph.Texture 
     //    std.debug.print("{s}\n", .{@tagName(item)});
     //}
 
-    errdefer std.debug.print("POS {d} {d}\n", .{ fbs.pos, buffer.len });
+    errdefer log.err("TOKEN POS {d} {d}", .{ fbs.pos, buffer.len });
     if (version_min > 3) {
         log.err("Vtf version {d}.{d}, not supported", .{ version_maj, version_min });
         return error.unsupportedVersion;

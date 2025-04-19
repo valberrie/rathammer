@@ -148,17 +148,18 @@ pub const VdfTokenIterator = struct {
                     }
                 },
                 //escape the next char
-                '\\' => {
-                    switch (self.state) {
-                        .quoted_ident => {},
-                        else => return error.fucked,
-                    }
-                    //Ugly way to do it
-                    if (self.pos + 1 < self.slice.len) {
-                        try self.token_buf.append(self.slice[self.pos]);
-                        self.pos += 1;
-                    }
-                },
+                //This is commented out as some vmt's use backslashes as path seperators
+                //'\\' => {
+                //    switch (self.state) {
+                //        .quoted_ident => {},
+                //        else => return error.fucked,
+                //    }
+                //    //Ugly way to do it
+                //    if (self.pos + 1 < self.slice.len) {
+                //        try self.token_buf.append(self.slice[self.pos]);
+                //        self.pos += 1;
+                //    }
+                //},
                 '\r', '\n' => {
                     self.line_counter += 1;
                     self.char_counter = 0;
@@ -224,7 +225,7 @@ pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
     //defer arena.deinit();
     const aa = arena.allocator();
 
-    var key: []const u8 = "";
+    var key: []u8 = "";
 
     var object_stack = std.ArrayList(*Object).init(alloc);
     defer object_stack.deinit();
@@ -259,6 +260,7 @@ pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
             .ident => switch (token_state) {
                 .key => {
                     key = try aa.dupe(u8, token.ident);
+                    _ = std.ascii.lowerString(key, key);
                     token_state = .value;
                 },
                 .value => {

@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) void {
 
     const opts = b.addOptions();
     opts.addOption(bool, "time_profile", b.option(bool, "profile", "profile the time loading takes") orelse false);
+    opts.addOption(bool, "dump_vpk", b.option(bool, "dumpvpk", "dump all vpk entries to text file") orelse false);
     exe.root_module.addOptions("config", opts);
 
     //exe.root_module.addCSourceFiles(.{
