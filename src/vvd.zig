@@ -4,6 +4,7 @@ const parseStruct = com.parseStruct;
 const mdl = @import("mdl.zig");
 const graph = @import("graph");
 const vpk = @import("vpk.zig");
+const edit = @import("editor.zig");
 
 const VVD_MAGIC_STRING = "IDSV";
 const MAX_LODS = 8;
@@ -137,7 +138,7 @@ fn dummyPrint(_: []const u8, _: anytype) void {}
 //it sucks but it works
 //there is very little version checking.
 //offsets are not bounds checked so this can crash at anytime
-pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name: []const u8) !graph.meshutil.Mesh {
+pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *edit.Context) !MultiMesh {
     const mdln = blk: {
         if (std.mem.endsWith(u8, mdl_name, ".mdl"))
             break :blk mdl_name[0 .. mdl_name.len - 4];
@@ -146,14 +147,37 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
 
     const print = dummyPrint;
     //const print = std.debug.print;
-    const info = try mdl.doItCrappy(alloc, try vpkctx.getFileTempFmt("mdl", "{s}", .{mdln}) orelse return error.nomdl, print);
-    defer info.vert_offsets.deinit();
-    var mesh = graph.meshutil.Mesh.init(alloc, 0);
+    const info = try mdl.doItCrappy(alloc, try editor.vpkctx.getFileTempFmt("mdl", "{s}", .{mdln}) orelse return error.nomdl, print);
+    defer {
+        for (info.texture_paths.items) |item|
+            alloc.free(item);
+        for (info.texture_names.items) |item|
+            alloc.free(item);
+        info.texture_paths.deinit();
+        info.texture_names.deinit();
+        info.vert_offsets.deinit();
+    }
+    var scratch = std.ArrayList(u8).init(alloc);
+    defer scratch.deinit();
+    var texts = std.ArrayList(c_uint).init(alloc);
+    defer texts.deinit();
+    outer: for (info.texture_names.items) |tname| {
+        inner: for (info.texture_paths.items) |tpath| {
+            scratch.clearRetainingCapacity();
+            try scratch.writer().print("{s}{s}", .{ tpath, tname });
+            const tex = editor.loadTextureFromVpkFail(scratch.items) catch continue :inner;
+            try texts.append(tex.id);
+            continue :outer;
+        }
+        try texts.append(0); //Put missing
+    }
+    var mmesh = MultiMesh.init(alloc);
+    //var mesh = graph.meshutil.Mesh.init(alloc, 0);
     //const outf = try std.fs.cwd().createFile("out.obj", .{});
     const w = std.io.null_writer;
     //const w = outf.writer();
     {
-        const slice_vvd = try vpkctx.getFileTempFmt("vvd", "{s}", .{mdln}) orelse return error.notFound;
+        const slice_vvd = try editor.vpkctx.getFileTempFmt("vvd", "{s}", .{mdln}) orelse return error.notFound;
         var fbs_vvd = std.io.FixedBufferStream([]const u8){ .buffer = slice_vvd, .pos = 0 };
         const r = fbs_vvd.reader();
         const h1 = try parseStruct(VertexHeader_1, .little, r);
@@ -181,7 +205,7 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
         if (fixups.items.len > 0) {
             for (fixups.items) |fu| {
                 for (verts.items[fu.source_vertex_id .. fu.source_vertex_id + fu.num_vertex]) |v| {
-                    try mesh.vertices.append(.{
+                    try mmesh.vertices.append(.{
                         .x = v.pos.x,
                         .y = v.pos.y,
                         .z = v.pos.z,
@@ -190,7 +214,7 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
                         .nx = 0,
                         .ny = 0,
                         .nz = 0,
-                        .color = 0xffffffff,
+                        .color = 0xff_ff_ff_ff,
                     });
                     try w.print("v {d} {d} {d}\n", .{ v.pos.x, v.pos.y, v.pos.z });
                 }
@@ -200,23 +224,23 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
         } else {
             for (verts.items) |v| {
                 try w.print("v {d} {d} {d}\n", .{ v.pos.x, v.pos.y, v.pos.z });
-                try mesh.vertices.append(.{
+                try mmesh.vertices.append(.{
                     .x = v.pos.x,
                     .y = v.pos.y,
                     .z = v.pos.z,
-                    .u = 0,
-                    .v = 0,
+                    .u = v.uv.x,
+                    .v = v.uv.y,
                     .nx = 0,
                     .ny = 0,
                     .nz = 0,
-                    .color = 0xffffffff,
+                    .color = 0xff_ff_ff_ff,
                 });
             }
         }
     }
     {
         //Load vtx
-        const slice = try vpkctx.getFileTempFmt("vtx", "{s}.dx90", .{mdln}) orelse return error.broken;
+        const slice = try editor.vpkctx.getFileTempFmt("vtx", "{s}.dx90", .{mdln}) orelse return error.broken;
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
         const r1 = fbs.reader();
         const header_pos = fbs.pos;
@@ -289,6 +313,7 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
                             fbs.pos = sg_start + SG.strip_offset;
                             st = fbs.pos;
                             const vtt = vert_table.items;
+                            const newm = try mmesh.newMesh(texts.items[mi]);
                             for (0..SG.num_strips) |sii| {
                                 try w.print("o mod_{d}_{d}_{d}\n", .{ mi, si, sii });
                                 const hh = try parseStruct(Vtx.StripHeader, .little, r1);
@@ -304,7 +329,7 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
                                     .trilist => {
                                         for (0..@divFloor(sl.len, 3)) |i| {
                                             const j = i * 3;
-                                            try mesh.indicies.appendSlice(&.{
+                                            try newm.indicies.appendSlice(&.{
                                                 vttt[sl[j + 2]],
                                                 vttt[sl[j + 1]],
                                                 vttt[sl[j]],
@@ -346,6 +371,101 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
             }
         }
     }
-    mesh.setData();
-    return mesh;
+    mmesh.setData();
+    return mmesh;
 }
+
+//One vertex buffer, many index buffers
+pub const MultiMesh = struct {
+    const c = graph.c;
+    const GL = graph.GL;
+    const Self = @This();
+    const MeshVert = graph.meshutil.MeshVert;
+    pub const Mesh = struct {
+        indicies: std.ArrayList(u16),
+        ebo: c_uint,
+        vao: c_uint,
+        texture_id: c_uint,
+
+        pub fn init(alloc: std.mem.Allocator, tex: c_uint) @This() {
+            var ebo: c_uint = 0;
+            var vao: c_uint = 0;
+            c.glGenBuffers(1, &ebo);
+            c.glGenVertexArrays(1, &vao);
+            return .{
+                .ebo = ebo,
+                .vao = vao,
+                .indicies = std.ArrayList(u16).init(alloc),
+                .texture_id = tex,
+            };
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.indicies.deinit();
+        }
+    };
+
+    vbo: c_uint,
+    vertices: std.ArrayList(MeshVert),
+    meshes: std.ArrayList(Mesh),
+    alloc: std.mem.Allocator,
+
+    pub fn init(alloc: std.mem.Allocator) @This() {
+        var ret = Self{
+            .vertices = std.ArrayList(MeshVert).init(alloc),
+            .meshes = std.ArrayList(Mesh).init(alloc),
+            .alloc = alloc,
+            .vbo = 0,
+        };
+
+        c.glGenBuffers(1, &ret.vbo);
+
+        //GL.bufferData(c.GL_ELEMENT_ARRAY_BUFFER, ret.ebo, u32, ret.indicies.items);
+        return ret;
+    }
+
+    pub fn newMesh(self: *Self, tex: c_uint) !*Mesh {
+        try self.meshes.append(Mesh.init(self.alloc, tex));
+        const ret = &self.meshes.items[self.meshes.items.len - 1];
+
+        GL.floatVertexAttrib(ret.vao, self.vbo, 0, 3, MeshVert, "x"); //XYZ
+        GL.floatVertexAttrib(ret.vao, self.vbo, 1, 2, MeshVert, "u"); //RGBA
+        GL.floatVertexAttrib(ret.vao, self.vbo, 2, 3, MeshVert, "nx"); //RGBA
+        GL.intVertexAttrib(ret.vao, self.vbo, 3, 1, MeshVert, "color", c.GL_UNSIGNED_INT);
+        GL.floatVertexAttrib(ret.vao, self.vbo, 4, 3, MeshVert, "tx");
+
+        //c.glBindVertexArray(ret.vao);
+        //GL.bufferData(c.GL_ARRAY_BUFFER, ret.vbo, MeshVert, ret.vertices.items);
+        return &self.meshes.items[self.meshes.items.len - 1];
+    }
+
+    pub fn setData(self: *Self) void {
+        for (self.meshes.items) |mesh| {
+            c.glBindVertexArray(mesh.vao);
+            GL.bufferData(c.GL_ARRAY_BUFFER, self.vbo, MeshVert, self.vertices.items);
+            GL.bufferData(c.GL_ELEMENT_ARRAY_BUFFER, mesh.ebo, u16, mesh.indicies.items);
+        }
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.vertices.deinit();
+        for (self.meshes.items) |*mesh| {
+            mesh.deinit();
+        }
+        self.meshes.deinit();
+    }
+
+    pub fn drawSimple(self: *Self, view: graph.za.Mat4, model: graph.za.Mat4, shader: c_uint) void {
+        c.glUseProgram(shader);
+        GL.passUniform(shader, "view", view);
+        GL.passUniform(shader, "model", model);
+        const diffuse_loc = c.glGetUniformLocation(shader, "diffuse_texture");
+        for (self.meshes.items) |mesh| {
+            c.glBindVertexArray(mesh.vao);
+            c.glUniform1i(diffuse_loc, 0);
+            c.glBindTextureUnit(0, mesh.texture_id);
+
+            c.glDrawElements(c.GL_TRIANGLES, @as(c_int, @intCast(mesh.indicies.items.len)), c.GL_UNSIGNED_SHORT, null);
+        }
+    }
+};

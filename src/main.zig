@@ -59,7 +59,6 @@ pub fn main() !void {
     defer os9gui.deinit();
     loadctx.cb("Loading");
 
-    //const root = try std.fs.cwd().openDir("tf", .{});
     const hl_root = try std.fs.cwd().openDir("hl2", .{});
     //const ep_root = try std.fs.cwd().openDir("ep2", .{});
     //try vpkctx.addDir(root, "tf2_textures.vpk");
@@ -93,7 +92,7 @@ pub fn main() !void {
         return;
     }
 
-    var my_mesh = try vvd.loadModelCrappy(alloc, &editor.vpkctx, "models/kleiner");
+    var my_mesh = try vvd.loadModelCrappy(alloc, "models/kleiner", &editor);
     defer my_mesh.deinit();
     loadctx.cb("Vpk's mounted");
 

@@ -236,10 +236,16 @@ pub const Mesh = struct {
 
 pub const ModelInfo = struct {
     vert_offsets: std.ArrayList(u16),
+    texture_paths: std.ArrayList([]const u8),
+    texture_names: std.ArrayList([]const u8),
 };
 pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !ModelInfo {
     const log = std.log.scoped(.mdl);
-    var info = ModelInfo{ .vert_offsets = std.ArrayList(u16).init(alloc) };
+    var info = ModelInfo{
+        .vert_offsets = std.ArrayList(u16).init(alloc),
+        .texture_paths = std.ArrayList([]const u8).init(alloc),
+        .texture_names = std.ArrayList([]const u8).init(alloc),
+    };
     var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
     const r = fbs.reader();
     const o1 = try parseStruct(Studiohdr_01, .little, r);
@@ -259,6 +265,7 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         const start = fbs.pos;
         const tex = try parseStruct(StudioTexture, .little, r);
         const name: [*c]const u8 = &slice[start + tex.name_offset];
+        try info.texture_names.append(try alloc.dupe(u8, std.mem.span(name)));
         print("{s} {}\n", .{ name, tex });
     }
 
@@ -266,6 +273,7 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
     for (0..h3.texturedir_count) |_| {
         const int = try r.readInt(u32, .little);
         const name: [*c]const u8 = &slice[int];
+        try info.texture_paths.append(try alloc.dupe(u8, std.mem.span(name)));
         print("NAME {s}\n", .{name});
     }
 

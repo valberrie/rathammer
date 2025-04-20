@@ -107,7 +107,7 @@ pub const Context = struct {
     fgd_ctx: fgd.EntCtx,
     icon_map: std.StringHashMap(graph.Texture),
 
-    models: std.StringHashMap(meshutil.Mesh),
+    models: std.StringHashMap(vvd.MultiMesh),
 
     ecs: EcsT,
 
@@ -137,7 +137,7 @@ pub const Context = struct {
             .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
-            .models = std.StringHashMap(meshutil.Mesh).init(alloc),
+            .models = std.StringHashMap(vvd.MultiMesh).init(alloc),
 
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
 
@@ -310,7 +310,7 @@ pub const Context = struct {
 
         const mod = try self.storeString(model_name);
 
-        const mesh = vvd.loadModelCrappy(self.alloc, &self.vpkctx, mod) catch |err| {
+        const mesh = vvd.loadModelCrappy(self.alloc, mod, self) catch |err| {
             std.debug.print("Load model failed {s} with {}\n", .{ model_name, err });
 
             return;
@@ -320,6 +320,49 @@ pub const Context = struct {
 
     pub fn storeString(self: *Self, string: []const u8) ![]const u8 {
         return try self.string_storage.store(string);
+    }
+
+    pub fn loadTextureFromVpkFail(self: *Self, material: []const u8) !graph.Texture {
+        if (try self.vpkctx.getFileTempFmt("vmt", "materials/{s}", .{material})) |tt| {
+            var obj = try vdf.parse(self.alloc, tt);
+            defer obj.deinit();
+            //All vmt are a single root object with a shader name as key
+            if (obj.value.list.items.len > 0) {
+                const fallback_keys = [_][]const u8{
+                    "$basetexture", "%tooltexture",
+                };
+                const ob = obj.value.list.items[0].val;
+                switch (ob) {
+                    .obj => |o| {
+                        for (fallback_keys) |fbkey| {
+                            if (o.getFirst(fbkey)) |base| {
+                                if (base == .literal) {
+                                    return try vtf.loadTexture(
+                                        (try self.vpkctx.getFileTempFmt(
+                                            "vtf",
+                                            "materials/{s}",
+                                            .{base.literal},
+                                        )) orelse {
+                                            return error.notfound;
+                                        },
+                                        self.alloc,
+                                    );
+                                }
+                            }
+                        }
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        return try vtf.loadTexture(
+            (try self.vpkctx.getFileTempFmt("vtf", "materials/{s}", .{material})) orelse return error.notfoundGeneric,
+            //(self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
+            self.alloc,
+        );
+        //defer bmp.deinit();
+        //break :blk graph.Texture.initFromBitmap(bmp, .{});
     }
 
     pub fn loadTextureFromVpk(self: *Self, material: []const u8) !graph.Texture {
@@ -416,8 +459,18 @@ pub const Context = struct {
                         mod.drawSimple(view_3d, mat3, self.draw_state.basic_shader);
                     }
                 }
+                const dist = ent.origin.distance(self.draw_state.cam3d.pos);
+                if (dist > ENT_RENDER_DIST)
+                    continue;
+                if (self.fgd_ctx.base.get(ent.class)) |base| {
+                    if (self.icon_map.get(base.iconsprite)) |isp| {
+                        draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+                        draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
+                    }
+                }
             }
         }
+        try draw.flush(null, self.draw_state.cam3d);
 
         graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
         //Crosshair
@@ -429,18 +482,18 @@ pub const Context = struct {
             cw * 2,
             cw * 2,
         ), 0xffffffff);
-        var ent_it = self.ecs.iterator(.entity);
-        while (ent_it.next()) |ent| {
-            const dist = ent.origin.distance(self.draw_state.cam3d.pos);
-            if (dist > ENT_RENDER_DIST)
-                continue;
-            if (self.fgd_ctx.base.get(ent.class)) |base| {
-                if (self.icon_map.get(base.iconsprite)) |isp| {
-                    draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
-                    draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
-                }
-            }
-        }
+        //var ent_it = self.ecs.iterator(.entity);
+        //while (ent_it.next()) |ent| {
+        //    const dist = ent.origin.distance(self.draw_state.cam3d.pos);
+        //    if (dist > ENT_RENDER_DIST)
+        //        continue;
+        //    if (self.fgd_ctx.base.get(ent.class)) |base| {
+        //        if (self.icon_map.get(base.iconsprite)) |isp| {
+        //            draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+        //            draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
+        //        }
+        //    }
+        //}
         if (self.edit_state.id) |id| {
             if (try self.ecs.getOpt(id, .solid)) |solid| {
                 //const bb = &solid.bounding_box;
