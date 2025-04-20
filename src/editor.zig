@@ -9,6 +9,7 @@ const vpk = @import("vpk.zig");
 const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
 const fgd = @import("fgd.zig");
+const vvd = @import("vvd.zig");
 const profile = @import("profile.zig");
 const Gui = graph.Gui;
 const StringStorage = @import("string.zig").StringStorage;
@@ -78,7 +79,9 @@ pub const Solid = struct {
 
 pub const Entity = struct {
     origin: Vec3,
+    angle: Vec3,
     class: []const u8,
+    model: ?[]const u8 = null,
 };
 
 const Comp = graph.Ecs.Component;
@@ -103,6 +106,8 @@ pub const Context = struct {
 
     fgd_ctx: fgd.EntCtx,
     icon_map: std.StringHashMap(graph.Texture),
+
+    models: std.StringHashMap(meshutil.Mesh),
 
     ecs: EcsT,
 
@@ -132,6 +137,7 @@ pub const Context = struct {
             .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
+            .models = std.StringHashMap(meshutil.Mesh).init(alloc),
 
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
 
@@ -153,6 +159,12 @@ pub const Context = struct {
         self.scratch_buf.deinit();
         self.csgctx.deinit();
         self.vpkctx.deinit();
+        var mit = self.models.valueIterator();
+        while (mit.next()) |m| {
+            m.deinit();
+        }
+        self.models.deinit();
+
         var it = self.meshmap.iterator();
         while (it.next()) |item| {
             item.value_ptr.mesh.deinit();
@@ -265,9 +277,14 @@ pub const Context = struct {
                     try self.putSolidFromVmf(solid);
                 {
                     const new = try self.ecs.createEntity();
+                    if (ent.model.len > 0) {
+                        try self.loadModel(ent.model);
+                    }
                     try self.ecs.attach(new, .entity, .{
                         .origin = ent.origin.v,
+                        .angle = ent.angles.v,
                         .class = try self.storeString(ent.classname),
+                        .model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
                     });
                     try self.ecs.attach(new, .bounding_box, .{
                         .a = ent.origin.v.sub(Vec3.new(8, 8, 8)),
@@ -286,6 +303,19 @@ pub const Context = struct {
         }
         aa.deinit();
         loadctx.cb("csg generated");
+    }
+
+    pub fn loadModel(self: *Self, model_name: []const u8) !void {
+        if (self.models.get(model_name) != null) return;
+
+        const mod = try self.storeString(model_name);
+
+        const mesh = vvd.loadModelCrappy(self.alloc, &self.vpkctx, mod) catch |err| {
+            std.debug.print("Load model failed with {}\n", .{err});
+
+            return;
+        };
+        try self.models.put(mod, mesh);
     }
 
     pub fn storeString(self: *Self, string: []const u8) ![]const u8 {
@@ -365,6 +395,27 @@ pub const Context = struct {
             if (!self.draw_state.draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
                 continue;
             mesh.value_ptr.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
+        }
+
+        {
+            var ent_it = self.ecs.iterator(.entity);
+            while (ent_it.next()) |ent| {
+                if (ent.model) |m| {
+                    if (self.models.getPtr(m)) |mod| {
+                        const M4 = graph.za.Mat4;
+                        //x: fwd
+                        //y:left
+                        //z: up
+
+                        const x1 = M4.fromRotation(ent.angle.x(), Vec3.forward());
+                        const y1 = M4.fromRotation(-ent.angle.y(), Vec3.right());
+                        const z = M4.fromRotation(ent.angle.z(), Vec3.up());
+                        const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
+                        const mat3 = mat1.mul(x1.mul(y1.mul(z)));
+                        mod.drawSimple(view_3d, mat3, self.draw_state.basic_shader);
+                    }
+                }
+            }
         }
 
         graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);

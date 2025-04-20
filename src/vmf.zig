@@ -26,25 +26,29 @@ pub const Solid = struct {
     id: u32,
     side: []const Side,
 };
+
+const StringVec = struct {
+    v: graph.za.Vec3,
+
+    pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
+        if (val.* != .literal)
+            return error.notgood;
+        var it = std.mem.splitScalar(u8, val.literal, ' ');
+        var ret: @This() = undefined;
+        ret.v.data[0] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
+        ret.v.data[1] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
+        ret.v.data[2] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
+        return ret;
+    }
+};
+
 pub const Entity = struct {
     id: u32,
     classname: []const u8,
-    model: []const u8,
+    model: []const u8 = "",
     solid: []const Solid,
-    origin: struct {
-        v: graph.za.Vec3,
-
-        pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
-            if (val.* != .literal)
-                return error.notgood;
-            var it = std.mem.splitScalar(u8, val.literal, ' ');
-            var ret: @This() = undefined;
-            ret.v.data[0] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
-            ret.v.data[1] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
-            ret.v.data[2] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
-            return ret;
-        }
-    },
+    origin: StringVec,
+    angles: StringVec,
 };
 pub const Side = struct {
     pub const UvCoord = struct {

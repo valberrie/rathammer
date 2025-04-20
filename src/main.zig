@@ -16,6 +16,7 @@ const util3d = @import("util_3d.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const Gui = graph.Gui;
+const vvd = @import("vvd.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
@@ -71,9 +72,9 @@ pub fn main() !void {
     if (false) {
         //canal_dock02a
         //models/props_junk/garbage_glassbottle001a
-        const n = "canal_dock02a";
+        const n = "kleiner";
         const names = [_][]const u8{ n, n, n ++ ".dx90" };
-        const path = "models/props_docks";
+        const path = "models";
         const exts = [_][]const u8{ "mdl", "vvd", "vtx" };
         var buf: [256]u8 = undefined;
         var bb = std.io.FixedBufferStream([]u8){ .pos = 0, .buffer = &buf };
@@ -91,6 +92,9 @@ pub fn main() !void {
         //std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
         return;
     }
+
+    var my_mesh = try vvd.loadModelCrappy(alloc, &editor.vpkctx, "models/kleiner");
+    defer my_mesh.deinit();
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
@@ -216,6 +220,8 @@ pub fn main() !void {
                 }
             }
         }
+        const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, 64 * 512);
+        my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
 
         //try draw.flush(null, editor.draw_state.cam3d);
 

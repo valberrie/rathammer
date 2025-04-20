@@ -1,6 +1,9 @@
 const std = @import("std");
 const com = @import("parse_common.zig");
 const parseStruct = com.parseStruct;
+const mdl = @import("mdl.zig");
+const graph = @import("graph");
+const vpk = @import("vpk.zig");
 
 const VVD_MAGIC_STRING = "IDSV";
 const MAX_LODS = 8;
@@ -18,7 +21,7 @@ const VertexHeader_1 = struct {
 
 const FIXUP_SIZE = 4 * 4;
 const FixupEntry = struct {
-    lod: u32,
+    lod: i32,
     source_vertex_id: u32,
     num_vertex: u32,
 };
@@ -129,127 +132,215 @@ const Vtx = struct {
     };
 };
 
-test "cr" {
-    const alloc = std.testing.allocator;
-    const in = try std.fs.cwd().openFile("mdl/out.vvd", .{});
-    const r = in.reader();
-    const h1 = try parseStruct(VertexHeader_1, .little, r);
-    if (!std.mem.eql(u8, VVD_MAGIC_STRING, &h1.id))
-        return error.invalidVVD;
-    std.debug.print("{}\n", .{h1});
+fn dummyPrint(_: []const u8, _: anytype) void {}
 
-    try r.skipBytes(h1.numFixups * FIXUP_SIZE, .{});
+pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name: []const u8) !graph.meshutil.Mesh {
+    const mdln = blk: {
+        if (std.mem.endsWith(u8, mdl_name, ".mdl"))
+            break :blk mdl_name[0 .. mdl_name.len - 4];
+        break :blk mdl_name;
+    };
+
+    const print = std.debug.print;
+    const info = try mdl.doItCrappy(alloc, try vpkctx.getFileTempFmt("mdl", "{s}", .{mdln}) orelse return error.nomdl);
+    defer info.vert_offsets.deinit();
+    var mesh = graph.meshutil.Mesh.init(alloc, 0);
     const outf = try std.fs.cwd().createFile("out.obj", .{});
-    try outf.writer().print("o Crass\n", .{});
     const w = outf.writer();
-    for (0..h1.numLODVertexes[0]) |_| {
-        const vert = try parseStruct(Vertex, .little, r);
-        try w.print("v {d} {d} {d}\n", .{ vert.pos.x, vert.pos.y, vert.pos.z });
+    {
+        const slice_vvd = try vpkctx.getFileTempFmt("vvd", "{s}", .{mdln}) orelse return error.notFound;
+        var fbs_vvd = std.io.FixedBufferStream([]const u8){ .buffer = slice_vvd, .pos = 0 };
+        const r = fbs_vvd.reader();
+        const h1 = try parseStruct(VertexHeader_1, .little, r);
+        if (!std.mem.eql(u8, VVD_MAGIC_STRING, &h1.id))
+            return error.invalidVVD;
+        print("{}\n", .{h1});
+
+        fbs_vvd.pos = h1.fixupTableStart;
+        var fixups = std.ArrayList(FixupEntry).init(alloc);
+        defer fixups.deinit();
+        for (0..h1.numFixups) |_| {
+            const fu = try parseStruct(FixupEntry, .little, r);
+            print("{}\n", .{fu});
+            try fixups.append(fu);
+        }
+
+        var verts = std.ArrayList(Vertex).init(alloc);
+        defer verts.deinit();
+        fbs_vvd.pos = h1.vertexDataStart;
+        for (0..h1.numLODVertexes[0]) |_| {
+            const vert = try parseStruct(Vertex, .little, r);
+            try verts.append(vert);
+        }
+        var total: usize = 0;
+        if (fixups.items.len > 0) {
+            for (fixups.items) |fu| {
+                for (verts.items[fu.source_vertex_id .. fu.source_vertex_id + fu.num_vertex]) |v| {
+                    try mesh.vertices.append(.{
+                        .x = v.pos.x,
+                        .y = v.pos.y,
+                        .z = v.pos.z,
+                        .u = v.uv.x,
+                        .v = v.uv.y,
+                        .nx = 0,
+                        .ny = 0,
+                        .nz = 0,
+                        .color = 0xffffffff,
+                    });
+                    try w.print("v {d} {d} {d}\n", .{ v.pos.x, v.pos.y, v.pos.z });
+                }
+                total += fu.num_vertex;
+            }
+            print("TOTAL VERCTS FIXED {d}\n", .{total});
+        } else {
+            for (verts.items) |v| {
+                try w.print("v {d} {d} {d}\n", .{ v.pos.x, v.pos.y, v.pos.z });
+                try mesh.vertices.append(.{
+                    .x = v.pos.x,
+                    .y = v.pos.y,
+                    .z = v.pos.z,
+                    .u = 0,
+                    .v = 0,
+                    .nx = 0,
+                    .ny = 0,
+                    .nz = 0,
+                    .color = 0xffffffff,
+                });
+            }
+        }
     }
     {
         //Load vtx
-        const inv = try std.fs.cwd().openFile("mdl/out.vtx", .{});
-        const slice = try inv.reader().readAllAlloc(alloc, std.math.maxInt(usize));
-        defer alloc.free(slice);
+        const slice = try vpkctx.getFileTempFmt("vtx", "{s}.dx90", .{mdln}) orelse return error.broken;
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
         const r1 = fbs.reader();
         const header_pos = fbs.pos;
         const hv1 = try parseStruct(Vtx.VtxHeader, .little, r1);
         if (hv1.version >= 49)
-            std.debug.print("NEW VERSION {d}\n", .{hv1.version});
-        std.debug.print("{}\n", .{hv1});
+            print("NEW VERSION {d}\n", .{hv1.version});
+        print("{}\n", .{hv1});
         fbs.pos = header_pos + hv1.bodyPartOffset;
         //if (hv1.bodyPartOffset != 36) return error.crappyVtxParser;
 
-        for (0..hv1.numBodyParts) |_| {
+        var max: u32 = 0;
+        const bpstart = fbs.pos;
+        for (0..hv1.numBodyParts) |bpi| {
+            if (bpi > 0)
+                break; //it breaks lol
+            const BP_SIZE = 8;
+            var st = bpstart + bpi * BP_SIZE;
             const bp = try parseStruct(Vtx.BodyPart_h1, .little, r1);
-            if (bp.model_offset != 8) return error.crappyVtxParser;
-            std.debug.print("{}\n", .{bp});
-
-            const mh = try parseStruct(Vtx.Model_h1, .little, r1);
-            if (mh.lod_offset != 8) return error.crappyVtxParser;
-            std.debug.print("{}\n", .{mh});
-
-            const mlod = try parseStruct(Vtx.ModelLod_h1, .little, r1);
-            std.debug.print("{}\n", .{mlod});
-            try r1.skipBytes(mlod.mesh_offset - 12, .{}); //36 = mlod.offset - Sizeof(ModelLod_h1
-            const mhh = try parseStruct(Vtx.Mesh_h1, .little, r1);
-            std.debug.print("{}\n", .{mhh});
-            try r1.skipBytes(mhh.sg_offset - 9, .{}); //36 = mlod.offset - Sizeof(ModelLod_h1
-
-            const sg_start = fbs.pos;
-            const vs = try parseStruct(Vtx.StripGroup, .little, r1);
-            std.debug.print("{}\n", .{vs});
-
-            var indices = std.ArrayList(u16).init(alloc);
-            try indices.ensureTotalCapacity(vs.num_index);
-            defer indices.deinit();
-
-            //seek to correct place
-            if (fbs.pos - sg_start != 25) return error.boro;
-            try r1.skipBytes(vs.index_offset - 25, .{});
-            for (0..vs.num_index) |_| {
-                try indices.append(try r1.readInt(u16, .little));
-            }
-            var vert_table = std.ArrayList(u16).init(alloc);
-            defer vert_table.deinit();
-
-            fbs.pos = sg_start + vs.vert_offset;
-            for (0..vs.num_verts) |_| {
-                const v = try parseStruct(Vtx.Vertex, .little, r1);
-                try vert_table.append(v.orig_mesh_vert_id);
-            }
-
-            const vtt = vert_table.items;
-            //for (0..@divFloor(indices.items.len, 3)) |i| {
-            //    try w.print("f {d} {d} {d}\n", .{
-            //        vtt[indices.items[i]],
-            //        vtt[indices.items[i + 1]],
-            //        vtt[indices.items[i + 2]],
-            //    });
-            //}
-            //if (true)
-            //    return;
-
-            fbs.pos = sg_start + vs.strip_offset;
-            for (0..vs.num_strips) |_| {
-                const hh = try parseStruct(Vtx.StripHeader, .little, r1);
-                std.debug.print("{}\n", .{hh});
-                const sl = indices.items[hh.index_offset .. hh.num_index + hh.index_offset];
-                const fl: Vtx.StripHeader.Flags = @enumFromInt(
-                    hh.flags,
-                );
-                switch (fl) {
-                    .trilist => {
-                        for (0..@divFloor(sl.len, 3)) |i| {
-                            const j = i * 3;
-                            try w.print("f {d} {d} {d}\n", .{
-                                vtt[sl[j]] + 1,
-                                vtt[sl[j + 1]] + 1,
-                                vtt[sl[j + 2]] + 1,
-                            });
-                        }
-                    },
-                    else => return error.broken,
-                }
-                //fbs.pos = start + hh.index_offset;
-                break; //do the first
-            }
-
+            print("{}\n", .{bp});
+            fbs.pos = st + bp.model_offset;
+            st = fbs.pos;
             {
-                fbs.pos = header_pos + hv1.materialReplacementListOffset;
-                const mathdr = try parseStruct(Vtx.MaterialReplacmentHdr, .little, r1);
-                std.debug.print("{}\n", .{mathdr});
-                for (0..mathdr.num) |_| {
-                    const start = fbs.pos;
-                    const rep = try parseStruct(Vtx.MaterialReplacment, .little, r1);
-                    std.debug.print("{}\n", .{rep});
-                    const str: [*c]const u8 = &slice[start + rep.name_offset];
-                    std.debug.print("{s}\n", .{str});
-                }
-            }
+                const mh = try parseStruct(Vtx.Model_h1, .little, r1);
+                //We only read the first lod for now
+                fbs.pos = st + mh.lod_offset;
+                print("{}\n", .{mh});
 
-            break; //Read the first only
+                st = fbs.pos;
+                var mesh_offset: u16 = 0;
+                {
+                    const mlod = try parseStruct(Vtx.ModelLod_h1, .little, r1);
+                    print("{}\n", .{mlod});
+                    fbs.pos = st + mlod.mesh_offset;
+                    const mesh_start = fbs.pos;
+                    for (0..mlod.num_mesh) |mi| {
+                        const MESH_SIZE = 9;
+                        st = mesh_start + mi * MESH_SIZE;
+                        fbs.pos = st;
+                        const mhh = try parseStruct(Vtx.Mesh_h1, .little, r1);
+
+                        print("{}\n", .{mhh});
+
+                        var strip_vert_count: u16 = 0;
+
+                        const mesh_h_start = st + mhh.sg_offset;
+                        for (0..mhh.num_strip_group) |si| {
+                            const STRIP_GROUP_SIZE = 25;
+                            st = mesh_h_start + si * STRIP_GROUP_SIZE;
+                            fbs.pos = st;
+                            const SG = try parseStruct(Vtx.StripGroup, .little, r1);
+                            print("{}\n", .{SG});
+
+                            const sg_start = st;
+
+                            var vert_table = std.ArrayList(u16).init(alloc);
+                            defer vert_table.deinit();
+                            fbs.pos = sg_start + SG.vert_offset;
+                            for (0..SG.num_verts) |_| {
+                                const v = try parseStruct(Vtx.Vertex, .little, r1);
+                                try vert_table.append(mesh_offset + v.orig_mesh_vert_id);
+                            }
+                            var indices = std.ArrayList(u16).init(alloc);
+                            try indices.ensureTotalCapacity(SG.num_index);
+                            defer indices.deinit();
+                            fbs.pos = sg_start + SG.index_offset;
+                            for (0..SG.num_index) |_| {
+                                try indices.append(try r1.readInt(u16, .little));
+                            }
+
+                            fbs.pos = sg_start + SG.strip_offset;
+                            st = fbs.pos;
+                            const vtt = vert_table.items;
+                            for (0..SG.num_strips) |sii| {
+                                try w.print("o mod_{d}_{d}_{d}\n", .{ mi, si, sii });
+                                const hh = try parseStruct(Vtx.StripHeader, .little, r1);
+                                print("{}\n", .{hh});
+                                const sl = indices.items[hh.index_offset .. hh.num_index + hh.index_offset];
+                                const vttt = vtt;
+                                //const vttt = vtt[hh.vert_offset .. hh.vert_offset + hh.num_verts];
+                                strip_vert_count += @intCast(hh.num_verts);
+                                const fl: Vtx.StripHeader.Flags = @enumFromInt(
+                                    hh.flags,
+                                );
+                                switch (fl) {
+                                    .trilist => {
+                                        for (0..@divFloor(sl.len, 3)) |i| {
+                                            const j = i * 3;
+                                            try mesh.indicies.appendSlice(&.{
+                                                vttt[sl[j + 2]],
+                                                vttt[sl[j + 1]],
+                                                vttt[sl[j]],
+                                            });
+                                            max = @max(max, vttt[sl[j]] + 1);
+                                            max = @max(max, vttt[sl[j + 1]] + 1);
+                                            max = @max(max, vttt[sl[j + 2]] + 1);
+                                            try w.print("f {d} {d} {d}\n", .{
+                                                vttt[sl[j]] + 1,
+                                                vttt[sl[j + 1]] + 1,
+                                                vttt[sl[j + 2]] + 1,
+                                            });
+                                        }
+                                    },
+                                    else => return error.broken,
+                                }
+                                //fbs.pos = start + hh.index_offset;
+                            }
+                        }
+                        mesh_offset += info.vert_offsets.items[mi];
+                    }
+
+                    //try r1.skipBytes(mhh.sg_offset - 9, .{}); //36 = mlod.offset - Sizeof(ModelLod_h1
+
+                    if (false) {
+                        fbs.pos = header_pos + hv1.materialReplacementListOffset;
+                        const mathdr = try parseStruct(Vtx.MaterialReplacmentHdr, .little, r1);
+                        print("{}\n", .{mathdr});
+                        for (0..mathdr.num) |_| {
+                            const start = fbs.pos;
+                            const rep = try parseStruct(Vtx.MaterialReplacment, .little, r1);
+                            print("{}\n", .{rep});
+                            const str: [*c]const u8 = &slice[start + rep.name_offset];
+                            print("{s}\n", .{str});
+                        }
+                    }
+                }
+                //break; //Read the first only
+            }
         }
     }
+    mesh.setData();
+    return mesh;
 }

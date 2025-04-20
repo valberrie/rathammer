@@ -45,6 +45,9 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
             inline for (s.fields) |f| {
                 const child_info = @typeInfo(f.type);
                 const do_many = child_info == .Pointer and child_info.Pointer.size == .Slice and child_info.Pointer.child != u8;
+                if (!do_many and f.default_value != null) {
+                    @field(ret, f.name) = @as(*const f.type, @alignCast(@ptrCast(f.default_value.?))).*;
+                }
                 const ar_c = if (do_many) child_info.Pointer.child else void;
                 var vec = std.ArrayList(ar_c).init(alloc);
                 for (value.obj.list.items) |*item| {

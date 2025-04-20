@@ -189,12 +189,57 @@ pub const StudioTexture = struct {
     unused2: [10]u32,
 };
 
-test "mdl" {
+pub const BodyPart = struct {
+    name_index: u32,
+    num_model: u32,
+    base: u32,
+    model_index: u32,
+};
+
+pub const Model = struct {
+    name: [64]u8,
+    type: u32,
+    bounding_rad: f32,
+    num_mesh: u32,
+    mesh_index: u32,
+    num_verts: u32,
+    vert_index: u32,
+    tangent_index: u32,
+
+    num_attach: u32,
+    attach_index: u32,
+    num_eyeballs: u32,
+    eyeball_index: u32,
+    unused: [8]u32,
+};
+
+pub const Mesh = struct {
+    material: i32,
+    model_index: i32,
+    num_vert: i32,
+    vert_offset: i32,
+    num_flex: i32,
+    flex_index: i32,
+
+    padding: [1]u32, //??????? Determined experimentally. Does not match what sdk public/studio.h says
+
+    mat_type: i32,
+    mat_param: i32,
+    mesh_id: i32,
+    center: MdlVector,
+
+    num_lod_verts: [8]i32,
+    unused: [8]i32,
+};
+
+//12 * 4 + 8 * 4
+
+pub const ModelInfo = struct {
+    vert_offsets: std.ArrayList(u16),
+};
+pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8) !ModelInfo {
     const log = std.log.scoped(.mdl);
-    const alloc = std.testing.allocator;
-    const in = try std.fs.cwd().openFile("mdl/out.mdl", .{});
-    const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
-    defer alloc.free(slice);
+    var info = ModelInfo{ .vert_offsets = std.ArrayList(u16).init(alloc) };
     var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
     const r = fbs.reader();
     const o1 = try parseStruct(Studiohdr_01, .little, r);
@@ -228,5 +273,31 @@ test "mdl" {
     for (0..h3.skinreference_count) |_| {
         std.debug.print("crass {d}\n", .{try r.readInt(i16, .little)});
     }
+
+    fbs.pos = h3.bodypart_offset;
+    for (0..h3.bodypart_count) |_| {
+        const o2 = fbs.pos;
+        const bp = try parseStruct(BodyPart, .little, r);
+        const st = fbs.pos;
+        defer fbs.pos = st;
+        std.debug.print("{}\n", .{bp});
+        fbs.pos = bp.model_index + o2;
+        for (0..bp.num_model) |_| {
+            const o3 = fbs.pos;
+            const mm = try parseStruct(Model, .little, r);
+            std.debug.print("{}\n", .{mm});
+            std.debug.print("{s}\n", .{@as([*c]const u8, @ptrCast(&mm.name[0]))});
+            const stt = fbs.pos;
+            defer fbs.pos = stt;
+            fbs.pos = mm.mesh_index + o3;
+            for (0..mm.num_mesh) |_| {
+                const mesh = try parseStruct(Mesh, .little, r);
+                std.debug.print("BIG DOG {d}\n", .{mesh.num_vert});
+                try info.vert_offsets.append(@intCast(mesh.num_vert));
+                std.debug.print("{}\n", .{mesh});
+            }
+        }
+    }
     //shortpSkinref( int i ) const { return (short *)(((byte *)this) + skinindex) + i; };
+    return info;
 }
