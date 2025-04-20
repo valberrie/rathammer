@@ -237,7 +237,7 @@ pub const Mesh = struct {
 pub const ModelInfo = struct {
     vert_offsets: std.ArrayList(u16),
 };
-pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8) !ModelInfo {
+pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !ModelInfo {
     const log = std.log.scoped(.mdl);
     var info = ModelInfo{ .vert_offsets = std.ArrayList(u16).init(alloc) };
     var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
@@ -249,29 +249,29 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8) !ModelInfo {
         log.warn("Unsupported mdl version {d} , attempting to parse", .{o1.version});
 
     const h2 = try parseStruct(Studiohdr_02, .little, r);
-    std.debug.print("Name: {s} {d}\n", .{ h2.name, h2.data_length });
-    std.debug.print("{}\n", .{h2});
+    print("Name: {s} {d}\n", .{ h2.name, h2.data_length });
+    print("{}\n", .{h2});
     const h3 = try parseStruct(Studiohdr_03, .little, r);
-    std.debug.print("{}\n", .{h3});
+    print("{}\n", .{h3});
 
     fbs.pos = h3.texture_offset;
     for (0..h3.texture_count) |_| {
         const start = fbs.pos;
         const tex = try parseStruct(StudioTexture, .little, r);
         const name: [*c]const u8 = &slice[start + tex.name_offset];
-        std.debug.print("{s} {}\n", .{ name, tex });
+        print("{s} {}\n", .{ name, tex });
     }
 
     fbs.pos = h3.texturedir_offset;
     for (0..h3.texturedir_count) |_| {
         const int = try r.readInt(u32, .little);
         const name: [*c]const u8 = &slice[int];
-        std.debug.print("NAME {s}\n", .{name});
+        print("NAME {s}\n", .{name});
     }
 
     fbs.pos = h3.skinreference_index;
     for (0..h3.skinreference_count) |_| {
-        std.debug.print("crass {d}\n", .{try r.readInt(i16, .little)});
+        print("crass {d}\n", .{try r.readInt(i16, .little)});
     }
 
     fbs.pos = h3.bodypart_offset;
@@ -280,21 +280,21 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8) !ModelInfo {
         const bp = try parseStruct(BodyPart, .little, r);
         const st = fbs.pos;
         defer fbs.pos = st;
-        std.debug.print("{}\n", .{bp});
+        print("{}\n", .{bp});
         fbs.pos = bp.model_index + o2;
         for (0..bp.num_model) |_| {
             const o3 = fbs.pos;
             const mm = try parseStruct(Model, .little, r);
-            std.debug.print("{}\n", .{mm});
-            std.debug.print("{s}\n", .{@as([*c]const u8, @ptrCast(&mm.name[0]))});
+            print("{}\n", .{mm});
+            print("{s}\n", .{@as([*c]const u8, @ptrCast(&mm.name[0]))});
             const stt = fbs.pos;
             defer fbs.pos = stt;
             fbs.pos = mm.mesh_index + o3;
             for (0..mm.num_mesh) |_| {
                 const mesh = try parseStruct(Mesh, .little, r);
-                std.debug.print("BIG DOG {d}\n", .{mesh.num_vert});
+                print("BIG DOG {d}\n", .{mesh.num_vert});
                 try info.vert_offsets.append(@intCast(mesh.num_vert));
-                std.debug.print("{}\n", .{mesh});
+                print("{}\n", .{mesh});
             }
         }
     }

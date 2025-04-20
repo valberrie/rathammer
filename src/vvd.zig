@@ -134,6 +134,9 @@ const Vtx = struct {
 
 fn dummyPrint(_: []const u8, _: anytype) void {}
 
+//it sucks but it works
+//there is very little version checking.
+//offsets are not bounds checked so this can crash at anytime
 pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name: []const u8) !graph.meshutil.Mesh {
     const mdln = blk: {
         if (std.mem.endsWith(u8, mdl_name, ".mdl"))
@@ -141,12 +144,14 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, vpkctx: *vpk.Context, mdl_name:
         break :blk mdl_name;
     };
 
-    const print = std.debug.print;
-    const info = try mdl.doItCrappy(alloc, try vpkctx.getFileTempFmt("mdl", "{s}", .{mdln}) orelse return error.nomdl);
+    const print = dummyPrint;
+    //const print = std.debug.print;
+    const info = try mdl.doItCrappy(alloc, try vpkctx.getFileTempFmt("mdl", "{s}", .{mdln}) orelse return error.nomdl, print);
     defer info.vert_offsets.deinit();
     var mesh = graph.meshutil.Mesh.init(alloc, 0);
-    const outf = try std.fs.cwd().createFile("out.obj", .{});
-    const w = outf.writer();
+    //const outf = try std.fs.cwd().createFile("out.obj", .{});
+    const w = std.io.null_writer;
+    //const w = outf.writer();
     {
         const slice_vvd = try vpkctx.getFileTempFmt("vvd", "{s}", .{mdln}) orelse return error.notFound;
         var fbs_vvd = std.io.FixedBufferStream([]const u8){ .buffer = slice_vvd, .pos = 0 };
