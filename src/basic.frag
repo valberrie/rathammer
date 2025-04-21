@@ -13,4 +13,7 @@ layout (binding = 0) uniform sampler2D diffuse_texture;
 void main() {
     //FragColor = vec4(in_texcoord, 1,1);
     FragColor = texture(diffuse_texture, in_texcoord) * in_color;
+    if (FragColor.a < 0.1){
+        discard;
+    }
 };

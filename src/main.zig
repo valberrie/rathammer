@@ -60,14 +60,14 @@ pub fn main() !void {
     loadctx.cb("Loading");
 
     const hl_root = try std.fs.cwd().openDir("hl2", .{});
-    //const ep_root = try std.fs.cwd().openDir("ep2", .{});
+    const ep_root = try std.fs.cwd().openDir("Half-Life 2/ep2", .{});
+    try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //try vpkctx.addDir(root, "tf2_textures.vpk");
     //try vpkctx.addDir(root, "tf2_misc.vpk");
 
     try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
     try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
     try editor.vpkctx.addDir(hl_root, "hl2_pak.vpk");
-    //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     if (false) {
         //canal_dock02a
         //models/props_junk/garbage_glassbottle001a

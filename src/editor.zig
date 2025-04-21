@@ -450,11 +450,12 @@ pub const Context = struct {
                         //y:left
                         //z: up
 
-                        //const x1 = M4.fromRotation(ent.angle.x(), Vec3.right());
+                        const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
                         const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
-                        //const z = M4.fromRotation(ent.angle.z(), Vec3.forward());
+                        const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
                         const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
-                        const mat3 = mat1.mul(y1);
+                        //zyx
+                        const mat3 = mat1.mul(z.mul(y1.mul(x1)));
                         //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
                         mod.drawSimple(view_3d, mat3, self.draw_state.basic_shader);
                     }
