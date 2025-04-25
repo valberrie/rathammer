@@ -59,9 +59,14 @@ pub fn main() !void {
     defer os9gui.deinit();
     loadctx.cb("Loading");
 
+    var redcube = try graph.meshutil.loadObj(alloc, try std.fs.cwd().openDir("/home/tony/Documents", .{}), "redcube.obj", 10);
+    for (redcube.meshes.items) |*mesh|
+        mesh.diffuse_texture = 0;
+    defer redcube.deinit();
+
     const hl_root = try std.fs.cwd().openDir("hl2", .{});
-    const ep_root = try std.fs.cwd().openDir("Half-Life 2/ep2", .{});
-    try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
+    //const ep_root = try std.fs.cwd().openDir("Half-Life 2/ep2", .{});
+    //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //try vpkctx.addDir(root, "tf2_textures.vpk");
     //try vpkctx.addDir(root, "tf2_misc.vpk");
 
@@ -221,6 +226,7 @@ pub fn main() !void {
         }
         const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, 64 * 512);
         my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
+        redcube.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
 
         //try draw.flush(null, editor.draw_state.cam3d);
 
