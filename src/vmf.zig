@@ -19,6 +19,7 @@ pub const VersionInfo = struct {
 pub const World = struct {
     id: u32,
     mapversion: u32,
+    skyname: []const u8,
     solid: []const Solid,
 };
 

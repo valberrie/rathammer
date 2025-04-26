@@ -11,6 +11,7 @@ const vpk = @import("vpk.zig");
 const fgd = @import("fgd.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
+const vtf = @import("vtf.zig");
 const Vec3 = V3f;
 const util3d = @import("util_3d.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
@@ -142,6 +143,9 @@ pub fn main() !void {
     var last_frame_grabbed: bool = true;
     var grab_mouse = true;
 
+    //var sky = try skybox.Skybox.init(alloc, "skybox/sky_day01_06", &editor.vpkctx);
+    //defer sky.deinit();
+
     win.grabMouse(true);
     while (!win.should_exit) {
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
@@ -150,7 +154,18 @@ pub fn main() !void {
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
         defer last_frame_grabbed = grab_mouse;
-        grab_mouse = (!win.keyHigh(.LSHIFT));
+
+        editor.edit_state.btn_x_trans = win.keystate(._1);
+        editor.edit_state.btn_y_trans = win.keystate(._2);
+        editor.edit_state.btn_z_trans = win.keystate(._3);
+        { //key stuff
+            if (editor.edit_state.btn_x_trans == .rising) {
+                editor.edit_state.trans_begin = win.mouse.pos;
+            }
+            editor.edit_state.trans_end = win.mouse.pos;
+        }
+
+        grab_mouse = !(win.keyHigh(.LSHIFT) or editor.edit_state.btn_x_trans == .high or editor.edit_state.btn_y_trans == .high or editor.edit_state.btn_z_trans == .high);
         if (last_frame_grabbed and !grab_mouse) { //Mouse just ungrabbed
             graph.c.SDL_WarpMouseInWindow(win.win, draw.screen_dimensions.x / 2, draw.screen_dimensions.y / 2);
         }
@@ -173,6 +188,9 @@ pub fn main() !void {
         graph.c.glEnable(graph.c.GL_BLEND);
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
         const split1 = winrect.split(.vertical, winrect.w * 0.8);
+        const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
+        my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
+        redcube.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
         try editor.draw3Dview(split1[0], &draw);
         try editor.drawInspector(split1[1], &os9gui);
         if (!last_frame_grabbed and split1[1].containsPoint(win.mouse.pos))
@@ -224,9 +242,6 @@ pub fn main() !void {
                 }
             }
         }
-        const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, 64 * 512);
-        my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
-        redcube.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
 
         //try draw.flush(null, editor.draw_state.cam3d);
 

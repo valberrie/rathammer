@@ -186,15 +186,35 @@ const VtfResource = struct {
 //
 //fn interpColor()
 
-fn mipResolution(mip_factor: u16, full_size: u32) u32 {
-    if (full_size % mip_factor != 0)
+fn mipResolution(mip_factor: u16, full_size: u32, is_comp: bool) u32 {
+    if (full_size % mip_factor != 0) {
+        if (!is_comp)
+            return 1;
         return 4;
+    }
     const r = full_size / mip_factor;
-    return @max(r, 4);
+    if (is_comp)
+        return @max(r, 4);
+    return r;
 }
 
+pub fn loadTexture(buf: []const u8, alloc: std.mem.Allocator) !graph.Texture {
+    const dat = try loadBuffer(buf, alloc);
+    defer alloc.free(dat.buffer);
+    return graph.Texture.initFromBuffer(dat.buffer, @intCast(dat.header.width), @intCast(dat.header.height), .{
+        .pixel_format = try dat.header.highres_fmt.toOpenGLFormat(),
+        //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+        .is_compressed = dat.header.highres_fmt.isCompressed(),
+    });
+}
+
+pub const VtfBuf = struct {
+    header: VtfHeader01,
+    buffer: []const u8, //Caller must free
+};
+
 const log = std.log.scoped(.vtf);
-pub fn loadTexture(buffer: []const u8, alloc: std.mem.Allocator) !graph.Texture {
+pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
     var fbs = std.io.FixedBufferStream([]const u8){ .buffer = buffer, .pos = 0 };
     var r = fbs.reader();
     const VtfSig = 0x00465456;
@@ -250,19 +270,33 @@ pub fn loadTexture(buffer: []const u8, alloc: std.mem.Allocator) !graph.Texture 
     for (0..h1.mipmap_count) |mi| {
         for (0..h1.frames) |fi| {
             const mip_factor = std.math.pow(u16, 2, h1.mipmap_count - @as(u16, @intCast(mi)) - 1);
-            const mw = mipResolution(mip_factor, h1.width);
-            const mh = mipResolution(mip_factor, h1.height);
-            const bytes = if (bpp * mw * mw % 8 != 0) 4 else @divExact(bpp * mw * mh, 8);
+            const is_comp = h1.highres_fmt.isCompressed();
+
+            const mw = mipResolution(mip_factor, h1.width, is_comp);
+            const mh = mipResolution(mip_factor, h1.height, is_comp);
+            const bytes = blk: {
+                if (bpp * mw * mw % 8 != 0) {
+                    if (is_comp)
+                        break :blk 1;
+                    break :blk 4;
+                }
+                break :blk @divExact(bpp * mw * mh, 8);
+            };
+            //const bytes = if (bpp * mw * mw % 8 != 0) 4 else @divExact(bpp * mw * mh, 8);
             if (mi == h1.mipmap_count - 1) {
                 const imgdata = try alloc.alloc(u8, bytes);
-                defer alloc.free(imgdata);
+                //defer alloc.free(imgdata);
                 try r.readNoEof(imgdata);
                 //GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-                return graph.Texture.initFromBuffer(imgdata, @intCast(mw), @intCast(mh), .{
-                    .pixel_format = try h1.highres_fmt.toOpenGLFormat(),
-                    //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                    .is_compressed = h1.highres_fmt.isCompressed(),
-                });
+                return .{
+                    .buffer = imgdata,
+                    .header = h1,
+                };
+                //return graph.Texture.initFromBuffer(imgdata, @intCast(mw), @intCast(mh), .{
+                //    .pixel_format = try h1.highres_fmt.toOpenGLFormat(),
+                //    //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+                //    .is_compressed = h1.highres_fmt.isCompressed(),
+                //});
             } else {
                 try r.skipBytes(bytes, .{});
             }

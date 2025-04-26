@@ -13,6 +13,7 @@ const vvd = @import("vvd.zig");
 const profile = @import("profile.zig");
 const Gui = graph.Gui;
 const StringStorage = @import("string.zig").StringStorage;
+const Skybox = @import("skybox.zig").Skybox;
 
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
@@ -94,6 +95,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
 const log = std.log.scoped(.rathammer);
 pub const Context = struct {
     const Self = @This();
+    const ButtonState = graph.SDL.ButtonState;
 
     csgctx: csg.Context,
     vpkctx: vpk.Context,
@@ -108,6 +110,7 @@ pub const Context = struct {
     icon_map: std.StringHashMap(graph.Texture),
 
     models: std.StringHashMap(vvd.MultiMesh),
+    skybox: Skybox,
 
     ecs: EcsT,
 
@@ -115,10 +118,16 @@ pub const Context = struct {
         draw_tools: bool = true,
         basic_shader: graph.glID,
         cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100 },
+        cam_far_plane: f32 = 512 * 64,
     },
 
     edit_state: struct {
         id: ?EcsT.Id = null,
+        btn_x_trans: ButtonState = .low,
+        btn_y_trans: ButtonState = .low,
+        btn_z_trans: ButtonState = .low,
+        trans_begin: graph.Vec2f = undefined,
+        trans_end: graph.Vec2f = undefined,
     } = .{},
 
     misc_gui_state: struct {
@@ -138,6 +147,7 @@ pub const Context = struct {
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
             .models = std.StringHashMap(vvd.MultiMesh).init(alloc),
+            .skybox = try Skybox.init(alloc),
 
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
 
@@ -159,6 +169,7 @@ pub const Context = struct {
         self.scratch_buf.deinit();
         self.csgctx.deinit();
         self.vpkctx.deinit();
+        self.skybox.deinit();
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {
             m.deinit();
@@ -265,6 +276,7 @@ pub const Context = struct {
         defer obj.deinit();
         loadctx.cb("vmf parsed");
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator());
+        try self.skybox.loadSky(vmf_.world.skyname, &self.vpkctx);
         {
             var gen_timer = try std.time.Timer.start();
             for (vmf_.world.solid, 0..) |solid, si| {
@@ -431,7 +443,7 @@ pub const Context = struct {
         defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
         const mat = graph.za.Mat4.identity();
 
-        const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, 1, 64 * 512);
+        const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, 1, self.draw_state.cam_far_plane);
 
         var it = self.meshmap.iterator();
         while (it.next()) |mesh| {
@@ -469,6 +481,18 @@ pub const Context = struct {
                         draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
                     }
                 }
+            }
+        }
+        { //sky stuff
+            const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
+            const c = graph.c;
+            c.glDepthMask(c.GL_FALSE);
+            c.glDepthFunc(c.GL_LEQUAL);
+            defer c.glDepthFunc(c.GL_LESS);
+            defer c.glDepthMask(c.GL_TRUE);
+
+            for (self.skybox.meshes.items, 0..) |*sk, i| {
+                sk.draw(.{ .texture = self.skybox.textures.items[i].id, .shader = self.skybox.shader }, view_3d, trans);
             }
         }
         try draw.flush(null, self.draw_state.cam3d);
@@ -517,6 +541,22 @@ pub const Context = struct {
             if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
                 draw.cube(bb.a, bb.b.sub(bb.a), 0xffffff77);
             }
+            if (try self.ecs.getOpt(id, .entity)) |ent| {
+                var orig = ent.origin;
+                if (self.edit_state.btn_x_trans == .high) {
+                    orig.data[0] += self.edit_state.trans_end.x - self.edit_state.trans_begin.x;
+                }
+                if (self.edit_state.btn_y_trans == .high) {
+                    orig.data[1] += self.edit_state.trans_end.x - self.edit_state.trans_begin.x;
+                }
+                if (self.edit_state.btn_z_trans == .high) {
+                    orig.data[2] += self.edit_state.trans_end.x - self.edit_state.trans_begin.x;
+                }
+                draw.line3D(orig, orig.add(Vec3.new(20, 0, 0)), 0xff0000ff);
+                draw.line3D(orig, orig.add(Vec3.new(0, 20, 0)), 0xff00ff);
+                draw.line3D(orig, orig.add(Vec3.new(0, 0, 20)), 0xffff);
+            }
+
             //id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
         }
         try draw.flush(null, self.draw_state.cam3d);
