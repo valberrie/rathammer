@@ -27,10 +27,9 @@ pub const Skybox = struct {
         //TODO clear out the old ones;
         const a = 1;
         const t = 1;
-        const b = 0.001; //Inset the uv sligtly to prevent seams from showing
+        const b = 0.006; //Inset the uv sligtly to prevent seams from showing
         //Maybe use clamptoedge?
         const o = 1 - b;
-        //const h = o * 2;
         const uvs = [4]graph.Vec2f{
             .{ .x = b, .y = b },
             .{ .x = o, .y = b },

@@ -1,6 +1,23 @@
 const std = @import("std");
 const graph = @import("graph");
 const V3f = graph.za.Vec3;
+const Vec3 = V3f;
+
+/// Returns {ray_origin, ray_direction}
+pub fn screenSpaceRay(win_dim: graph.Vec2f, screen_pos: graph.Vec2f, view: graph.za.Mat4) [2]Vec3 {
+    const sw = win_dim.smul(0.5); //1920 / 2
+    const pp = screen_pos.sub(sw).mul(sw.inv());
+    const m_o = Vec3.new(pp.x, -pp.y, 0);
+    const m_end = Vec3.new(pp.x, -pp.y, 1);
+    const inv = view.inv();
+    const ray_start = inv.mulByVec4(m_o.toVec4(1));
+    const ray_end = inv.mulByVec4(m_end.toVec4(1));
+    const ray_world = ray_start.toVec3().scale(1 / ray_start.w());
+    const ray_endw = ray_end.toVec3().scale(1 / ray_end.w());
+
+    const dir = ray_endw.sub(ray_world).norm();
+    return [2]Vec3{ ray_world, dir };
+}
 
 //Zig port of:
 //Fast Ray-Box Intersection

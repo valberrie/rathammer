@@ -15,6 +15,8 @@ const Gui = graph.Gui;
 const StringStorage = @import("string.zig").StringStorage;
 const Skybox = @import("skybox.zig").Skybox;
 
+const util3d = @import("util_3d.zig");
+
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
     tex: graph.Texture,
@@ -114,6 +116,8 @@ pub const Context = struct {
 
     ecs: EcsT,
 
+    temp_line_array: std.ArrayList([2]Vec3),
+
     draw_state: struct {
         draw_tools: bool = true,
         basic_shader: graph.glID,
@@ -123,6 +127,62 @@ pub const Context = struct {
 
     edit_state: struct {
         id: ?EcsT.Id = null,
+        lmouse: ButtonState = .low,
+
+        selected_axis: enum {
+            x,
+            y,
+            z,
+            xy,
+            xz,
+            yz,
+            none, //Must be last element
+
+            pub fn index(self: @This()) ?usize {
+                if (self == .none)
+                    return null;
+                return @intFromEnum(self);
+            }
+
+            pub fn setFromIndex(self: *@This(), index_: usize) void {
+                const info = @typeInfo(@This());
+                const count = info.Enum.fields.len;
+                if (index_ > count - 1)
+                    return; //Silentily fail
+                self.* = @enumFromInt(index_);
+            }
+
+            pub fn getPlaneNorm(self: @This(), norm: Vec3) Vec3 {
+                var n = norm;
+                switch (self) {
+                    else => {},
+                    .x => n.data[0] = 0,
+                    .y => n.data[1] = 0,
+                    .z => n.data[2] = 0,
+                    .xy => return Vec3.new(0, 0, 1),
+                    .xz => return Vec3.new(0, 1, 0),
+                    .yz => return Vec3.new(1, 0, 0),
+                }
+                return n.norm();
+            }
+
+            pub fn getDistance(self: @This(), dist: Vec3) Vec3 {
+                const V = Vec3.new;
+                return switch (self) {
+                    else => dist,
+                    .x => V(dist.x(), 0, 0),
+                    .y => V(0, dist.y(), 0),
+                    .z => V(0, 0, dist.z()),
+
+                    .xy => V(dist.x(), dist.y(), 0),
+                    .xz => V(dist.x(), 0, dist.z()),
+                    .yz => V(0, dist.y(), dist.z()),
+                };
+            }
+        } = .none,
+        selected_plane_norm: Vec3 = Vec3.zero(),
+        selected_start: Vec3 = Vec3.zero(),
+
         btn_x_trans: ButtonState = .low,
         btn_y_trans: ButtonState = .low,
         btn_z_trans: ButtonState = .low,
@@ -148,6 +208,7 @@ pub const Context = struct {
             .scratch_buf = std.ArrayList(u8).init(alloc),
             .models = std.StringHashMap(vvd.MultiMesh).init(alloc),
             .skybox = try Skybox.init(alloc),
+            .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
 
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
 
@@ -543,21 +604,109 @@ pub const Context = struct {
             }
             if (try self.ecs.getOpt(id, .entity)) |ent| {
                 var orig = ent.origin;
-                if (self.edit_state.btn_x_trans == .high) {
-                    orig.data[0] += self.edit_state.trans_end.x - self.edit_state.trans_begin.x;
+                //const sa = self.edit_state.selected_axis;
+                const gizmo_size = orig.distance(self.draw_state.cam3d.pos) / 64 * 20;
+                const oz = gizmo_size / 20;
+                const tr = oz * 3;
+                const pz = gizmo_size / 2;
+                const cube_orig = [_]Vec3{
+                    orig, //xyz
+                    orig,
+                    orig,
+                    orig.add(Vec3.new(tr, tr, 0)), //xy
+                    orig.add(Vec3.new(tr, 0, tr)), //xz
+                    orig.add(Vec3.new(0, tr, tr)), //yz
+                };
+                const cubes = [cube_orig.len]Vec3{
+                    Vec3.new(gizmo_size, oz, oz),
+                    Vec3.new(oz, gizmo_size, oz),
+                    Vec3.new(oz, oz, gizmo_size),
+                    Vec3.new(pz, pz, oz / 2), //xy
+                    Vec3.new(pz, oz / 2, pz), //xz
+                    Vec3.new(oz / 2, pz, pz), //xz
+                };
+                const colors = [cube_orig.len]u32{
+                    0xff0000ff,
+                    0xff00ff,
+                    0xffff,
+                    0xffff00ff,
+                    0xff00ffff,
+                    0xffffff,
+                };
+                for (cube_orig, 0..) |co, i| {
+                    draw.cube(co, cubes[i], colors[i]);
                 }
-                if (self.edit_state.btn_y_trans == .high) {
-                    orig.data[1] += self.edit_state.trans_end.x - self.edit_state.trans_begin.x;
+                //draw.cube(orig, cubes[0], if (sa == .x) 0xffff00ff else 0xff0000ff);
+                //draw.cube(orig, cubes[1], 0xff00ff);
+                //draw.cube(orig, cubes[2], 0xffff);
+                //draw.cube(cube_orig[3], cubes[3], 0xffff);
+
+                const cam_p = self.draw_state.cam3d.pos;
+                switch (self.edit_state.lmouse) {
+                    .rising => {
+                        const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
+                        //TODO do a depth test
+                        for (cubes, 0..) |cu, ci| {
+                            const co = cube_orig[ci];
+                            if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(cu))) |inter| {
+                                draw.point3D(inter, 0x7f_ff_ff_ff);
+                                self.edit_state.selected_axis.setFromIndex(ci);
+                                //Now that we intersect, e
+                                self.edit_state.selected_start = util3d.doesRayIntersectPlane(
+                                    rc[0],
+                                    rc[1],
+                                    orig,
+                                    self.edit_state.selected_axis.getPlaneNorm(cam_p.sub(orig)),
+                                    //self.edit_state.selected_plane_norm,
+                                ) orelse Vec3.zero(); //This should never be null
+                                break;
+                            }
+                        }
+                    },
+                    .high => {
+                        const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
+                        if (util3d.doesRayIntersectPlane(
+                            rc[0],
+                            rc[1],
+                            orig,
+                            self.edit_state.selected_axis.getPlaneNorm(cam_p.sub(orig)),
+                        )) |end| {
+                            const diff = end.sub(self.edit_state.selected_start);
+                            const orr = orig.add(self.edit_state.selected_axis.getDistance(diff));
+                            //const orr = orig.add(Vec3.new(diff.x(), 0, 0));
+                            draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
+                        }
+                    },
+                    .low => self.edit_state.selected_axis = .none,
+                    else => {},
                 }
-                if (self.edit_state.btn_z_trans == .high) {
-                    orig.data[2] += self.edit_state.trans_end.x - self.edit_state.trans_begin.x;
-                }
-                draw.line3D(orig, orig.add(Vec3.new(20, 0, 0)), 0xff0000ff);
-                draw.line3D(orig, orig.add(Vec3.new(0, 20, 0)), 0xff00ff);
-                draw.line3D(orig, orig.add(Vec3.new(0, 0, 20)), 0xffff);
+
+                //draw.line3D(orig, orig.add(Vec3.new(20, 0, 0)), 0xff0000ff);
+                //draw.line3D(orig, orig.add(Vec3.new(0, 20, 0)), 0xff00ff);
+                //draw.line3D(orig, orig.add(Vec3.new(0, 0, 20)), 0xffff);
             }
 
             //id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
+        }
+        if (self.edit_state.lmouse == .rising) {
+            //const win_dim = screen_area.dim();
+            //const sw = win_dim.smul(0.5); //1920 / 2
+            //const pp = self.edit_state.trans_begin.sub(sw).mul(sw.inv());
+            //const m_o = Vec3.new(pp.x, -pp.y, 0);
+            //const m_end = Vec3.new(pp.x, -pp.y, 1);
+            //const inv = view_3d.inv();
+            //const ray_start = inv.mulByVec4(m_o.toVec4(1));
+            //const ray_end = inv.mulByVec4(m_end.toVec4(1));
+            //const ray_world = ray_start.toVec3().scale(1 / ray_start.w());
+            //const ray_endw = ray_end.toVec3().scale(1 / ray_end.w());
+            //big dumb dumb?
+            const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
+
+            //std.debug.print("Putting {} {}\n", .{ ray_world, ray_endw });
+            try self.temp_line_array.append([2]Vec3{ rc[0], rc[0].add(rc[1].scale(1000)) });
+        }
+        for (self.temp_line_array.items) |tl| {
+            draw.line3D(tl[0], tl[1], 0xff00ffff);
         }
         try draw.flush(null, self.draw_state.cam3d);
     }
