@@ -1,6 +1,7 @@
 const std = @import("std");
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
+const Mat4 = graph.za.Mat4;
 const SparseSet = graph.SparseSet;
 const meshutil = graph.meshutil;
 const vmf = @import("vmf.zig");
@@ -14,16 +15,53 @@ const profile = @import("profile.zig");
 const Gui = graph.Gui;
 const StringStorage = @import("string.zig").StringStorage;
 const Skybox = @import("skybox.zig").Skybox;
+const Gizmo = @import("gizmo.zig").Gizmo;
 
 const util3d = @import("util_3d.zig");
 
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
+    const Self = @This();
     tex: graph.Texture,
     mesh: meshutil.Mesh,
+    contains: std.AutoHashMap(EcsT.Id, void),
+    is_dirty: bool = false,
     // Each batch needs to keep track of:
     // needs_rebuild
     // contained_solids:ent_id
+
+    pub fn deinit(self: *@This()) void {
+        self.mesh.deinit();
+        self.tex.deinit();
+        self.contains.deinit();
+    }
+
+    pub fn rebuildIfDirty(self: *Self, editor: *Context) !void {
+        if (self.is_dirty) {
+            self.is_dirty = false;
+            return self.rebuild(editor);
+        }
+    }
+
+    pub fn rebuild(self: *Self, editor: *Context) !void {
+        //Clear self.mesh
+        //For solid in contains:
+        //for side in solid:
+        //if side.texid == this.tex_id
+        //  rebuild
+        self.mesh.clearRetainingCapacity();
+        var it = self.contains.iterator();
+        while (it.next()) |id| {
+            if (try editor.ecs.getOptPtr(id.key_ptr.*, .solid)) |solid| {
+                for (solid.sides.items) |*side| {
+                    if (side.tex_id == self.tex.id) {
+                        try side.rebuild(self, editor);
+                    }
+                }
+            }
+        }
+        self.mesh.setData();
+    }
 };
 pub const MeshMap = std.StringHashMap(MeshBatch);
 pub const Side = struct {
@@ -36,16 +74,59 @@ pub const Side = struct {
     index: std.ArrayList(u32),
     u: UVaxis,
     v: UVaxis,
+    tex_id: c_uint = 0, //Used for drawing immediate
+    tw: i32 = 0,
+    th: i32 = 0,
     material: []const u8, //owned by somebody else
     pub fn deinit(self: @This()) void {
         self.verts.deinit();
         self.index.deinit();
+    }
+
+    pub fn rebuild(side: *@This(), batch: *MeshBatch, editor: *Context) !void {
+        side.tex_id = batch.tex.id;
+        side.tw = batch.tex.w;
+        side.th = batch.tex.h;
+        const mesh = &batch.mesh;
+        try mesh.vertices.ensureUnusedCapacity(side.verts.items.len);
+        try mesh.indicies.ensureUnusedCapacity(side.index.items.len);
+        const uvs = try editor.csgctx.calcUVCoords(
+            side.verts.items,
+            side.*,
+            @intCast(batch.tex.w),
+            @intCast(batch.tex.h),
+        );
+        const offset = mesh.vertices.items.len;
+        for (side.verts.items, 0..) |v, i| {
+            try mesh.vertices.append(.{
+                .x = v.x(),
+                .y = v.y(),
+                .z = v.z(),
+                .u = uvs[i].x,
+                .v = uvs[i].y,
+                .nx = 0,
+                .ny = 0,
+                .nz = 0,
+                .color = 0xffffffff,
+            });
+        }
+        for (side.index.items) |ind| {
+            try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
+        }
     }
 };
 
 pub const AABB = struct {
     a: Vec3 = Vec3.zero(),
     b: Vec3 = Vec3.zero(),
+
+    origin_offset: Vec3 = Vec3.zero(),
+
+    pub fn setFromOrigin(self: *@This(), new_origin: Vec3) void {
+        const delta = new_origin.sub(self.a.add(self.origin_offset));
+        self.a = self.a.add(delta);
+        self.b = self.b.add(delta);
+    }
 };
 
 pub const Solid = struct {
@@ -78,6 +159,81 @@ pub const Solid = struct {
         aabb.a = min;
         aabb.b = max;
     }
+
+    pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Context) !void {
+        //move all verts, recompute bounds
+        //for each batchid, call rebuild
+
+        for (self.sides.items) |*side| {
+            for (side.verts.items) |*vert| {
+                vert.* = vert.add(vec);
+            }
+            side.u.trans = side.u.trans - (vec.dot(side.u.axis)) / side.u.scale;
+            side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
+
+            const batch = editor.meshmap.getPtr(side.material) orelse continue;
+            batch.is_dirty = true;
+
+            //ensure this is in batch
+            try batch.contains.put(id, {});
+        }
+        const bb = try editor.ecs.getPtr(id, .bounding_box);
+        self.recomputeBounds(bb);
+
+        //TODO move this somewhere else and do it proper
+        var it = editor.meshmap.iterator();
+        while (it.next()) |mesh| {
+            try mesh.value_ptr.rebuildIfDirty(editor);
+        }
+    }
+
+    pub fn removeFromMeshMap(self: *Self, id: EcsT.Id, editor: *Context) !void {
+        for (self.sides.items) |side| {
+            const batch = editor.meshmap.getPtr(side.material) orelse continue;
+            batch.is_dirty = true;
+            _ = batch.contains.remove(id);
+        }
+        var it = editor.meshmap.iterator();
+        while (it.next()) |mesh| {
+            try mesh.value_ptr.rebuildIfDirty(editor);
+        }
+    }
+
+    pub fn drawImmediate(self: *Self, draw: *graph.ImmediateDrawingContext, editor: *Context, offset: Vec3) !void {
+        for (self.sides.items) |side| {
+            const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
+                .shader = draw.billboard_shader,
+                .texture = side.tex_id,
+                .camera = ._3d,
+            } }) catch unreachable).billboard;
+            try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
+            try batch.indicies.ensureUnusedCapacity(side.index.items.len);
+            const uvs = try editor.csgctx.calcUVCoords(
+                side.verts.items,
+                side,
+                @intCast(side.tw),
+                @intCast(side.th),
+            );
+            const ioffset = batch.vertices.items.len;
+            for (side.verts.items, 0..) |v, i| {
+                try batch.vertices.append(.{
+                    .pos = .{
+                        .x = v.x() + offset.x(),
+                        .y = v.y() + offset.y(),
+                        .z = v.z() + offset.z(),
+                    },
+                    .uv = .{
+                        .x = uvs[i].x,
+                        .y = uvs[i].y,
+                    },
+                    .color = 0xffffffff,
+                });
+            }
+            for (side.index.items) |ind| {
+                try batch.indicies.append(ind + @as(u32, @intCast(ioffset)));
+            }
+        }
+    }
 };
 
 pub const Entity = struct {
@@ -85,6 +241,36 @@ pub const Entity = struct {
     angle: Vec3,
     class: []const u8,
     model: ?[]const u8 = null,
+
+    pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *graph.ImmediateDrawingContext) void {
+        const ENT_RENDER_DIST = 64 * 10;
+        if (ent.model) |m| {
+            if (editor.models.getPtr(m)) |mod| {
+                const M4 = graph.za.Mat4;
+                //x: fwd
+                //y:left
+                //z: up
+
+                const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
+                const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
+                const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
+                const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
+                //zyx
+                const mat3 = mat1.mul(z.mul(y1.mul(x1)));
+                //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+            }
+        }
+        const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
+        if (dist > ENT_RENDER_DIST)
+            return;
+        if (editor.fgd_ctx.base.get(ent.class)) |base| {
+            if (editor.icon_map.get(base.iconsprite)) |isp| {
+                draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+                draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
+            }
+        }
+    }
 };
 
 const Comp = graph.Ecs.Component;
@@ -128,60 +314,9 @@ pub const Context = struct {
     edit_state: struct {
         id: ?EcsT.Id = null,
         lmouse: ButtonState = .low,
+        rmouse: ButtonState = .low,
 
-        selected_axis: enum {
-            x,
-            y,
-            z,
-            xy,
-            xz,
-            yz,
-            none, //Must be last element
-
-            pub fn index(self: @This()) ?usize {
-                if (self == .none)
-                    return null;
-                return @intFromEnum(self);
-            }
-
-            pub fn setFromIndex(self: *@This(), index_: usize) void {
-                const info = @typeInfo(@This());
-                const count = info.Enum.fields.len;
-                if (index_ > count - 1)
-                    return; //Silentily fail
-                self.* = @enumFromInt(index_);
-            }
-
-            pub fn getPlaneNorm(self: @This(), norm: Vec3) Vec3 {
-                var n = norm;
-                switch (self) {
-                    else => {},
-                    .x => n.data[0] = 0,
-                    .y => n.data[1] = 0,
-                    .z => n.data[2] = 0,
-                    .xy => return Vec3.new(0, 0, 1),
-                    .xz => return Vec3.new(0, 1, 0),
-                    .yz => return Vec3.new(1, 0, 0),
-                }
-                return n.norm();
-            }
-
-            pub fn getDistance(self: @This(), dist: Vec3) Vec3 {
-                const V = Vec3.new;
-                return switch (self) {
-                    else => dist,
-                    .x => V(dist.x(), 0, 0),
-                    .y => V(0, dist.y(), 0),
-                    .z => V(0, 0, dist.z()),
-
-                    .xy => V(dist.x(), dist.y(), 0),
-                    .xz => V(dist.x(), 0, dist.z()),
-                    .yz => V(0, dist.y(), dist.z()),
-                };
-            }
-        } = .none,
-        selected_plane_norm: Vec3 = Vec3.zero(),
-        selected_start: Vec3 = Vec3.zero(),
+        gizmo: Gizmo = .{},
 
         btn_x_trans: ButtonState = .low,
         btn_y_trans: ButtonState = .low,
@@ -239,7 +374,7 @@ pub const Context = struct {
 
         var it = self.meshmap.iterator();
         while (it.next()) |item| {
-            item.value_ptr.mesh.deinit();
+            item.value_ptr.deinit();
         }
         self.meshmap.deinit();
         self.name_arena.deinit();
@@ -259,34 +394,9 @@ pub const Context = struct {
             while (it.next()) |solid| {
                 const bb = (try self.ecs.getOptPtr(it.i, .bounding_box)) orelse continue;
                 solid.recomputeBounds(bb);
-                for (solid.sides.items) |side| {
+                for (solid.sides.items) |*side| {
                     const batch = self.meshmap.getPtr(side.material) orelse continue;
-                    const mesh = &batch.mesh;
-                    try mesh.vertices.ensureUnusedCapacity(side.verts.items.len);
-                    try mesh.indicies.ensureUnusedCapacity(side.index.items.len);
-                    const uvs = try self.csgctx.calcUVCoords(
-                        side.verts.items,
-                        side,
-                        @intCast(batch.tex.w),
-                        @intCast(batch.tex.h),
-                    );
-                    const offset = mesh.vertices.items.len;
-                    for (side.verts.items, 0..) |v, i| {
-                        try mesh.vertices.append(.{
-                            .x = v.x(),
-                            .y = v.y(),
-                            .z = v.z(),
-                            .u = uvs[i].x,
-                            .v = uvs[i].y,
-                            .nx = 0,
-                            .ny = 0,
-                            .nz = 0,
-                            .color = 0xffffffff,
-                        });
-                    }
-                    for (side.index.items) |ind| {
-                        try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
-                    }
+                    try side.rebuild(batch, self);
                 }
             }
         }
@@ -303,6 +413,7 @@ pub const Context = struct {
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
         const StrCtx = std.hash_map.StringContext;
+        const new = try self.ecs.createEntity();
         for (solid.side) |*side| {
             const res = try self.meshmap.getOrPutAdapted(side.material, StrCtx{});
             if (!res.found_existing) {
@@ -310,9 +421,11 @@ pub const Context = struct {
                 res.value_ptr.* = .{
                     .tex = try self.loadTextureFromVpk(side.material),
                     .mesh = undefined,
+                    .contains = std.AutoHashMap(EcsT.Id, void).init(self.alloc),
                 };
                 res.value_ptr.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.tex.id);
             }
+            try res.value_ptr.contains.put(new, {});
         }
         const newsolid = try self.csgctx.genMesh(
             solid.side,
@@ -320,7 +433,6 @@ pub const Context = struct {
             &self.string_storage,
             //@intCast(self.set.sparse.items.len),
         );
-        const new = try self.ecs.createEntity();
         try self.ecs.attach(new, .solid, newsolid);
         try self.ecs.attach(new, .bounding_box, .{});
         //try self.set.insert(newsolid.id, newsolid);
@@ -350,19 +462,24 @@ pub const Context = struct {
                     try self.putSolidFromVmf(solid);
                 {
                     const new = try self.ecs.createEntity();
+                    var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
                     if (ent.model.len > 0) {
-                        try self.loadModel(ent.model);
+                        if (self.loadModel(ent.model)) |m| {
+                            bb.origin_offset = m.hull_min.scale(-1);
+                            bb.a = m.hull_min;
+                            bb.b = m.hull_max;
+                        } else |err| {
+                            std.debug.print("Load model failed with {}\n", .{err});
+                        }
                     }
+                    bb.setFromOrigin(ent.origin.v);
                     try self.ecs.attach(new, .entity, .{
                         .origin = ent.origin.v,
                         .angle = ent.angles.v,
                         .class = try self.storeString(ent.classname),
                         .model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
                     });
-                    try self.ecs.attach(new, .bounding_box, .{
-                        .a = ent.origin.v.sub(Vec3.new(8, 8, 8)),
-                        .b = ent.origin.v.add(Vec3.new(8, 8, 8)),
-                    });
+                    try self.ecs.attach(new, .bounding_box, bb);
                 }
 
                 //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
@@ -378,17 +495,15 @@ pub const Context = struct {
         loadctx.cb("csg generated");
     }
 
-    pub fn loadModel(self: *Self, model_name: []const u8) !void {
-        if (self.models.get(model_name) != null) return;
+    pub fn loadModel(self: *Self, model_name: []const u8) !*vvd.MultiMesh {
+        if (self.models.getPtr(model_name)) |ptr| return ptr;
 
         const mod = try self.storeString(model_name);
 
-        const mesh = vvd.loadModelCrappy(self.alloc, mod, self) catch |err| {
-            std.debug.print("Load model failed {s} with {}\n", .{ model_name, err });
-
-            return;
-        };
+        const mesh = try vvd.loadModelCrappy(self.alloc, mod, self);
         try self.models.put(mod, mesh);
+        if (self.models.getPtr(model_name)) |ptr| return ptr;
+        unreachable;
     }
 
     pub fn storeString(self: *Self, string: []const u8) ![]const u8 {
@@ -489,7 +604,6 @@ pub const Context = struct {
     }
 
     pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext) !void {
-        const ENT_RENDER_DIST = 64 * 10;
         const x: i32 = @intFromFloat(screen_area.x);
         const y: i32 = @intFromFloat(screen_area.y);
         const w: i32 = @intFromFloat(screen_area.w);
@@ -516,32 +630,7 @@ pub const Context = struct {
         {
             var ent_it = self.ecs.iterator(.entity);
             while (ent_it.next()) |ent| {
-                if (ent.model) |m| {
-                    if (self.models.getPtr(m)) |mod| {
-                        const M4 = graph.za.Mat4;
-                        //x: fwd
-                        //y:left
-                        //z: up
-
-                        const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
-                        const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
-                        const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
-                        const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
-                        //zyx
-                        const mat3 = mat1.mul(z.mul(y1.mul(x1)));
-                        //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-                        mod.drawSimple(view_3d, mat3, self.draw_state.basic_shader);
-                    }
-                }
-                const dist = ent.origin.distance(self.draw_state.cam3d.pos);
-                if (dist > ENT_RENDER_DIST)
-                    continue;
-                if (self.fgd_ctx.base.get(ent.class)) |base| {
-                    if (self.icon_map.get(base.iconsprite)) |isp| {
-                        draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
-                        draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
-                    }
-                }
+                ent.drawEnt(self, view_3d, draw);
             }
         }
         { //sky stuff
@@ -558,6 +647,84 @@ pub const Context = struct {
         }
         try draw.flush(null, self.draw_state.cam3d);
 
+        if (self.edit_state.id) |id| {
+            if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+                if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
+                    const mid_i = bb.a.add(bb.b).scale(0.5);
+                    var mid = mid_i;
+                    const giz_active = self.edit_state.gizmo.handle(
+                        mid,
+                        &mid,
+                        self.draw_state.cam3d.pos,
+                        self.edit_state.lmouse,
+                        draw,
+                        screen_area.dim(),
+                        view_3d,
+                        self.edit_state.trans_begin,
+                    );
+
+                    for (solid.sides.items) |side| {
+                        const v = side.verts.items;
+                        if (side.verts.items.len > 0) {
+                            var last = side.verts.items[side.verts.items.len - 1];
+                            for (0..side.verts.items.len) |ti| {
+                                draw.line3D(last, v[ti], 0xff00ff);
+                                draw.point3D(v[ti], 0xff0000ff);
+                                last = v[ti];
+                            }
+                        }
+                    }
+                    if (giz_active == .rising) {
+                        try solid.removeFromMeshMap(id, self);
+                    }
+                    if (giz_active == .falling) {
+                        try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+                    }
+
+                    mid.data = @floor(mid.data); //Only allow integer coords
+                    if (giz_active == .high) {
+                        try solid.drawImmediate(
+                            draw,
+                            self,
+                            mid.sub(mid_i),
+                        );
+                        if (self.edit_state.rmouse == .rising) {
+                            const dist = mid.sub(mid_i);
+                            try solid.translate(id, dist, self);
+                            //Commit the changes
+                        }
+                    }
+                }
+            }
+            if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+                var orig = ent.origin;
+                const giz_active = self.edit_state.gizmo.handle(
+                    orig,
+                    &orig,
+                    self.draw_state.cam3d.pos,
+                    self.edit_state.lmouse,
+                    draw,
+                    screen_area.dim(),
+                    view_3d,
+                    self.edit_state.trans_begin,
+                );
+                if (giz_active == .high) {
+                    var orr = orig;
+                    orr.data = @floor(orr.data); //Only allow integer coords
+                    var copy_ent = ent.*;
+                    copy_ent.origin = orr;
+                    copy_ent.drawEnt(self, view_3d, draw);
+
+                    //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
+                    if (self.edit_state.rmouse == .rising) {
+                        //Commit the changes
+                        ent.origin = orr;
+                        const bb = try self.ecs.getPtr(id, .bounding_box);
+                        bb.setFromOrigin(orr);
+                    }
+                }
+            }
+        }
         graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
         //Crosshair
         const cw = 4;
@@ -580,134 +747,15 @@ pub const Context = struct {
         //        }
         //    }
         //}
-        if (self.edit_state.id) |id| {
-            if (try self.ecs.getOpt(id, .solid)) |solid| {
-                //const bb = &solid.bounding_box;
-                //draw.cube(bb.a, bb.b.sub(bb.a), 0xffffffff);
-                for (solid.sides.items) |side| {
-                    const v = side.verts.items;
-                    //for (0..@divFloor(side.verts.items.len, 2)) |ti| {
-                    //    draw.line3D(v[ti], v[ti + 1], 0xff00ff);
-                    //}
-                    if (side.verts.items.len > 0) {
-                        var last = side.verts.items[side.verts.items.len - 1];
-                        for (0..side.verts.items.len) |ti| {
-                            draw.line3D(last, v[ti], 0xff00ff);
-                            draw.point3D(v[ti], 0xff0000ff);
-                            last = v[ti];
-                        }
-                    }
-                }
-            }
-            if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
-                draw.cube(bb.a, bb.b.sub(bb.a), 0xffffff77);
-            }
-            if (try self.ecs.getOpt(id, .entity)) |ent| {
-                var orig = ent.origin;
-                //const sa = self.edit_state.selected_axis;
-                const gizmo_size = orig.distance(self.draw_state.cam3d.pos) / 64 * 20;
-                const oz = gizmo_size / 20;
-                const tr = oz * 3;
-                const pz = gizmo_size / 2;
-                const cube_orig = [_]Vec3{
-                    orig, //xyz
-                    orig,
-                    orig,
-                    orig.add(Vec3.new(tr, tr, 0)), //xy
-                    orig.add(Vec3.new(tr, 0, tr)), //xz
-                    orig.add(Vec3.new(0, tr, tr)), //yz
-                };
-                const cubes = [cube_orig.len]Vec3{
-                    Vec3.new(gizmo_size, oz, oz),
-                    Vec3.new(oz, gizmo_size, oz),
-                    Vec3.new(oz, oz, gizmo_size),
-                    Vec3.new(pz, pz, oz / 2), //xy
-                    Vec3.new(pz, oz / 2, pz), //xz
-                    Vec3.new(oz / 2, pz, pz), //xz
-                };
-                const colors = [cube_orig.len]u32{
-                    0xff0000ff,
-                    0xff00ff,
-                    0xffff,
-                    0xffff00ff,
-                    0xff00ffff,
-                    0xffffff,
-                };
-                for (cube_orig, 0..) |co, i| {
-                    draw.cube(co, cubes[i], colors[i]);
-                }
-                //draw.cube(orig, cubes[0], if (sa == .x) 0xffff00ff else 0xff0000ff);
-                //draw.cube(orig, cubes[1], 0xff00ff);
-                //draw.cube(orig, cubes[2], 0xffff);
-                //draw.cube(cube_orig[3], cubes[3], 0xffff);
+        //if (self.edit_state.lmouse == .rising) {
+        //    const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
 
-                const cam_p = self.draw_state.cam3d.pos;
-                switch (self.edit_state.lmouse) {
-                    .rising => {
-                        const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
-                        //TODO do a depth test
-                        for (cubes, 0..) |cu, ci| {
-                            const co = cube_orig[ci];
-                            if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(cu))) |inter| {
-                                draw.point3D(inter, 0x7f_ff_ff_ff);
-                                self.edit_state.selected_axis.setFromIndex(ci);
-                                //Now that we intersect, e
-                                self.edit_state.selected_start = util3d.doesRayIntersectPlane(
-                                    rc[0],
-                                    rc[1],
-                                    orig,
-                                    self.edit_state.selected_axis.getPlaneNorm(cam_p.sub(orig)),
-                                    //self.edit_state.selected_plane_norm,
-                                ) orelse Vec3.zero(); //This should never be null
-                                break;
-                            }
-                        }
-                    },
-                    .high => {
-                        const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
-                        if (util3d.doesRayIntersectPlane(
-                            rc[0],
-                            rc[1],
-                            orig,
-                            self.edit_state.selected_axis.getPlaneNorm(cam_p.sub(orig)),
-                        )) |end| {
-                            const diff = end.sub(self.edit_state.selected_start);
-                            const orr = orig.add(self.edit_state.selected_axis.getDistance(diff));
-                            //const orr = orig.add(Vec3.new(diff.x(), 0, 0));
-                            draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
-                        }
-                    },
-                    .low => self.edit_state.selected_axis = .none,
-                    else => {},
-                }
-
-                //draw.line3D(orig, orig.add(Vec3.new(20, 0, 0)), 0xff0000ff);
-                //draw.line3D(orig, orig.add(Vec3.new(0, 20, 0)), 0xff00ff);
-                //draw.line3D(orig, orig.add(Vec3.new(0, 0, 20)), 0xffff);
-            }
-
-            //id = (id + 1) % @as(u32, @intCast(editor.set.dense.items.len));
-        }
-        if (self.edit_state.lmouse == .rising) {
-            //const win_dim = screen_area.dim();
-            //const sw = win_dim.smul(0.5); //1920 / 2
-            //const pp = self.edit_state.trans_begin.sub(sw).mul(sw.inv());
-            //const m_o = Vec3.new(pp.x, -pp.y, 0);
-            //const m_end = Vec3.new(pp.x, -pp.y, 1);
-            //const inv = view_3d.inv();
-            //const ray_start = inv.mulByVec4(m_o.toVec4(1));
-            //const ray_end = inv.mulByVec4(m_end.toVec4(1));
-            //const ray_world = ray_start.toVec3().scale(1 / ray_start.w());
-            //const ray_endw = ray_end.toVec3().scale(1 / ray_end.w());
-            //big dumb dumb?
-            const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
-
-            //std.debug.print("Putting {} {}\n", .{ ray_world, ray_endw });
-            try self.temp_line_array.append([2]Vec3{ rc[0], rc[0].add(rc[1].scale(1000)) });
-        }
-        for (self.temp_line_array.items) |tl| {
-            draw.line3D(tl[0], tl[1], 0xff00ffff);
-        }
+        //    //std.debug.print("Putting {} {}\n", .{ ray_world, ray_endw });
+        //    try self.temp_line_array.append([2]Vec3{ rc[0], rc[0].add(rc[1].scale(1000)) });
+        //}
+        //for (self.temp_line_array.items) |tl| {
+        //    draw.line3D(tl[0], tl[1], 0xff00ffff);
+        //}
         try draw.flush(null, self.draw_state.cam3d);
     }
 

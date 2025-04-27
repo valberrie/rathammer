@@ -3,6 +3,7 @@ const com = @import("parse_common.zig");
 const parseStruct = com.parseStruct;
 const mdl = @import("mdl.zig");
 const graph = @import("graph");
+const Vec3 = graph.za.Vec3;
 const vpk = @import("vpk.zig");
 const edit = @import("editor.zig");
 
@@ -172,6 +173,8 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *
         try texts.append(0); //Put missing
     }
     var mmesh = MultiMesh.init(alloc);
+    mmesh.hull_min = info.hull_min;
+    mmesh.hull_max = info.hull_max;
     //var mesh = graph.meshutil.Mesh.init(alloc, 0);
     //const outf = try std.fs.cwd().createFile("out.obj", .{});
     const w = std.io.null_writer;
@@ -409,6 +412,9 @@ pub const MultiMesh = struct {
     vertices: std.ArrayList(MeshVert),
     meshes: std.ArrayList(Mesh),
     alloc: std.mem.Allocator,
+
+    hull_min: Vec3 = Vec3.zero(),
+    hull_max: Vec3 = Vec3.zero(),
 
     pub fn init(alloc: std.mem.Allocator) @This() {
         var ret = Self{

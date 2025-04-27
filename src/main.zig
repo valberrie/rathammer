@@ -159,6 +159,7 @@ pub fn main() !void {
         editor.edit_state.btn_y_trans = win.keystate(._2);
         editor.edit_state.btn_z_trans = win.keystate(._3);
         editor.edit_state.lmouse = win.mouse.left;
+        editor.edit_state.rmouse = win.mouse.right;
         if (editor.edit_state.lmouse == .rising) {}
         editor.edit_state.trans_begin = win.mouse.pos;
         { //key stuff

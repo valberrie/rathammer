@@ -1,13 +1,21 @@
 const std = @import("std");
 const com = @import("parse_common.zig");
 const parseStruct = com.parseStruct;
+const graph = @import("graph");
+const Vec3 = graph.za.Vec3;
 
-const MdlVector = struct { x: f32, y: f32, z: f32 };
+const MdlVector = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+    pub fn toZa(self: @This()) Vec3 {
+        return Vec3.new(self.x, self.y, self.z);
+    }
+};
 
 const MDL_MAGIC_STRING = "IDST";
 const Studiohdr_01 = struct {
     id: [4]u8,
-    //id: u32,
     version: u32,
 };
 
@@ -238,14 +246,11 @@ pub const ModelInfo = struct {
     vert_offsets: std.ArrayList(u16),
     texture_paths: std.ArrayList([]const u8),
     texture_names: std.ArrayList([]const u8),
+    hull_min: Vec3,
+    hull_max: Vec3,
 };
 pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !ModelInfo {
     const log = std.log.scoped(.mdl);
-    var info = ModelInfo{
-        .vert_offsets = std.ArrayList(u16).init(alloc),
-        .texture_paths = std.ArrayList([]const u8).init(alloc),
-        .texture_names = std.ArrayList([]const u8).init(alloc),
-    };
     var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
     const r = fbs.reader();
     const o1 = try parseStruct(Studiohdr_01, .little, r);
@@ -259,6 +264,14 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
     print("{}\n", .{h2});
     const h3 = try parseStruct(Studiohdr_03, .little, r);
     print("{}\n", .{h3});
+
+    var info = ModelInfo{
+        .vert_offsets = std.ArrayList(u16).init(alloc),
+        .texture_paths = std.ArrayList([]const u8).init(alloc),
+        .texture_names = std.ArrayList([]const u8).init(alloc),
+        .hull_min = h2.hull_min.toZa(),
+        .hull_max = h2.hull_max.toZa(),
+    };
 
     fbs.pos = h3.texture_offset;
     for (0..h3.texture_count) |_| {
