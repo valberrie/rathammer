@@ -1,7 +1,21 @@
 # Hammer editor.
 Wip
 
-![Imgui](doc/photo1.jpg)
+
+## Implemented: 
+* loading of vmf, vpk, vmt, vtf, mdl, vvd, gameinfo, fgd 
+* rendering of csg, models, point entities, skybox
+* translation of solids and entities
+* basic inspection
+
+
+## TODO
+* Writing vmf files.
+* Actual editing.
+* Much more
+* alpha sorting
+
+![d1_trainstation_01](doc/photo1.jpg)
 
 
 ### Running
