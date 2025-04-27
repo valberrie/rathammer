@@ -12,8 +12,10 @@ Wip
 ## TODO
 * Writing vmf files.
 * Actual editing.
-* Much more
 * alpha sorting
+* rotation gizmo.
+* translation and rotation about arbitrary axis
+* Much more
 
 ![d1_trainstation_01](doc/photo1.jpg)
 
@@ -32,3 +34,9 @@ ln path/to/steamapps/common/Team Fortress\ 2.
 
 Just symlink "steamapps/common/Half-Life 2" to this directory.
 ```
+
+## QOL TODO
+* multi threaded model loading
+* same for textures
+* both should be deferred, map should be visible as quickly as possible
+

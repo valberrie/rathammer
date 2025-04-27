@@ -28,9 +28,12 @@ fn readFromFile(alloc: std.mem.Allocator, dir: std.fs.Dir, filename: []const u8)
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
-    defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
+    try wrappedMain(alloc);
+    _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
+}
 
+pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     var arg_it = try std.process.argsWithAllocator(alloc);
     defer arg_it.deinit();
 

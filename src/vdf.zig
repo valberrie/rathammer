@@ -177,11 +177,16 @@ pub const VdfTokenIterator = struct {
                 //    }
                 //},
                 '\r', '\n' => {
-                    self.line_counter += 1;
+                    if (byte == '\n') //Cool
+                        self.line_counter += 1;
                     self.char_counter = 0;
 
                     switch (self.state) {
-                        .quoted_ident => return error.fucked,
+                        .quoted_ident => {}, //newlines in strings, okay, I guess.
+                        //.quoted_ident => {
+                        //    std.debug.print("ERR {d}:{d}\n", .{ self.line_counter, self.char_counter });
+                        //    return error.fucked;
+                        //},
                         .ident => {
                             self.state = .none;
                             return .{ .ident = self.token_buf.items };
@@ -254,6 +259,7 @@ pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
     var token_state: enum { key, value } = .key;
     var object_list = std.ArrayList(*Object).init(alloc);
 
+    errdefer std.debug.print("Error at {d}:{d}\n", .{ it.line_counter, it.char_counter });
     while (try it.next()) |token| {
         switch (token) {
             .object_begin => {
