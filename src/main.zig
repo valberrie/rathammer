@@ -19,6 +19,13 @@ const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const vvd = @import("vvd.zig");
 
+fn readFromFile(alloc: std.mem.Allocator, dir: std.fs.Dir, filename: []const u8) ![]const u8 {
+    const inf = try dir.openFile(filename, .{});
+    defer inf.close();
+    const slice = try inf.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    return slice;
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
     defer _ = gpa.detectLeaks();
@@ -30,6 +37,8 @@ pub fn main() !void {
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("vmf", .string, "vmf to load"),
+        Arg("basedir", .string, "base directory of the game"),
+        Arg("gameinfo", .string, "directory of gameinfo"),
         Arg("scale", .number, "scale the model"),
     }, &arg_it);
 
@@ -60,46 +69,75 @@ pub fn main() !void {
     defer os9gui.deinit();
     loadctx.cb("Loading");
 
-    var redcube = try graph.meshutil.loadObj(alloc, try std.fs.cwd().openDir("/home/tony/Documents", .{}), "redcube.obj", 10);
-    for (redcube.meshes.items) |*mesh|
-        mesh.diffuse_texture = 0;
-    defer redcube.deinit();
+    const base_dir = try std.fs.cwd().openDir(args.basedir orelse "Half-Life 2", .{});
+    const game_dir = try std.fs.cwd().openDir(args.gameinfo orelse "Half-Life 2/hl2", .{});
+    //const hl_root = try std.fs.cwd().openDir("hl2", .{});
+    {
+        const sl = try readFromFile(alloc, game_dir, "gameinfo.txt");
+        defer alloc.free(sl);
 
-    const hl_root = try std.fs.cwd().openDir("hl2", .{});
+        var obj = try vdf.parse(alloc, sl);
+        defer obj.deinit();
+
+        var aa = std.heap.ArenaAllocator.init(alloc);
+        defer aa.deinit();
+        const gameinfo = try vdf.fromValue(struct {
+            gameinfo: struct {
+                game: []const u8 = "",
+                title: []const u8 = "",
+                type: []const u8 = "",
+            } = .{},
+        }, &.{ .obj = &obj.value }, aa.allocator());
+        std.debug.print("Loading gameinfo {s} {s}\n", .{ gameinfo.gameinfo.game, gameinfo.gameinfo.title });
+
+        const fs = try obj.value.recursiveGetFirst(&.{ "gameinfo", "filesystem", "searchpaths" });
+        if (fs != .obj)
+            return error.invalidGameInfo;
+        //vdf.printObj(fs.obj.*, 0);
+        const startsWith = std.mem.startsWith;
+        for (fs.obj.list.items) |entry| {
+            var tk = std.mem.tokenizeScalar(u8, entry.key, '+');
+            while (tk.next()) |t| {
+                if (std.mem.eql(u8, t, "game")) {
+                    if (entry.val != .literal)
+                        return error.invalidGameInfo;
+                    const l = entry.val.literal;
+                    var path = l;
+                    const dir = base_dir;
+                    if (startsWith(u8, l, "|")) {
+                        const end = std.mem.indexOfScalar(u8, l[1..], '|') orelse return error.invalidGameInfo;
+                        const special = l[1..end];
+                        _ = special; //TODO actually use this?
+                        //std.debug.print("Special {s}\n", .{special});
+                        //          + 2 because end is offset by 1
+                        path = l[end + 2 ..];
+                        //if(std.mem.eql(u8, special, "all_source_engine_paths"))
+                        //dir = game_dir;
+                    }
+                    //std.debug.print("Path {s}\n", .{path});
+                    if (std.mem.endsWith(u8, path, ".vpk")) {
+                        if ((std.mem.indexOfPos(u8, path, 0, "sound") == null)) {
+                            editor.vpkctx.addDir(dir, path) catch |err| {
+                                std.debug.print("Failed to mount vpk {s} with error {}\n", .{ path, err });
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     //const ep_root = try std.fs.cwd().openDir("Half-Life 2/ep2", .{});
     //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
     //try vpkctx.addDir(root, "tf2_textures.vpk");
     //try vpkctx.addDir(root, "tf2_misc.vpk");
 
-    try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
-    try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
-    try editor.vpkctx.addDir(hl_root, "hl2_pak.vpk");
-    if (false) {
-        //canal_dock02a
-        //models/props_junk/garbage_glassbottle001a
-        const n = "kleiner";
-        const names = [_][]const u8{ n, n, n ++ ".dx90" };
-        const path = "models";
-        const exts = [_][]const u8{ "mdl", "vvd", "vtx" };
-        var buf: [256]u8 = undefined;
-        var bb = std.io.FixedBufferStream([]u8){ .pos = 0, .buffer = &buf };
-        for (exts, 0..) |ext, i| {
-            bb.pos = 0;
-            const outd = try std.fs.cwd().openDir("mdl", .{});
-            const vmt = (try editor.vpkctx.getFileTemp(ext, path, names[i])) orelse {
-                std.debug.print("Can't find {s}\n", .{ext});
-                continue;
-            };
-            try bb.writer().print("out.{s}", .{ext});
-            const mdl = try outd.createFile(bb.getWritten(), .{});
-            try mdl.writer().writeAll(vmt);
-        }
-        //std.debug.print("{s}\n", .{(try editor.vpkctx.getFileTemp("vmt", "materials/concrete", "concretewall071a")) orelse ""});
-        return;
-    }
+    //try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
+    //try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
+    //try editor.vpkctx.addDir(hl_root, "hl2_pak.vpk");
 
-    var my_mesh = try vvd.loadModelCrappy(alloc, "models/kleiner", &editor);
-    defer my_mesh.deinit();
+    //var my_mesh = try vvd.loadModelCrappy(alloc, "models/kleiner", &editor);
+    //defer my_mesh.deinit();
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
@@ -192,9 +230,8 @@ pub fn main() !void {
         graph.c.glEnable(graph.c.GL_BLEND);
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
         const split1 = winrect.split(.vertical, winrect.w * 0.8);
-        const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
-        my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
-        redcube.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
+        //const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
+        //my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
         try editor.draw3Dview(split1[0], &draw);
         try editor.drawInspector(split1[1], &os9gui);
         if (!last_frame_grabbed and split1[1].containsPoint(win.mouse.pos))

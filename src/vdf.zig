@@ -29,6 +29,19 @@ pub const Object = struct {
         }
         return null;
     }
+
+    /// Given a string: first.second.third
+    pub fn recursiveGetFirst(self: *Self, keys: []const []const u8) !KV.Value {
+        if (keys.len == 0)
+            return error.invalid;
+
+        const n = self.getFirst(keys[0]) orelse return error.invalidKey;
+        if (keys.len == 1)
+            return n;
+        if (n != .obj)
+            return error.invalid;
+        return n.obj.recursiveGetFirst(keys[1..]);
+    }
 };
 
 pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Allocator) !T {
@@ -278,7 +291,7 @@ pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
     return .{ .value = root_object, .arena = arena, .obj_list = object_list };
 }
 
-fn printObj(obj: Object, ident: usize) void {
+pub fn printObj(obj: Object, ident: usize) void {
     const ident_buf = [_]u8{' '} ** 100;
     const buf = ident_buf[0 .. ident * 4];
 
