@@ -9,16 +9,11 @@ Large TODO
 support vmt
 support models
 draw billboarded entity (light, soundscape etc)
-how are editor entities defined per game? something about gameinfo.txt
 
-Tools a layer above direct manipulation of solids.
-Sketchup esque?
 
 TODO
 use the deferred renderer so it looks real pretty
 Decide on how editing will be handled
-port the cube editor thing from ratgraph and get basic recompute of meshes working.
-Render the skybox !
 
 Rendering:
 what is a good way to submit meshes?
@@ -47,10 +42,15 @@ body parts:
 sheesh
 
 
-we can either work on: 
-model loading
-3d editing.
-2d editing.
-drawing interface
-gui kv's
+DRAWING the models we are moving.
+poly component (transformable?)
 
+common things
+gizmo to translate and rotate
+deletion
+grouping?
+
+Distinct objects
+csg solids
+models
+misc entities

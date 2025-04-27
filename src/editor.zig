@@ -681,15 +681,15 @@ pub const Context = struct {
                         try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
                     }
 
-                    mid.data = @floor(mid.data); //Only allow integer coords
                     if (giz_active == .high) {
+                        var dist = mid.sub(mid_i);
+                        dist.data = @floor(dist.data); //Only integer
                         try solid.drawImmediate(
                             draw,
                             self,
-                            mid.sub(mid_i),
+                            dist,
                         );
                         if (self.edit_state.rmouse == .rising) {
-                            const dist = mid.sub(mid_i);
                             try solid.translate(id, dist, self);
                             //Commit the changes
                         }
