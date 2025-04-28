@@ -469,7 +469,7 @@ pub const Context = struct {
                             bb.a = m.hull_min;
                             bb.b = m.hull_max;
                         } else |err| {
-                            std.debug.print("Load model failed with {}\n", .{err});
+                            log.err("Load model failed with {}", .{err});
                         }
                     }
                     bb.setFromOrigin(ent.origin.v);

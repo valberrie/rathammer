@@ -11,6 +11,7 @@ const vpk = @import("vpk.zig");
 const fgd = @import("fgd.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
+const gameinfo = @import("gameinfo.zig");
 const vtf = @import("vtf.zig");
 const Vec3 = V3f;
 const util3d = @import("util_3d.zig");
@@ -18,20 +19,6 @@ const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const vvd = @import("vvd.zig");
-
-fn readFromFile(alloc: std.mem.Allocator, dir: std.fs.Dir, filename: []const u8) ![]const u8 {
-    const inf = try dir.openFile(filename, .{});
-    defer inf.close();
-    const slice = try inf.reader().readAllAlloc(alloc, std.math.maxInt(usize));
-    return slice;
-}
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
-    const alloc = gpa.allocator();
-    try wrappedMain(alloc);
-    _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
-}
 
 pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     var arg_it = try std.process.argsWithAllocator(alloc);
@@ -74,73 +61,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
 
     const base_dir = try std.fs.cwd().openDir(args.basedir orelse "Half-Life 2", .{});
     const game_dir = try std.fs.cwd().openDir(args.gameinfo orelse "Half-Life 2/hl2", .{});
-    //const hl_root = try std.fs.cwd().openDir("hl2", .{});
-    {
-        const sl = try readFromFile(alloc, game_dir, "gameinfo.txt");
-        defer alloc.free(sl);
 
-        var obj = try vdf.parse(alloc, sl);
-        defer obj.deinit();
-
-        var aa = std.heap.ArenaAllocator.init(alloc);
-        defer aa.deinit();
-        const gameinfo = try vdf.fromValue(struct {
-            gameinfo: struct {
-                game: []const u8 = "",
-                title: []const u8 = "",
-                type: []const u8 = "",
-            } = .{},
-        }, &.{ .obj = &obj.value }, aa.allocator());
-        std.debug.print("Loading gameinfo {s} {s}\n", .{ gameinfo.gameinfo.game, gameinfo.gameinfo.title });
-
-        const fs = try obj.value.recursiveGetFirst(&.{ "gameinfo", "filesystem", "searchpaths" });
-        if (fs != .obj)
-            return error.invalidGameInfo;
-        //vdf.printObj(fs.obj.*, 0);
-        const startsWith = std.mem.startsWith;
-        for (fs.obj.list.items) |entry| {
-            var tk = std.mem.tokenizeScalar(u8, entry.key, '+');
-            while (tk.next()) |t| {
-                if (std.mem.eql(u8, t, "game")) {
-                    if (entry.val != .literal)
-                        return error.invalidGameInfo;
-                    const l = entry.val.literal;
-                    var path = l;
-                    const dir = base_dir;
-                    if (startsWith(u8, l, "|")) {
-                        const end = std.mem.indexOfScalar(u8, l[1..], '|') orelse return error.invalidGameInfo;
-                        const special = l[1..end];
-                        _ = special; //TODO actually use this?
-                        //std.debug.print("Special {s}\n", .{special});
-                        //          + 2 because end is offset by 1
-                        path = l[end + 2 ..];
-                        //if(std.mem.eql(u8, special, "all_source_engine_paths"))
-                        //dir = game_dir;
-                    }
-                    //std.debug.print("Path {s}\n", .{path});
-                    if (std.mem.endsWith(u8, path, ".vpk")) {
-                        if ((std.mem.indexOfPos(u8, path, 0, "sound") == null)) {
-                            editor.vpkctx.addDir(dir, path) catch |err| {
-                                std.debug.print("Failed to mount vpk {s} with error {}\n", .{ path, err });
-                            };
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    //const ep_root = try std.fs.cwd().openDir("Half-Life 2/ep2", .{});
-    //try editor.vpkctx.addDir(ep_root, "ep2_pak.vpk");
-    //try vpkctx.addDir(root, "tf2_textures.vpk");
-    //try vpkctx.addDir(root, "tf2_misc.vpk");
-
-    //try editor.vpkctx.addDir(hl_root, "hl2_misc.vpk");
-    //try editor.vpkctx.addDir(hl_root, "hl2_textures.vpk");
-    //try editor.vpkctx.addDir(hl_root, "hl2_pak.vpk");
-
-    //var my_mesh = try vvd.loadModelCrappy(alloc, "models/kleiner", &editor);
-    //defer my_mesh.deinit();
+    try gameinfo.loadGameinfo(alloc, base_dir, game_dir, &editor.vpkctx);
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
@@ -293,4 +215,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         try draw.end(editor.draw_state.cam3d);
         win.swap();
     }
+}
+
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
+    const alloc = gpa.allocator();
+    try wrappedMain(alloc);
+    _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
 }

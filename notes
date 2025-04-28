@@ -54,3 +54,8 @@ Distinct objects
 csg solids
 models
 misc entities
+
+BRUSH EDITING.
+once a brush is selected,
+selected one of its faces, and put a gizmo on it.
+is it really that simple?
