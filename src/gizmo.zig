@@ -29,6 +29,8 @@ pub const Gizmo = struct {
             self.* = @enumFromInt(index_);
         }
 
+        /// Return the normal of the plane which the mouse raycast's should be checked against for a given axis.
+        /// The plane passes through the gizmo origin.
         pub fn getPlaneNorm(self: @This(), norm: Vec3) Vec3 {
             var n = norm;
             switch (self) {
@@ -43,6 +45,7 @@ pub const Gizmo = struct {
             return n.norm();
         }
 
+        /// Given a point on the plane returned from getPlaneNorm, return the distance that should be considered.
         pub fn getDistance(self: @This(), dist: Vec3) Vec3 {
             const V = Vec3.new;
             return switch (self) {
@@ -58,6 +61,7 @@ pub const Gizmo = struct {
         }
     } = .none,
 
+    //TODO make this work with a rotated gizmo
     /// Returns true if the gizmo is being dragged
     pub fn handle(
         self: *@This(),

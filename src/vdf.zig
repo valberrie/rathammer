@@ -322,21 +322,3 @@ test {
     defer val.deinit();
     printObj(val.value, 0);
 }
-
-//fn outObjSolid(solid: []const Solid, alloc: std.mem.Allocator, w: anytype, ind_offset: *usize) !void {
-//    for (solid) |sol| {
-//        const mesh = try genMesh(sol.side, alloc);
-//        try w.print("o obj_{d}\n", .{sol.id});
-//        for (mesh.verts.items) |vert| {
-//            try w.print("v {d} {d} {d}\n", .{ vert.data[0], vert.data[1], vert.data[2] });
-//        }
-//        const len = @divExact(mesh.index.items.len, 3);
-//        const ind = mesh.index.items;
-//        for (0..len) |i| {
-//            const b = i * 3;
-//            try w.print("f {d} {d} {d}\n", .{ ind[b] + ind_offset.*, ind[b + 1] + ind_offset.*, ind[b + 2] + ind_offset.* });
-//        }
-//        ind_offset.* += mesh.verts.items.len;
-//        //std.debug.print("{s}\n", .{sid.material});
-//    }
-//}
