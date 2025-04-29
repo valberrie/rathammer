@@ -6,6 +6,7 @@ const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const vpk = @import("vpk.zig");
 const edit = @import("editor.zig");
+const load_pool = @import("texture_load_thread.zig");
 
 const VVD_MAGIC_STRING = "IDSV";
 const MAX_LODS = 8;
@@ -136,10 +137,21 @@ const Vtx = struct {
 
 fn dummyPrint(_: []const u8, _: anytype) void {}
 
+pub const MeshDeferred = struct {
+    mesh: *MultiMesh, //Allocated, so vtables work
+    res_id: vpk.VpkResId,
+};
+
 //it sucks but it works
 //there is very little version checking.
 //offsets are not bounds checked so this can crash at anytime
-pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *edit.Context) !MultiMesh {
+pub fn loadModelCrappy(
+    pool_state: *load_pool.Context,
+    res_id: vpk.VpkResId,
+    mdl_name: []const u8,
+    vpkctx: *vpk.Context,
+) !MeshDeferred {
+    const thread_state = try pool_state.getState();
     const mdln = blk: {
         if (std.mem.endsWith(u8, mdl_name, ".mdl"))
             break :blk mdl_name[0 .. mdl_name.len - 4];
@@ -147,8 +159,14 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *
     };
 
     const print = dummyPrint;
+    const alloc = pool_state.alloc;
     //const print = std.debug.print;
-    const info = try mdl.doItCrappy(alloc, try editor.vpkctx.getFileTempFmt("mdl", "{s}", .{mdln}) orelse return error.nomdl, print);
+    const info = try mdl.doItCrappy(pool_state.alloc, try vpkctx.getFileTempFmtBuf(
+        "mdl",
+        "{s}",
+        .{mdln},
+        &thread_state.vtf_file_buffer,
+    ) orelse return error.nomdl, print);
     defer {
         for (info.texture_paths.items) |item|
             alloc.free(item);
@@ -160,19 +178,24 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *
     }
     var scratch = std.ArrayList(u8).init(alloc);
     defer scratch.deinit();
-    var texts = std.ArrayList(c_uint).init(alloc);
+    var texts = std.ArrayList(vpk.VpkResId).init(alloc);
     defer texts.deinit();
     outer: for (info.texture_names.items) |tname| {
         inner: for (info.texture_paths.items) |tpath| {
             scratch.clearRetainingCapacity();
             try scratch.writer().print("{s}{s}", .{ tpath, tname });
-            const tex = editor.loadTextureFromVpkFail(scratch.items) catch continue :inner;
-            try texts.append(tex.id);
+            const tex_res_id = try vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{scratch.items}) orelse continue :inner;
+            //const tex = editor.loadTextureFromVpk(scratch.items) catch continue :inner;
+            try pool_state.loadTexture(scratch.items, tex_res_id, vpkctx);
+            //const tex = editor.loadTextureFromVpkFail(scratch.items) catch continue :inner;
+            try texts.append(tex_res_id);
             continue :outer;
         }
         try texts.append(0); //Put missing
     }
-    var mmesh = MultiMesh.init(alloc);
+    var mmesh = try pool_state.alloc.create(MultiMesh);
+    errdefer pool_state.alloc.destroy(mmesh);
+    mmesh.* = MultiMesh.init(alloc);
     mmesh.hull_min = info.hull_min;
     mmesh.hull_max = info.hull_max;
     //var mesh = graph.meshutil.Mesh.init(alloc, 0);
@@ -180,7 +203,12 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *
     const w = std.io.null_writer;
     //const w = outf.writer();
     {
-        const slice_vvd = try editor.vpkctx.getFileTempFmt("vvd", "{s}", .{mdln}) orelse return error.notFound;
+        const slice_vvd = try vpkctx.getFileTempFmtBuf(
+            "vvd",
+            "{s}",
+            .{mdln},
+            &thread_state.vtf_file_buffer,
+        ) orelse return error.notFound;
         var fbs_vvd = std.io.FixedBufferStream([]const u8){ .buffer = slice_vvd, .pos = 0 };
         const r = fbs_vvd.reader();
         const h1 = try parseStruct(VertexHeader_1, .little, r);
@@ -243,7 +271,13 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *
     }
     {
         //Load vtx
-        const slice = try editor.vpkctx.getFileTempFmt("vtx", "{s}.dx90", .{mdln}) orelse return error.broken;
+        const slice = try vpkctx.getFileTempFmtBuf(
+            "vtx",
+            "{s}.dx90",
+            .{mdln},
+
+            &thread_state.vtf_file_buffer,
+        ) orelse return error.broken;
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
         const r1 = fbs.reader();
         const header_pos = fbs.pos;
@@ -374,8 +408,12 @@ pub fn loadModelCrappy(alloc: std.mem.Allocator, mdl_name: []const u8, editor: *
             }
         }
     }
-    mmesh.setData();
-    return mmesh;
+    //mmesh.initGl();
+    //mmesh.setData();
+    for (texts.items) |tex| {
+        try pool_state.addNotify(tex, &mmesh.notify_vt);
+    }
+    return .{ .mesh = mmesh, .res_id = res_id };
 }
 
 //One vertex buffer, many index buffers
@@ -389,17 +427,15 @@ pub const MultiMesh = struct {
         ebo: c_uint,
         vao: c_uint,
         texture_id: c_uint,
+        tex_res_id: vpk.VpkResId,
 
-        pub fn init(alloc: std.mem.Allocator, tex: c_uint) @This() {
-            var ebo: c_uint = 0;
-            var vao: c_uint = 0;
-            c.glGenBuffers(1, &ebo);
-            c.glGenVertexArrays(1, &vao);
+        pub fn init(alloc: std.mem.Allocator, tex_res: vpk.VpkResId) @This() {
             return .{
-                .ebo = ebo,
-                .vao = vao,
+                .ebo = 0,
+                .vao = 0,
                 .indicies = std.ArrayList(u16).init(alloc),
-                .texture_id = tex,
+                .texture_id = 0,
+                .tex_res_id = tex_res,
             };
         }
 
@@ -416,32 +452,49 @@ pub const MultiMesh = struct {
     hull_min: Vec3 = Vec3.zero(),
     hull_max: Vec3 = Vec3.zero(),
 
+    notify_vt: load_pool.DeferredNotifyVtable,
+
     pub fn init(alloc: std.mem.Allocator) @This() {
-        var ret = Self{
+        return Self{
             .vertices = std.ArrayList(MeshVert).init(alloc),
             .meshes = std.ArrayList(Mesh).init(alloc),
             .alloc = alloc,
             .vbo = 0,
+            .notify_vt = .{ .notify_fn = &notify },
         };
 
-        c.glGenBuffers(1, &ret.vbo);
+        //c.glGenBuffers(1, &ret.vbo);
 
         //GL.bufferData(c.GL_ELEMENT_ARRAY_BUFFER, ret.ebo, u32, ret.indicies.items);
-        return ret;
     }
 
-    pub fn newMesh(self: *Self, tex: c_uint) !*Mesh {
+    pub fn notify(vt: *load_pool.DeferredNotifyVtable, id: vpk.VpkResId, editor: *edit.Context) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("notify_vt", vt));
+        for (self.meshes.items) |*mesh| {
+            if (mesh.tex_res_id == id) {
+                mesh.texture_id = (editor.textures.get(id) orelse continue).id;
+            }
+        }
+    }
+
+    /// This should only be called from the active gl thread;
+    pub fn initGl(self: *Self) void {
+        c.glGenBuffers(1, &self.vbo);
+        for (self.meshes.items) |*mesh| {
+            c.glGenBuffers(1, &mesh.ebo);
+            c.glGenVertexArrays(1, &mesh.vao);
+            GL.floatVertexAttrib(mesh.vao, self.vbo, 0, 3, MeshVert, "x"); //XYZ
+            GL.floatVertexAttrib(mesh.vao, self.vbo, 1, 2, MeshVert, "u"); //RGBA
+            GL.floatVertexAttrib(mesh.vao, self.vbo, 2, 3, MeshVert, "nx"); //RGBA
+            GL.intVertexAttrib(mesh.vao, self.vbo, 3, 1, MeshVert, "color", c.GL_UNSIGNED_INT);
+            GL.floatVertexAttrib(mesh.vao, self.vbo, 4, 3, MeshVert, "tx");
+        }
+
+        self.setData();
+    }
+
+    pub fn newMesh(self: *Self, tex: vpk.VpkResId) !*Mesh {
         try self.meshes.append(Mesh.init(self.alloc, tex));
-        const ret = &self.meshes.items[self.meshes.items.len - 1];
-
-        GL.floatVertexAttrib(ret.vao, self.vbo, 0, 3, MeshVert, "x"); //XYZ
-        GL.floatVertexAttrib(ret.vao, self.vbo, 1, 2, MeshVert, "u"); //RGBA
-        GL.floatVertexAttrib(ret.vao, self.vbo, 2, 3, MeshVert, "nx"); //RGBA
-        GL.intVertexAttrib(ret.vao, self.vbo, 3, 1, MeshVert, "color", c.GL_UNSIGNED_INT);
-        GL.floatVertexAttrib(ret.vao, self.vbo, 4, 3, MeshVert, "tx");
-
-        //c.glBindVertexArray(ret.vao);
-        //GL.bufferData(c.GL_ARRAY_BUFFER, ret.vbo, MeshVert, ret.vertices.items);
         return &self.meshes.items[self.meshes.items.len - 1];
     }
 

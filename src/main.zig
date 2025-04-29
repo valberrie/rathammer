@@ -227,18 +227,18 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                 //todo
                 //defer loading of all textures
 
-                const modname = model_array.items[selected_index];
+                //const modname = model_array.items[selected_index];
                 name_buf.clearRetainingCapacity();
-                try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
+                //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
                 draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
                 //const name = "models/props_wasteland/exterior_fence002d.mdl";
-                if (editor.models.getPtr(name_buf.items)) |mod| {
-                    const view = model_cam.getMatrix(1, 1, 64 * 512);
-                    const mat = graph.za.Mat4.identity();
-                    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
-                } else {
-                    //std.debug.print("Could not find the model!\n", .{});
-                }
+                //if (editor.models.getPtr(name_buf.items)) |mod| {
+                //    const view = model_cam.getMatrix(1, 1, 64 * 512);
+                //    const mat = graph.za.Mat4.identity();
+                //    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
+                //} else {
+                //    //std.debug.print("Could not find the model!\n", .{});
+                //}
                 try draw.flush(null, model_cam);
             }
         }

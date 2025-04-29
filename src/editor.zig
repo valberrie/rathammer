@@ -30,6 +30,8 @@ pub const MeshBatch = struct {
     mesh: meshutil.Mesh,
     contains: std.AutoHashMap(EcsT.Id, void),
     is_dirty: bool = false,
+
+    notify_vt: texture_load_thread.DeferredNotifyVtable,
     // Each batch needs to keep track of:
     // needs_rebuild
     // contained_solids:ent_id
@@ -44,6 +46,15 @@ pub const MeshBatch = struct {
         if (self.is_dirty) {
             self.is_dirty = false;
             return self.rebuild(editor);
+        }
+    }
+
+    pub fn notify(vt: *texture_load_thread.DeferredNotifyVtable, id: vpk.VpkResId, editor: *Context) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("notify_vt", vt));
+        if (id == self.tex_res_id) {
+            self.tex = (editor.textures.get(id) orelse return);
+            self.mesh.diffuse_texture = self.tex.id;
+            self.is_dirty = true;
         }
     }
 
@@ -67,7 +78,7 @@ pub const MeshBatch = struct {
         self.mesh.setData();
     }
 };
-pub const MeshMap = std.StringHashMap(MeshBatch);
+pub const MeshMap = std.StringHashMap(*MeshBatch);
 pub const Side = struct {
     pub const UVaxis = struct {
         axis: Vec3,
@@ -176,10 +187,10 @@ pub const Solid = struct {
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
 
             const batch = editor.meshmap.getPtr(side.material) orelse continue;
-            batch.is_dirty = true;
+            batch.*.is_dirty = true;
 
             //ensure this is in batch
-            try batch.contains.put(id, {});
+            try batch.*.contains.put(id, {});
         }
         const bb = try editor.ecs.getPtr(id, .bounding_box);
         self.recomputeBounds(bb);
@@ -187,19 +198,19 @@ pub const Solid = struct {
         //TODO move this somewhere else and do it proper
         var it = editor.meshmap.iterator();
         while (it.next()) |mesh| {
-            try mesh.value_ptr.rebuildIfDirty(editor);
+            try mesh.value_ptr.*.rebuildIfDirty(editor);
         }
     }
 
     pub fn removeFromMeshMap(self: *Self, id: EcsT.Id, editor: *Context) !void {
         for (self.sides.items) |side| {
             const batch = editor.meshmap.getPtr(side.material) orelse continue;
-            batch.is_dirty = true;
-            _ = batch.contains.remove(id);
+            batch.*.is_dirty = true;
+            _ = batch.*.contains.remove(id);
         }
         var it = editor.meshmap.iterator();
         while (it.next()) |mesh| {
-            try mesh.value_ptr.rebuildIfDirty(editor);
+            try mesh.value_ptr.*.rebuildIfDirty(editor);
         }
     }
 
@@ -245,24 +256,27 @@ pub const Entity = struct {
     angle: Vec3,
     class: []const u8,
     model: ?[]const u8 = null,
+    model_id: ?vpk.VpkResId = null,
 
     pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx) void {
         const ENT_RENDER_DIST = 64 * 10;
-        if (ent.model) |m| {
-            if (editor.models.getPtr(m)) |mod| {
-                const M4 = graph.za.Mat4;
-                //x: fwd
-                //y:left
-                //z: up
+        if (ent.model_id) |m| {
+            if (editor.models.getPtr(m)) |o_mod| {
+                if (o_mod.*) |mod| {
+                    const M4 = graph.za.Mat4;
+                    //x: fwd
+                    //y:left
+                    //z: up
 
-                const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
-                const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
-                const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
-                const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
-                //zyx
-                const mat3 = mat1.mul(z.mul(y1.mul(x1)));
-                //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-                mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+                    const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
+                    const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
+                    const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
+                    const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
+                    //zyx
+                    const mat3 = mat1.mul(z.mul(y1.mul(x1)));
+                    //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                    mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+                }
             }
         }
         _ = draw;
@@ -303,7 +317,7 @@ pub const Context = struct {
     icon_map: std.StringHashMap(graph.Texture),
 
     textures: std.AutoHashMap(vpk.VpkResId, graph.Texture),
-    models: std.StringHashMap(vvd.MultiMesh),
+    models: std.AutoHashMap(vpk.VpkResId, ?*vvd.MultiMesh),
     skybox: Skybox,
 
     ecs: EcsT,
@@ -362,12 +376,11 @@ pub const Context = struct {
             .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
-            .models = std.StringHashMap(vvd.MultiMesh).init(alloc),
+            .models = std.AutoHashMap(vpk.VpkResId, ?*vvd.MultiMesh).init(alloc),
             .texture_load_ctx = try texture_load_thread.Context.init(alloc),
             .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
             .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
-
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
 
             .draw_state = .{
@@ -392,14 +405,18 @@ pub const Context = struct {
         self.skybox.deinit();
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {
-            m.deinit();
+            if (m.*) |mm| {
+                mm.deinit();
+                self.alloc.destroy(mm);
+            }
         }
         self.models.deinit();
         self.textures.deinit();
 
         var it = self.meshmap.iterator();
         while (it.next()) |item| {
-            item.value_ptr.deinit();
+            item.value_ptr.*.deinit();
+            self.alloc.destroy(item.value_ptr.*);
         }
         self.meshmap.deinit();
         self.name_arena.deinit();
@@ -412,8 +429,8 @@ pub const Context = struct {
         { //First clear
             var mesh_it = self.meshmap.valueIterator();
             while (mesh_it.next()) |batch| {
-                batch.mesh.vertices.clearRetainingCapacity();
-                batch.mesh.indicies.clearRetainingCapacity();
+                batch.*.mesh.vertices.clearRetainingCapacity();
+                batch.*.mesh.indicies.clearRetainingCapacity();
             }
         }
         { //Iterate all solids and add
@@ -423,14 +440,14 @@ pub const Context = struct {
                 solid.recomputeBounds(bb);
                 for (solid.sides.items) |*side| {
                     const batch = self.meshmap.getPtr(side.material) orelse continue;
-                    try side.rebuild(batch, self);
+                    try side.rebuild(batch.*, self);
                 }
             }
         }
         { //Set all the gl data
             var it = self.meshmap.valueIterator();
             while (it.next()) |item| {
-                item.mesh.setData();
+                item.*.mesh.setData();
             }
         }
         mesh_build_time.end();
@@ -446,15 +463,19 @@ pub const Context = struct {
             if (!res.found_existing) {
                 res.key_ptr.* = try self.storeString(side.material);
                 const tex = try self.loadTextureFromVpk(side.material);
-                res.value_ptr.* = .{
+                res.value_ptr.* = try self.alloc.create(MeshBatch);
+                res.value_ptr.*.* = .{
+                    .notify_vt = .{ .notify_fn = &MeshBatch.notify },
                     .tex = tex.tex,
                     .tex_res_id = tex.res_id,
                     .mesh = undefined,
                     .contains = std.AutoHashMap(EcsT.Id, void).init(self.alloc),
                 };
-                res.value_ptr.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.tex.id);
+                res.value_ptr.*.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.*.tex.id);
+
+                try self.texture_load_ctx.addNotify(tex.res_id, &res.value_ptr.*.notify_vt);
             }
-            try res.value_ptr.contains.put(new, {});
+            try res.value_ptr.*.contains.put(new, {});
         }
         const newsolid = try self.csgctx.genMesh(
             solid.side,
@@ -494,19 +515,22 @@ pub const Context = struct {
                     var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
                     if (ent.model.len > 0) {
                         if (self.loadModel(ent.model)) |m| {
-                            bb.origin_offset = m.hull_min.scale(-1);
-                            bb.a = m.hull_min;
-                            bb.b = m.hull_max;
+                            _ = m;
+                            //bb.origin_offset = m.hull_min.scale(-1);
+                            //bb.a = m.hull_min;
+                            //bb.b = m.hull_max;
                         } else |err| {
                             log.err("Load model failed with {}", .{err});
                         }
                     }
                     bb.setFromOrigin(ent.origin.v);
+                    const model_id = self.modelIdFromName(ent.model) catch null;
                     try self.ecs.attach(new, .entity, .{
                         .origin = ent.origin.v,
                         .angle = ent.angles.v,
                         .class = try self.storeString(ent.classname),
                         .model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
+                        .model_id = model_id,
                     });
                     try self.ecs.attach(new, .bounding_box, bb);
                 }
@@ -524,14 +548,34 @@ pub const Context = struct {
         loadctx.cb("csg generated");
     }
 
-    pub fn loadModel(self: *Self, model_name: []const u8) !*vvd.MultiMesh {
-        if (self.models.getPtr(model_name)) |ptr| return ptr;
+    fn modelIdFromName(self: *Self, mdl_name: []const u8) !?vpk.VpkResId {
+        const mdln = blk: {
+            if (std.mem.endsWith(u8, mdl_name, ".mdl"))
+                break :blk mdl_name[0 .. mdl_name.len - 4];
+            break :blk mdl_name;
+        };
+
+        return try self.vpkctx.getResourceIdFmt("mdl", "{s}", .{mdln});
+    }
+
+    pub fn loadModel(self: *Self, model_name: []const u8) !vpk.VpkResId {
+        const mod = try self.storeString(model_name);
+        const res_id = try self.modelIdFromName(mod) orelse return error.noMdl;
+        if (self.models.get(res_id)) |_| return res_id; //Don't load model twice!
+        try self.models.put(res_id, null);
+        try self.texture_load_ctx.loadModel(res_id, mod, &self.vpkctx);
+        return res_id;
+    }
+
+    pub fn loadModelOld(self: *Self, model_name: []const u8) !*vvd.MultiMesh {
+        const res_id = try self.modelIdFromName(model_name) orelse return error.noMdl;
+        if (self.models.getPtr(res_id)) |ptr| return ptr;
 
         const mod = try self.storeString(model_name);
 
         const mesh = try vvd.loadModelCrappy(self.alloc, mod, self);
-        try self.models.put(mod, mesh);
-        if (self.models.getPtr(model_name)) |ptr| return ptr;
+        try self.models.put(res_id, mesh);
+        if (self.models.getPtr(res_id)) |ptr| return ptr;
         unreachable;
     }
 
@@ -597,81 +641,67 @@ pub const Context = struct {
         return .{ .tex = missingTexture(), .res_id = res_id };
     }
 
-    pub fn loadTextureFromVpkOld(self: *Self, material: []const u8) !graph.Texture {
-        const err = in: {
-            //const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
-            if (try self.vpkctx.getFileTempFmt("vmt", "materials/{s}", .{material})) |tt| {
-                var obj = try vdf.parse(self.alloc, tt);
-                defer obj.deinit();
-                //All vmt are a single root object with a shader name as key
-                if (obj.value.list.items.len > 0) {
-                    const fallback_keys = [_][]const u8{
-                        "$basetexture", "%tooltexture",
-                    };
-                    const ob = obj.value.list.items[0].val;
-                    switch (ob) {
-                        .obj => |o| {
-                            for (fallback_keys) |fbkey| {
-                                if (o.getFirst(fbkey)) |base| {
-                                    if (base == .literal) {
-                                        break :in vtf.loadTexture(
-                                            (self.vpkctx.getFileTempFmt(
-                                                "vtf",
-                                                "materials/{s}",
-                                                .{base.literal},
-                                            ) catch |err| break :in err) orelse {
-                                                break :in error.notfound;
-                                            },
-                                            self.alloc,
-                                        ) catch |err| break :in err;
-                                    }
-                                }
-                            }
-                        },
-                        else => {},
-                    }
-                }
-            }
-
-            break :in vtf.loadTexture(
-                (self.vpkctx.getFileTempFmt("vtf", "materials/{s}", .{material}) catch |err| break :in err) orelse break :in error.notfoundGeneric,
-                //(self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
-                self.alloc,
-            ) catch |err| break :in err;
-        };
-        return err catch |e| {
-            log.warn("{} for {s}", .{ e, material });
-            return missingTexture();
-        };
-        //defer bmp.deinit();
-        //break :blk graph.Texture.initFromBitmap(bmp, .{});
-    }
-
     fn camRay(self: *Self) [2]Vec3 {
         return [_]Vec3{ self.draw_state.cam3d.pos, self.draw_state.cam3d.front };
     }
 
     pub fn update(self: *Self) !void {
-        var count: usize = 0;
+        const MAX_UPDATE_TIME = std.time.ns_per_ms * 10;
+        var timer = try std.time.Timer.start();
+        //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
+        var tcount: usize = 0;
         {
             self.texture_load_ctx.completed_mutex.lock();
             defer self.texture_load_ctx.completed_mutex.unlock();
-            count = self.texture_load_ctx.completed.items.len;
+            tcount = self.texture_load_ctx.completed.items.len;
+            var num_rm_tex: usize = 0;
             for (self.texture_load_ctx.completed.items) |*completed| {
                 const texture = try completed.data.deinitToTexture(self.texture_load_ctx.alloc);
                 try self.textures.put(completed.vpk_res_id, texture);
-            }
-            self.texture_load_ctx.completed.clearRetainingCapacity();
-        }
-        if (count > 0) {
-            std.debug.print("RETEXTURE ING {d}\n", .{count});
-            var mesh_it = self.meshmap.iterator();
-            while (mesh_it.next()) |mesh| {
-                if (mesh.value_ptr.tex_res_id == 0)
-                    continue; //missing tex
+                self.texture_load_ctx.notifyTexture(completed.vpk_res_id, self);
 
-                mesh.value_ptr.tex = self.textures.get(mesh.value_ptr.tex_res_id) orelse continue;
-                mesh.value_ptr.mesh.diffuse_texture = mesh.value_ptr.tex.id;
+                num_rm_tex += 1;
+                const elapsed = timer.read();
+                if (elapsed > MAX_UPDATE_TIME)
+                    break;
+            }
+            //self.texture_load_ctx.completed.clearRetainingCapacity();
+            for (0..num_rm_tex) |_|
+                _ = self.texture_load_ctx.completed.orderedRemove(0);
+
+            var num_removed: usize = 0;
+            for (self.texture_load_ctx.completed_models.items) |*completed| {
+                var model = completed.mesh;
+                model.initGl();
+                try self.models.put(completed.res_id, model);
+                num_removed += 1;
+
+                const elapsed = timer.read();
+                if (elapsed > MAX_UPDATE_TIME)
+                    break;
+            }
+            for (0..num_removed) |_|
+                _ = self.texture_load_ctx.completed_models.orderedRemove(0);
+            //self.texture_load_ctx.completed_models.clearRetainingCapacity();
+        }
+        if (tcount > 0) {
+            //std.debug.print("RETEXTURE ING {d}\n", .{count});
+            //var mesh_it = self.meshmap.iterator();
+            //while (mesh_it.next()) |mesh| {
+            //    if (mesh.value_ptr.*.tex_res_id == 0)
+            //        continue; //missing tex
+
+            //    const old = mesh.value_ptr.*.tex.id;
+            //    mesh.value_ptr.*.tex = self.textures.get(mesh.value_ptr.*.tex_res_id) orelse continue;
+            //    mesh.value_ptr.*.mesh.diffuse_texture = mesh.value_ptr.*.tex.id;
+            //    if (mesh.value_ptr.*.tex.id != old) {
+            //        //We need to rebuild to ensure uvs are correct
+            //        try mesh.value_ptr.*.rebuild(self);
+            //    }
+            //}
+            var it = self.meshmap.iterator();
+            while (it.next()) |mesh| {
+                try mesh.value_ptr.*.rebuildIfDirty(self);
             }
         }
     }
@@ -701,7 +731,7 @@ pub const Context = struct {
         while (it.next()) |mesh| {
             if (!self.draw_state.draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
                 continue;
-            mesh.value_ptr.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
+            mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
         }
 
         {

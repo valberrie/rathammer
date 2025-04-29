@@ -3,6 +3,8 @@ const Mutex = std.Thread.Mutex;
 const vtf = @import("vtf.zig");
 const vpk = @import("vpk.zig");
 const vdf = @import("vdf.zig");
+const vvd = @import("vvd.zig");
+const edit = @import("editor.zig");
 
 //TODO allow custom number of worker threads
 
@@ -18,6 +20,14 @@ pub const ThreadState = struct {
     }
 };
 
+pub const DeferredNotifyVtable = struct {
+    notify_fn: *const fn (self: *@This(), id: vpk.VpkResId, editor: *edit.Context) void,
+
+    pub fn notify(self: *@This(), id: vpk.VpkResId, editor: *edit.Context) void {
+        self.notify_fn(self, id, editor);
+    }
+};
+
 pub const CompletedVtfItem = struct { data: vtf.VtfBuf, vpk_res_id: vpk.VpkResId };
 const log = std.log.scoped(.vtf);
 
@@ -29,9 +39,13 @@ pub const Context = struct {
     map_mutex: Mutex = .{},
 
     completed: std.ArrayList(CompletedVtfItem),
+    completed_models: std.ArrayList(vvd.MeshDeferred),
     completed_mutex: Mutex = .{},
 
     pool: *std.Thread.Pool,
+
+    texture_notify: std.AutoHashMap(vpk.VpkResId, std.ArrayList(*DeferredNotifyVtable)),
+    notify_mutex: Mutex = .{},
 
     pub fn init(alloc: std.mem.Allocator) !@This() {
         const pool = try alloc.create(std.Thread.Pool);
@@ -40,7 +54,9 @@ pub const Context = struct {
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),
             .alloc = alloc,
             .completed = std.ArrayList(CompletedVtfItem).init(alloc),
+            .completed_models = std.ArrayList(vvd.MeshDeferred).init(alloc),
             .pool = pool,
+            .texture_notify = std.AutoHashMap(vpk.VpkResId, std.ArrayList(*DeferredNotifyVtable)).init(alloc),
         };
     }
 
@@ -62,15 +78,54 @@ pub const Context = struct {
         try self.completed.append(item);
     }
 
+    pub fn notifyTexture(self: *@This(), id: vpk.VpkResId, editor: *edit.Context) void {
+        self.notify_mutex.lock();
+        defer self.notify_mutex.unlock();
+
+        if (self.texture_notify.getPtr(id)) |list| {
+            for (list.items) |vt| {
+                vt.notify(id, editor);
+            }
+            list.deinit();
+            _ = self.texture_notify.remove(id);
+        }
+    }
+
+    //TODO be really carefull when using this, ensure any added vt's are alive
+    pub fn addNotify(self: *@This(), id: vpk.VpkResId, vt: *DeferredNotifyVtable) !void {
+        self.notify_mutex.lock();
+        defer self.notify_mutex.unlock();
+        if (self.texture_notify.getPtr(id)) |list| {
+            try list.append(vt);
+            return;
+        }
+
+        var new_list = std.ArrayList(*DeferredNotifyVtable).init(self.alloc);
+        try new_list.append(vt);
+        try self.texture_notify.put(id, new_list);
+    }
+
     pub fn deinit(self: *@This()) void {
         self.pool.deinit();
         self.map_mutex.lock();
         self.completed_mutex.lock();
+        {
+            var it = self.texture_notify.valueIterator();
+            while (it.next()) |tx|
+                tx.deinit();
+            self.texture_notify.deinit();
+        }
         var it = self.map.iterator();
         while (it.next()) |item| {
             item.value_ptr.*.deinit();
             self.alloc.destroy(item.value_ptr.*);
         }
+        for (self.completed_models.items) |*item| {
+            item.mesh.deinit();
+            self.alloc.destroy(item.mesh);
+        }
+        self.completed_models.deinit();
+
         for (self.completed.items) |*item|
             self.alloc.free(item.data.buffer);
         self.completed.deinit();
@@ -85,6 +140,17 @@ pub const Context = struct {
 
     pub fn workFunc(self: *@This(), material: []const u8, vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) void {
         workFuncErr(self, material, vpk_res_id, vpkctx) catch return;
+    }
+
+    pub fn loadModel(self: *@This(), res_id: vpk.VpkResId, model_name: []const u8, vpkctx: *vpk.Context) !void {
+        try self.pool.spawn(loadModelWorkFunc, .{ self, res_id, model_name, vpkctx });
+    }
+
+    pub fn loadModelWorkFunc(self: *@This(), res_id: vpk.VpkResId, model_name: []const u8, vpkctx: *vpk.Context) void {
+        const mesh = vvd.loadModelCrappy(self, res_id, model_name, vpkctx) catch return;
+        self.completed_mutex.lock();
+        defer self.completed_mutex.unlock();
+        self.completed_models.append(mesh) catch return;
     }
 
     pub fn workFuncErr(self: *@This(), material: []const u8, vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) !void {
@@ -127,7 +193,8 @@ pub const Context = struct {
             break :in error.missingTexture;
         };
         const unwrapped = err catch |e| {
-            log.warn("{} for {s}", .{ e, material });
+            _ = material;
+            log.warn("{} for", .{e});
             return; //TODO notify
         };
         try self.insertCompleted(.{
