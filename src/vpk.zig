@@ -201,7 +201,13 @@ pub const Context = struct {
         };
         try new_dir.fds.put(0x7fff, infile);
         try self.dirs.append(new_dir);
-        const r = infile.reader();
+
+        // read into fbs because File.Reader is slow!
+        self.filebuf.clearRetainingCapacity();
+        try infile.reader().readAllArrayList(&self.filebuf, std.math.maxInt(usize));
+        var fbs = std.io.FixedBufferStream([]const u8){ .buffer = self.filebuf.items, .pos = 0 };
+
+        const r = fbs.reader();
         const sig = try r.readInt(u32, .little);
         if (sig != VPK_FILE_SIG)
             return error.invalidVpk;
