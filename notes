@@ -64,3 +64,7 @@ Fast grab of faces, all solids are convex polyhedra, meaning a ray intersecting 
 holding down a key will select exit face rather than enter
 
 How do we do it?
+
+How do we submit requests for model load?
+must be idempotent
+simplest way is to reserve an id for it

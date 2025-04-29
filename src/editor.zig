@@ -319,6 +319,10 @@ pub const Context = struct {
 
     edit_state: struct {
         show_gui: bool = false,
+        gui_tab: enum {
+            model,
+            fgd,
+        } = .model,
         state: enum {
             select,
             face_manip,
