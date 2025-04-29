@@ -1,6 +1,7 @@
 const std = @import("std");
 const profile = @import("profile.zig");
 const VPK_FILE_SIG: u32 = 0x55aa1234;
+const StringStorage = @import("string.zig").StringStorage;
 
 pub threadlocal var timer = profile.BasicProfiler.init();
 threadlocal var error_msg_buffer: [1024]u8 = undefined;
@@ -8,11 +9,54 @@ threadlocal var error_msg_buffer: [1024]u8 = undefined;
 const config = @import("config");
 const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
 
+pub const VpkResId = u64;
+///16 bits: extension_index
+///16 bits: path_index
+///32 bits: entry_index
+pub fn encodeResourceId(extension_index: u64, path_index: u64, entry_index: u64) VpkResId {
+    std.debug.assert(extension_index < 0xffff);
+    std.debug.assert(path_index < 0xffff);
+    std.debug.assert(entry_index < 0xff_ff_ff_ff);
+    //Assert all are below accepted values
+    return extension_index << 48 | path_index << 32 | entry_index;
+}
+
 /// Given one or more vpk dir files, allows you to request file contents
 pub const Context = struct {
     const log = std.log.scoped(.vpk);
     const Self = @This();
     const StrCtx = std.hash_map.StringContext;
+
+    /// Map a resource string to numeric id
+    const IdMap = struct {
+        /// All strings are stored by parent vpk.Context.arena
+        map: std.StringHashMap(u32),
+        counter: u32 = 0,
+
+        pub fn init(alloc: std.mem.Allocator) @This() {
+            return .{
+                .map = std.StringHashMap(u32).init(alloc),
+            };
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.map.deinit();
+        }
+
+        pub fn getPut(self: *@This(), res_name: []const u8) !u32 {
+            if (self.map.get(res_name)) |entry| return entry;
+
+            self.counter += 1;
+            const new_id = self.counter;
+            try self.map.put(res_name, new_id);
+            return new_id;
+        }
+
+        pub fn get(self: *const @This(), res_name: []const u8) ?u32 {
+            return self.map.get(res_name);
+        }
+    };
+    const IdEntryMap = std.AutoHashMap(VpkResId, Entry);
 
     const ExtensionMap = std.StringHashMap(PathMap);
     const PathMap = std.StringHashMap(EntryMap);
@@ -47,23 +91,41 @@ pub const Context = struct {
         length: u32,
     };
 
+    /// These map the strings found in vpk to a numeric id.
+    /// Ids are not unique between maps. using encodeResourceId they uniquely identify any resource.
+    extension_map: IdMap,
+    path_map: IdMap,
+    res_map: IdMap,
+
+    /// This maps a encodeResourceId id to a vpk entry
+    entries: IdEntryMap,
+
     dirs: std.ArrayList(Dir),
-    extensions: ExtensionMap,
-    arena: std.heap.ArenaAllocator,
+    /// Stores all long lived strings used by vpkctx. Mostly keys into IdMap
+    string_storage: StringStorage,
+
     alloc: std.mem.Allocator,
+
+    /// Scratch buffers
     strbuf: std.ArrayList(u8),
     split_buf: std.ArrayList(u8),
     filebuf: std.ArrayList(u8),
+
+    /// File object to optionally dump contents of all mounted vpk's
     vpk_dump_file: vpk_dump_file_t,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         return .{
+            .extension_map = IdMap.init(alloc),
+            .path_map = IdMap.init(alloc),
+            .res_map = IdMap.init(alloc),
+            .entries = IdEntryMap.init(alloc),
+
             .strbuf = std.ArrayList(u8).init(alloc),
             .split_buf = std.ArrayList(u8).init(alloc),
             .dirs = std.ArrayList(Dir).init(alloc),
-            .extensions = ExtensionMap.init(alloc),
             .filebuf = std.ArrayList(u8).init(alloc),
-            .arena = std.heap.ArenaAllocator.init(alloc),
+            .string_storage = StringStorage.init(alloc),
             .alloc = alloc,
             .vpk_dump_file = if (config.dump_vpk) try std.fs.cwd().createFile("vpkdump.txt", .{}) else {},
         };
@@ -72,16 +134,7 @@ pub const Context = struct {
     pub fn deinit(self: *Self) void {
         if (config.dump_vpk)
             self.vpk_dump_file.close();
-        var it = self.extensions.valueIterator();
-        while (it.next()) |ext| {
-            var pit = ext.valueIterator();
-            while (pit.next()) |p| {
-                p.deinit();
-            }
-            ext.deinit();
-        }
-        self.extensions.deinit();
-        self.arena.deinit();
+        self.string_storage.deinit();
         for (self.dirs.items) |*dir| {
             dir.deinit();
         }
@@ -89,6 +142,11 @@ pub const Context = struct {
         self.strbuf.deinit();
         self.filebuf.deinit();
         self.split_buf.deinit();
+
+        self.extension_map.deinit();
+        self.path_map.deinit();
+        self.res_map.deinit();
+        self.entries.deinit();
     }
 
     pub fn sanatizeVpkString(str: []u8) void {
@@ -118,9 +176,8 @@ pub const Context = struct {
         }
         timer.start();
         defer timer.end();
-        const aa = self.arena.allocator();
         const prefix = vpk_set[0 .. vpk_set.len - ".vpk".len];
-        var new_dir = Dir.init(self.alloc, try aa.dupe(u8, prefix), root);
+        var new_dir = Dir.init(self.alloc, try self.string_storage.store(prefix), root);
         const dir_index = self.dirs.items.len;
 
         var strbuf = std.ArrayList(u8).init(self.alloc);
@@ -128,7 +185,7 @@ pub const Context = struct {
         try strbuf.writer().print("{s}_dir.vpk", .{prefix});
         self.writeDump("VPK NAME: {s}\n", .{prefix});
 
-        const file_name = try aa.dupe(u8, strbuf.items);
+        const file_name = try self.string_storage.store(strbuf.items);
         const infile = root.openFile(strbuf.items, .{}) catch |err| switch (err) {
             error.FileNotFound => {
                 log.err("Couldn't find vpk: {s} with given set: {s}", .{ strbuf.items, vpk_set });
@@ -168,28 +225,21 @@ pub const Context = struct {
 
                 while (true) {
                     const ext = try readString(r, &strbuf);
-                    self.writeDump("{s}\n", .{ext});
                     if (ext.len == 0)
                         break;
-                    const ext_res = try self.extensions.getOrPutAdapted(ext, StrCtx{});
-                    if (!ext_res.found_existing) {
-                        ext_res.value_ptr.* = PathMap.init(self.alloc);
-                        const ext_d = try aa.dupe(u8, ext);
-                        sanatizeVpkString(ext_d);
-                        ext_res.key_ptr.* = ext_d;
-                    }
+                    sanatizeVpkString(ext);
+                    self.writeDump("{s}\n", .{ext});
+                    const ext_stored = try self.string_storage.store(ext);
+                    const ext_id = try self.extension_map.getPut(ext_stored);
                     while (true) {
                         const path = try readString(r, &strbuf);
                         self.writeDump("    {s}\n", .{path});
                         if (path.len == 0)
                             break;
-                        const path_res = try ext_res.value_ptr.getOrPutAdapted(path, StrCtx{});
-                        if (!path_res.found_existing) {
-                            path_res.value_ptr.* = EntryMap.init(self.alloc);
-                            const path_d = try aa.dupe(u8, path);
-                            sanatizeVpkString(path_d);
-                            path_res.key_ptr.* = path_d;
-                        }
+                        sanatizeVpkString(path);
+                        const path_stored = try self.string_storage.store(path);
+                        const path_id = try self.path_map.getPut(path_stored);
+
                         while (true) {
                             const fname = try readString(r, &strbuf);
                             self.writeDump("        {s}\n", .{fname});
@@ -210,12 +260,13 @@ pub const Context = struct {
                                 offset += tree_size + header_size;
                             }
 
-                            const entry_res = try path_res.value_ptr.getOrPutAdapted(fname, StrCtx{});
-                            if (!entry_res.found_existing) {
-                                const entry_d = try aa.dupe(u8, fname);
-                                sanatizeVpkString(entry_d);
-                                entry_res.key_ptr.* = entry_d;
-                                entry_res.value_ptr.* = Entry{
+                            sanatizeVpkString(fname);
+                            const fname_stored = try self.string_storage.store(fname);
+                            const fname_id = try self.res_map.getPut(fname_stored);
+                            const res_id = encodeResourceId(ext_id, path_id, fname_id);
+                            const entry = try self.entries.getOrPut(res_id);
+                            if (!entry.found_existing) {
+                                entry.value_ptr.* = Entry{
                                     .dir_index = @intCast(dir_index),
                                     .archive_index = arch_index,
                                     .offset = offset,
@@ -223,7 +274,7 @@ pub const Context = struct {
                                 };
                             } else {
                                 log.err("Duplicate resource is named: {s}", .{fname});
-                                //return error.duplicateResource;
+                                //    //return error.duplicateResource;
                             }
                         }
                     }
@@ -252,11 +303,21 @@ pub const Context = struct {
         return self.getFile(extension, path, name, &self.filebuf);
     }
 
+    pub fn getResourceId(self: *Self, extension: []const u8, path: []const u8, fname: []const u8) ?VpkResId {
+        return encodeResourceId(
+            self.extension_map.get(extension) orelse return null,
+            self.path_map.get(path) orelse return null,
+            self.res_map.get(fname) orelse return null,
+        );
+    }
+
     ///Clears buf and returns the written string
     pub fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
-        const ext = self.extensions.getPtr(extension) orelse return null;
-        const path_ = ext.getPtr(path) orelse return null;
-        const entry = path_.getPtr(name) orelse return null;
+        const res_id = self.getResourceId(extension, path, name) orelse return null;
+        const entry = self.entries.get(res_id) orelse return null;
+        //const ext = self.extensions.getPtr(extension) orelse return null;
+        //const path_ = ext.getPtr(path) orelse return null;
+        //const entry = path_.getPtr(name) orelse return null;
         const dir = self.getDir(entry.dir_index) orelse return null;
         const res = try dir.fds.getOrPut(entry.archive_index);
         if (!res.found_existing) {
@@ -290,7 +351,7 @@ pub const Context = struct {
 
 ///Read next string in vpk dir file
 ///Clears str
-fn readString(r: anytype, str: *std.ArrayList(u8)) ![]const u8 {
+fn readString(r: anytype, str: *std.ArrayList(u8)) ![]u8 {
     str.clearRetainingCapacity();
     while (true) {
         const char = try r.readByte();

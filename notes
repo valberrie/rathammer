@@ -68,3 +68,5 @@ How do we do it?
 How do we submit requests for model load?
 must be idempotent
 simplest way is to reserve an id for it
+
+FIRST get textures deffered load

@@ -90,14 +90,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     defer name_buf.deinit();
     var model_array = std.ArrayList([2][]const u8).init(alloc);
     defer model_array.deinit();
-    { //Add all models to array
-        var it = editor.vpkctx.extensions.get("mdl").?.iterator();
-        while (it.next()) |path| {
-            var ent = path.value_ptr.iterator();
-            while (ent.next()) |entt|
-                try model_array.append([2][]const u8{ path.key_ptr.*, entt.key_ptr.* });
-        }
-    }
+    //{ //Add all models to array
+    //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
+    //    while (it.next()) |path| {
+    //        var ent = path.value_ptr.iterator();
+    //        while (ent.next()) |entt|
+    //            try model_array.append([2][]const u8{ path.key_ptr.*, entt.key_ptr.* });
+    //    }
+    //}
 
     try editor.loadVmf(std.fs.cwd(), args.vmf orelse "sdk_materials.vmf", &loadctx);
 
