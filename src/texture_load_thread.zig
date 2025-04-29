@@ -42,14 +42,17 @@ pub const Context = struct {
     completed_models: std.ArrayList(vvd.MeshDeferred),
     completed_mutex: Mutex = .{},
 
+    //TODO this pool should be global or this context should represent all worker thread operations
+    //TODO have a way to configure n_jobs at runtime. Maybe check number of threads
     pool: *std.Thread.Pool,
 
     texture_notify: std.AutoHashMap(vpk.VpkResId, std.ArrayList(*DeferredNotifyVtable)),
     notify_mutex: Mutex = .{},
 
     pub fn init(alloc: std.mem.Allocator) !@This() {
+        const num_cpu = try std.Thread.getCpuCount();
         const pool = try alloc.create(std.Thread.Pool);
-        try pool.init(.{ .allocator = alloc, .n_jobs = 3 });
+        try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(@max(num_cpu, 2) - 1) });
         return .{
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),
             .alloc = alloc,

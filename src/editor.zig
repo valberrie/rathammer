@@ -257,6 +257,7 @@ pub const Entity = struct {
     class: []const u8,
     model: ?[]const u8 = null,
     model_id: ?vpk.VpkResId = null,
+    sprite: ?vpk.VpkResId = null,
 
     pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx) void {
         const ENT_RENDER_DIST = 64 * 10;
@@ -283,12 +284,18 @@ pub const Entity = struct {
         const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (dist > ENT_RENDER_DIST)
             return;
-        if (editor.fgd_ctx.base.get(ent.class)) |base| {
-            if (editor.icon_map.get(base.iconsprite)) |isp| {
-                draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
-                draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
-            }
+        //TODO set the model size of entities hitbox thingy
+        if (ent.sprite) |spr| {
+            draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+            const isp = editor.getTexture(spr);
+            draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
         }
+        //if (editor.fgd_ctx.base.get(ent.class)) |base| {
+        //    if (editor.icon_map.get(base.iconsprite)) |isp| {
+        //        draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+        //        draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
+        //    }
+        //}
     }
 };
 
@@ -522,6 +529,18 @@ pub const Context = struct {
                         } else |err| {
                             log.err("Load model failed with {}", .{err});
                         }
+                        //TODO update the bb when the models has loaded
+                    }
+                    var sprite_tex: ?vpk.VpkResId = null;
+                    { //Fgd stuff
+                        if (self.fgd_ctx.base.get(ent.classname)) |base| {
+                            var sl = base.iconsprite;
+                            if (std.mem.endsWith(u8, base.iconsprite, ".vmt"))
+                                sl = base.iconsprite[0 .. base.iconsprite.len - 4];
+                            const sprite_tex_ = try self.loadTextureFromVpk(sl);
+                            if (sprite_tex_.res_id != 0)
+                                sprite_tex = sprite_tex_.res_id;
+                        }
                     }
                     bb.setFromOrigin(ent.origin.v);
                     const model_id = self.modelIdFromName(ent.model) catch null;
@@ -531,6 +550,7 @@ pub const Context = struct {
                         .class = try self.storeString(ent.classname),
                         .model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
                         .model_id = model_id,
+                        .sprite = sprite_tex,
                     });
                     try self.ecs.attach(new, .bounding_box, bb);
                 }
@@ -665,7 +685,6 @@ pub const Context = struct {
                 if (elapsed > MAX_UPDATE_TIME)
                     break;
             }
-            //self.texture_load_ctx.completed.clearRetainingCapacity();
             for (0..num_rm_tex) |_|
                 _ = self.texture_load_ctx.completed.orderedRemove(0);
 
@@ -682,23 +701,8 @@ pub const Context = struct {
             }
             for (0..num_removed) |_|
                 _ = self.texture_load_ctx.completed_models.orderedRemove(0);
-            //self.texture_load_ctx.completed_models.clearRetainingCapacity();
         }
         if (tcount > 0) {
-            //std.debug.print("RETEXTURE ING {d}\n", .{count});
-            //var mesh_it = self.meshmap.iterator();
-            //while (mesh_it.next()) |mesh| {
-            //    if (mesh.value_ptr.*.tex_res_id == 0)
-            //        continue; //missing tex
-
-            //    const old = mesh.value_ptr.*.tex.id;
-            //    mesh.value_ptr.*.tex = self.textures.get(mesh.value_ptr.*.tex_res_id) orelse continue;
-            //    mesh.value_ptr.*.mesh.diffuse_texture = mesh.value_ptr.*.tex.id;
-            //    if (mesh.value_ptr.*.tex.id != old) {
-            //        //We need to rebuild to ensure uvs are correct
-            //        try mesh.value_ptr.*.rebuild(self);
-            //    }
-            //}
             var it = self.meshmap.iterator();
             while (it.next()) |mesh| {
                 try mesh.value_ptr.*.rebuildIfDirty(self);
