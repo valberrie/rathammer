@@ -164,6 +164,42 @@ pub fn doesRayIntersectConvexPolygondo(ray_origin: V3f, ray_dir: V3f, plane_norm
 //  return c;
 //}
 
+//pub fn doesRayIntersectTri(ray_o: V3f, ray_d: V3f, tri: [3]V3f)?{ }
+
+// Translated from Wikipedia
+pub fn mollerTrumboreIntersection(
+    r_o: V3f,
+    r_d: V3f,
+    tr0: V3f,
+    tr1: V3f,
+    tr2: V3f,
+) ?V3f {
+    const EPS = 0.00001;
+    const e1 = tr1.sub(tr0);
+    const e2 = tr2.sub(tr0);
+    const ray_cross_e2 = r_d.cross(e2);
+    const det = e1.dot(ray_cross_e2);
+    if (det > -EPS and det < EPS)
+        return null; //piss off
+
+    const inv_det = 1.0 / det;
+    const s = r_o.sub(tr0);
+    const u = inv_det * s.dot(ray_cross_e2);
+    if (u < 0.0 or u > 1.0)
+        return null;
+    const s_cross_e1 = s.cross(e1);
+    const v = inv_det * r_d.dot(s_cross_e1);
+    if (v < 0.0 or u + v > 1.0)
+        return null;
+
+    const t = inv_det * e2.dot(s_cross_e1);
+    if (t > EPS) {
+        const inter = r_o.add(r_d.scale(t));
+        return inter;
+    }
+    return null;
+}
+
 pub fn doesRayIntersectBBZ(ray_origin: V3f, ray_dir: V3f, min: V3f, max: V3f) ?V3f {
     const ret = doesRayIntersectBoundingBox(3, f32, min.data, max.data, ray_origin.data, ray_dir.data);
     return if (ret) |r| V3f.new(r[0], r[1], r[2]) else null;

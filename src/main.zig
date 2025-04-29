@@ -132,7 +132,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
             editor.edit_state.trans_end = win.mouse.pos;
         }
 
-        grab_mouse = !(win.keyHigh(.LSHIFT) or editor.edit_state.btn_x_trans == .high or editor.edit_state.btn_y_trans == .high or editor.edit_state.btn_z_trans == .high);
+        //grab_mouse = !(win.keyHigh(.LSHIFT) or editor.edit_state.btn_x_trans == .high or editor.edit_state.btn_y_trans == .high or editor.edit_state.btn_z_trans == .high);
+        grab_mouse = !(win.keyHigh(.LSHIFT));
         if (last_frame_grabbed and !grab_mouse) { //Mouse just ungrabbed
             graph.c.SDL_WarpMouseInWindow(win.win, draw.screen_dimensions.x / 2, draw.screen_dimensions.y / 2);
         }
@@ -157,11 +158,18 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         const split1 = winrect.split(.vertical, winrect.w * 0.8);
         //const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
         //my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
-        try editor.draw3Dview(split1[0], &draw);
+        if (win.keyRising(.T))
+            editor.edit_state.show_gui = !editor.edit_state.show_gui;
+        if (!editor.edit_state.show_gui) {
+            try editor.draw3Dview(split1[0], &draw);
+        } else {}
         try editor.drawInspector(split1[1], &os9gui);
         if (!last_frame_grabbed and split1[1].containsPoint(win.mouse.pos))
             grab_mouse = false;
         if (win.keyRising(.E)) {
+            editor.edit_state.state = .select;
+            //var rcast_timer = try std.time.Timer.start();
+            //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
             raycast_pot.clearRetainingCapacity();
             var bbit = editor.ecs.iterator(.bounding_box);
             while (bbit.next()) |bb| {
@@ -178,16 +186,38 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                     if (try editor.ecs.getOptPtr(bp_rc.id, .solid)) |solid| {
                         for (solid.sides.items) |side| {
                             if (side.verts.items.len < 3) continue;
-                            const plane = util3d.trianglePlane(side.verts.items[0..3].*);
-                            if (util3d.doesRayIntersectConvexPolygon(
-                                editor.draw_state.cam3d.pos,
-                                editor.draw_state.cam3d.front,
-                                plane,
-                                side.verts.items,
-                            )) |point| {
-                                const len = point.distance(editor.draw_state.cam3d.pos);
-                                try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = point });
+                            // triangulate using csg
+                            // for each tri call mollertrumbor, breaking if enc
+                            const ind = try editor.csgctx.triangulateAny(side.verts.items, 0);
+                            const ts = side.verts.items;
+                            const ro = editor.draw_state.cam3d.pos;
+                            const rd = editor.draw_state.cam3d.front;
+                            for (0..@divExact(ind.len, 3)) |i_i| {
+                                const i = i_i * 3;
+
+                                if (util3d.mollerTrumboreIntersection(
+                                    ro,
+                                    rd,
+                                    ts[ind[i]],
+                                    ts[ind[i + 1]],
+                                    ts[ind[i + 2]],
+                                )) |inter| {
+                                    const len = inter.distance(editor.draw_state.cam3d.pos);
+                                    try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = inter });
+                                    break;
+                                }
                             }
+
+                            //const plane = util3d.trianglePlane(side.verts.items[0..3].*);
+                            //if (util3d.doesRayIntersectConvexPolygon(
+                            //    editor.draw_state.cam3d.pos,
+                            //    editor.draw_state.cam3d.front,
+                            //    plane,
+                            //    side.verts.items,
+                            //)) |point| {
+                            //    const len = point.distance(editor.draw_state.cam3d.pos);
+                            //    try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = point });
+                            //}
                         }
                     } else {
                         try raycast_pot_fine.append(bp_rc);

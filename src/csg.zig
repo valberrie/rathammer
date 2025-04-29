@@ -126,8 +126,12 @@ pub const Context = struct {
         }
         return ret;
     }
-    //Generate indicies into trianglnes that can be drawin with the uknow, opengl draw indexed
+
     pub fn triangulate(self: *Self, winding: []const Vec3, offset: u32) ![]const u32 {
+        return self.triangulateAny(winding, offset);
+    }
+    //Generate indicies into trianglnes that can be drawin with the uknow, opengl draw indexed
+    pub fn triangulateAny(self: *Self, winding: anytype, offset: u32) ![]const u32 {
         self.triangulate_index.clearRetainingCapacity();
         const ret = &self.triangulate_index;
         if (winding.len < 3) return ret.items;
@@ -141,6 +145,7 @@ pub const Context = struct {
 
         return ret.items;
     }
+
     pub fn clipWinding(self: *Self, winding_in: std.ArrayList(Vec3), winding_out: *std.ArrayList(Vec3), plane: Plane) !void {
         self.clip_winding_sides.clearRetainingCapacity();
         self.clip_winding_dists.clearRetainingCapacity();

@@ -25,7 +25,7 @@ pub const Gizmo = struct {
             const info = @typeInfo(@This());
             const count = info.Enum.fields.len;
             if (index_ > count - 1)
-                return; //Silentily fail
+                return; //Silently fail
             self.* = @enumFromInt(index_);
         }
 
@@ -103,10 +103,13 @@ pub const Gizmo = struct {
             0xff00ffff,
             0xffffff,
         };
+        const ind = self.selected_axis.index() orelse 100000;
         for (cube_orig, 0..) |co, i| {
-            draw.cube(co, cubes[i], colors[i]);
+            const color = if (i == ind) 0xffff_ffff else colors[i];
+            draw.cube(co, cubes[i], color);
         }
 
+        var min_dist: f32 = std.math.floatMax(f32);
         switch (lmouse) {
             .rising => {
                 const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
@@ -114,17 +117,20 @@ pub const Gizmo = struct {
                 for (cubes, 0..) |cu, ci| {
                     const co = cube_orig[ci];
                     if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(cu))) |inter| {
-                        draw.point3D(inter, 0x7f_ff_ff_ff);
-                        self.selected_axis.setFromIndex(ci);
-                        //Now that we intersect, e
-                        self.start = util3d.doesRayIntersectPlane(
-                            rc[0],
-                            rc[1],
-                            orig,
-                            self.selected_axis.getPlaneNorm(camera_pos.sub(orig)),
-                            //self.edit_state.selected_plane_norm,
-                        ) orelse Vec3.zero(); //This should never be null
-                        break;
+                        const d = inter.distance(camera_pos);
+                        if (d < min_dist) {
+                            min_dist = d;
+                            draw.point3D(inter, 0x7f_ff_ff_ff);
+                            self.selected_axis.setFromIndex(ci);
+                            //Now that we intersect, e
+                            self.start = util3d.doesRayIntersectPlane(
+                                rc[0],
+                                rc[1],
+                                orig,
+                                self.selected_axis.getPlaneNorm(camera_pos.sub(orig)),
+                                //self.edit_state.selected_plane_norm,
+                            ) orelse Vec3.zero(); //This should never be null
+                        }
                     }
                 }
                 return .rising;

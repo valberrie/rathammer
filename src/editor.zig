@@ -16,6 +16,8 @@ const Gui = graph.Gui;
 const StringStorage = @import("string.zig").StringStorage;
 const Skybox = @import("skybox.zig").Skybox;
 const Gizmo = @import("gizmo.zig").Gizmo;
+const raycast = @import("raycast_solid.zig");
+const DrawCtx = graph.ImmediateDrawingContext;
 
 const util3d = @import("util_3d.zig");
 
@@ -199,10 +201,10 @@ pub const Solid = struct {
         }
     }
 
-    pub fn drawImmediate(self: *Self, draw: *graph.ImmediateDrawingContext, editor: *Context, offset: Vec3) !void {
+    pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Context, offset: Vec3) !void {
         for (self.sides.items) |side| {
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
-                .shader = draw.billboard_shader,
+                .shader = DrawCtx.billboard_shader,
                 .texture = side.tex_id,
                 .camera = ._3d,
             } }) catch unreachable).billboard;
@@ -242,7 +244,7 @@ pub const Entity = struct {
     class: []const u8,
     model: ?[]const u8 = null,
 
-    pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *graph.ImmediateDrawingContext) void {
+    pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx) void {
         const ENT_RENDER_DIST = 64 * 10;
         if (ent.model) |m| {
             if (editor.models.getPtr(m)) |mod| {
@@ -261,13 +263,14 @@ pub const Entity = struct {
                 mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
             }
         }
+        _ = draw;
         const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (dist > ENT_RENDER_DIST)
             return;
         if (editor.fgd_ctx.base.get(ent.class)) |base| {
             if (editor.icon_map.get(base.iconsprite)) |isp| {
-                draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
-                draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
+                draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+                draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
             }
         }
     }
@@ -309,9 +312,18 @@ pub const Context = struct {
         basic_shader: graph.glID,
         cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100 },
         cam_far_plane: f32 = 512 * 64,
+
+        /// we keep our own so that we can do some draw calls with depth some without.
+        ctx: graph.ImmediateDrawingContext,
     },
 
     edit_state: struct {
+        show_gui: bool = false,
+        state: enum {
+            select,
+            face_manip,
+        } = .select,
+
         id: ?EcsT.Id = null,
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
@@ -348,6 +360,7 @@ pub const Context = struct {
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
 
             .draw_state = .{
+                .ctx = graph.ImmediateDrawingContext.init(alloc),
                 .basic_shader = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
                     .{ .path = "ratgraph/asset/shader/gbuffer.vert", .t = .vert },
                     .{ .path = "src/basic.frag", .t = .frag },
@@ -378,6 +391,7 @@ pub const Context = struct {
         }
         self.meshmap.deinit();
         self.name_arena.deinit();
+        self.draw_state.ctx.deinit();
     }
 
     pub fn rebuildAllMeshes(self: *Self) !void {
@@ -603,7 +617,15 @@ pub const Context = struct {
         //break :blk graph.Texture.initFromBitmap(bmp, .{});
     }
 
+    fn camRay(self: *Self) [2]Vec3 {
+        return [_]Vec3{ self.draw_state.cam3d.pos, self.draw_state.cam3d.front };
+    }
+
     pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext) !void {
+        try self.draw_state.ctx.beginNoClear(screen_area.dim());
+        // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
+        // "draw" still has depth buffer
+        const draw_nd = &self.draw_state.ctx;
         const x: i32 = @intFromFloat(screen_area.x);
         const y: i32 = @intFromFloat(screen_area.y);
         const w: i32 = @intFromFloat(screen_area.w);
@@ -630,7 +652,7 @@ pub const Context = struct {
         {
             var ent_it = self.ecs.iterator(.entity);
             while (ent_it.next()) |ent| {
-                ent.drawEnt(self, view_3d, draw);
+                ent.drawEnt(self, view_3d, draw, draw_nd);
             }
         }
         { //sky stuff
@@ -647,89 +669,153 @@ pub const Context = struct {
         }
         try draw.flush(null, self.draw_state.cam3d);
 
-        if (self.edit_state.id) |id| {
-            if (try self.ecs.getOptPtr(id, .solid)) |solid| {
-                if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
-                    const mid_i = bb.a.add(bb.b).scale(0.5);
-                    var mid = mid_i;
-                    const giz_active = self.edit_state.gizmo.handle(
-                        mid,
-                        &mid,
-                        self.draw_state.cam3d.pos,
-                        self.edit_state.lmouse,
-                        draw,
-                        screen_area.dim(),
-                        view_3d,
-                        self.edit_state.trans_begin,
-                    );
+        if (self.edit_state.btn_x_trans == .rising or self.edit_state.btn_y_trans == .rising)
+            self.edit_state.state = .face_manip;
 
-                    for (solid.sides.items) |side| {
-                        const v = side.verts.items;
-                        if (side.verts.items.len > 0) {
-                            var last = side.verts.items[side.verts.items.len - 1];
-                            for (0..side.verts.items.len) |ti| {
-                                draw.line3D(last, v[ti], 0xff00ff);
-                                draw.point3D(v[ti], 0xff0000ff);
-                                last = v[ti];
+        if (self.edit_state.id) |id| {
+            switch (self.edit_state.state) {
+                .face_manip => {
+                    if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+                        var near_i: usize = 100000;
+                        var far_i: usize = 100000;
+                        var near: f32 = std.math.floatMax(f32);
+                        var far: f32 = std.math.floatMin(f32);
+                        if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
+                            _ = bb;
+                            const sel_near = self.edit_state.btn_x_trans;
+                            var s_index: usize = 1000000;
+                            if (sel_near == .high) {
+                                const r = self.camRay();
+                                //Find the face it intersects with
+                                if (try raycast.doesRayIntersectSolid(
+                                    r[0],
+                                    r[1],
+                                    solid,
+                                    self,
+                                )) |face_inter| {
+                                    const d = face_inter.point.distance(self.draw_state.cam3d.pos);
+                                    if (d < near) {
+                                        near_i = face_inter.side_index;
+                                        near = d;
+                                    } else if (d > far) {
+                                        far_i = face_inter.side_index;
+                                        far = d;
+                                    }
+                                    //_ = face_inter;
+                                    s_index = face_inter.side_index;
+                                }
+                            }
+                            if (near_i >= solid.sides.items.len or far_i >= solid.sides.items.len) {
+                                //This isn't an error condition, we can intersect only one if we are inside of the solid.
+                                //std.debug.print("BROKEN IS \n", .{});
+                            }
+                            for (solid.sides.items, 0..) |side, s_i| {
+                                const v = side.verts.items;
+                                var color: u32 = if (near_i == s_i) 0xffffffff else 0xff00ff;
+                                color = if (far_i == s_i) 0xffffffff else color;
+                                if (side.verts.items.len > 0) {
+                                    var last = side.verts.items[side.verts.items.len - 1];
+                                    const vs = side.verts.items;
+                                    if (s_i == near_i)
+                                        draw_nd.triangle3D(vs[0..3], 0xffff);
+                                    if (s_i == far_i)
+                                        draw_nd.triangle3D(vs[0..3], 0xff00ff);
+                                    for (0..side.verts.items.len) |ti| {
+                                        draw.line3D(last, v[ti], color);
+                                        draw.point3D(v[ti], 0xff0000ff);
+                                        last = v[ti];
+                                    }
+                                }
                             }
                         }
                     }
-                    if (giz_active == .rising) {
-                        try solid.removeFromMeshMap(id, self);
-                    }
-                    if (giz_active == .falling) {
-                        try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
-                    }
+                },
+                .select => {
+                    if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+                        if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
+                            const mid_i = bb.a.add(bb.b).scale(0.5);
+                            var mid = mid_i;
+                            const giz_active = self.edit_state.gizmo.handle(
+                                mid,
+                                &mid,
+                                self.draw_state.cam3d.pos,
+                                self.edit_state.lmouse,
+                                draw_nd,
+                                screen_area.dim(),
+                                view_3d,
+                                self.edit_state.trans_begin,
+                            );
 
-                    if (giz_active == .high) {
-                        var dist = mid.sub(mid_i);
-                        dist.data = @floor(dist.data); //Only integer
-                        try solid.drawImmediate(
-                            draw,
-                            self,
-                            dist,
-                        );
-                        if (self.edit_state.rmouse == .rising) {
-                            try solid.translate(id, dist, self);
-                            //Commit the changes
+                            for (solid.sides.items) |side| {
+                                const v = side.verts.items;
+                                if (side.verts.items.len > 0) {
+                                    var last = side.verts.items[side.verts.items.len - 1];
+                                    for (0..side.verts.items.len) |ti| {
+                                        draw_nd.line3D(last, v[ti], 0xff00ff);
+                                        draw_nd.point3D(v[ti], 0xff0000ff);
+                                        last = v[ti];
+                                    }
+                                }
+                            }
+                            if (giz_active == .rising) {
+                                try solid.removeFromMeshMap(id, self);
+                            }
+                            if (giz_active == .falling) {
+                                try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+                            }
+
+                            if (giz_active == .high) {
+                                var dist = mid.sub(mid_i);
+                                dist.data = @floor(dist.data); //Only integer
+                                try solid.drawImmediate(
+                                    draw,
+                                    self,
+                                    dist,
+                                );
+                                if (self.edit_state.rmouse == .rising) {
+                                    try solid.translate(id, dist, self);
+                                    //Commit the changes
+                                }
+                            }
                         }
                     }
-                }
-            }
-            if (try self.ecs.getOptPtr(id, .entity)) |ent| {
-                var orig = ent.origin;
-                const giz_active = self.edit_state.gizmo.handle(
-                    orig,
-                    &orig,
-                    self.draw_state.cam3d.pos,
-                    self.edit_state.lmouse,
-                    draw,
-                    screen_area.dim(),
-                    view_3d,
-                    self.edit_state.trans_begin,
-                );
-                if (giz_active == .high) {
-                    var orr = orig;
-                    orr.data = @floor(orr.data); //Only allow integer coords
-                    var copy_ent = ent.*;
-                    copy_ent.origin = orr;
-                    copy_ent.drawEnt(self, view_3d, draw);
+                    if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+                        var orig = ent.origin;
+                        const giz_active = self.edit_state.gizmo.handle(
+                            orig,
+                            &orig,
+                            self.draw_state.cam3d.pos,
+                            self.edit_state.lmouse,
+                            draw,
+                            screen_area.dim(),
+                            view_3d,
+                            self.edit_state.trans_begin,
+                        );
+                        if (giz_active == .high) {
+                            var orr = orig;
+                            orr.data = @floor(orr.data); //Only allow integer coords
+                            var copy_ent = ent.*;
+                            copy_ent.origin = orr;
+                            copy_ent.drawEnt(self, view_3d, draw, draw_nd);
 
-                    //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
-                    if (self.edit_state.rmouse == .rising) {
-                        //Commit the changes
-                        ent.origin = orr;
-                        const bb = try self.ecs.getPtr(id, .bounding_box);
-                        bb.setFromOrigin(orr);
+                            //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
+                            if (self.edit_state.rmouse == .rising) {
+                                //Commit the changes
+                                ent.origin = orr;
+                                const bb = try self.ecs.getPtr(id, .bounding_box);
+                                bb.setFromOrigin(orr);
+                            }
+                        }
                     }
-                }
+                },
             }
         }
+        try draw.flush(null, self.draw_state.cam3d);
         graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
         //Crosshair
         const cw = 4;
         const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
-        draw.rect(graph.Rec(
+        draw_nd.rect(graph.Rec(
             crossp.x,
             crossp.y,
             cw * 2,
@@ -756,7 +842,7 @@ pub const Context = struct {
         //for (self.temp_line_array.items) |tl| {
         //    draw.line3D(tl[0], tl[1], 0xff00ffff);
         //}
-        try draw.flush(null, self.draw_state.cam3d);
+        try draw_nd.flush(null, self.draw_state.cam3d);
     }
 
     pub fn drawInspector(self: *Self, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {
