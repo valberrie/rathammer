@@ -35,7 +35,7 @@ pub const Context = struct {
 
     pub fn init(alloc: std.mem.Allocator) !@This() {
         const pool = try alloc.create(std.Thread.Pool);
-        try pool.init(.{ .allocator = alloc, .n_jobs = 4 });
+        try pool.init(.{ .allocator = alloc, .n_jobs = 3 });
         return .{
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),
             .alloc = alloc,
@@ -125,12 +125,6 @@ pub const Context = struct {
                 }
             }
             break :in error.missingTexture;
-
-            //break :in vtf.loadTexture(
-            //    (vpkctx.getFileFromRes() catch |err| break :in err) orelse break :in error.notfoundGeneric,
-            //    //(self.vpkctx.getFileTemp("vtf", sl[0..slash], sl[slash + 1 ..]) catch |err| break :in err) orelse break :in error.notfound,
-            //    self.alloc,
-            //) catch |err| break :in err;
         };
         const unwrapped = err catch |e| {
             log.warn("{} for {s}", .{ e, material });

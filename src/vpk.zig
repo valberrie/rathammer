@@ -291,7 +291,6 @@ pub const Context = struct {
         }
     }
 
-    /// Not thread safe
     pub fn getFileTempFmt(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype) !?[]const u8 {
         return self.getFileTempFmtBuf(extension, fmt, args, &self.filebuf);
     }
@@ -324,8 +323,10 @@ pub const Context = struct {
         );
     }
 
-    /// Not thread safe
+    /// Thread safe
     pub fn getResourceIdFmt(self: *Self, ext: []const u8, comptime fmt: []const u8, args: anytype) !?VpkResId {
+        self.mutex.lock();
+        defer self.mutex.unlock();
         self.split_buf.clearRetainingCapacity();
         try self.split_buf.writer().print(fmt, args);
         sanatizeVpkString(self.split_buf.items);
@@ -363,13 +364,11 @@ pub const Context = struct {
         return buf.items;
     }
 
-    ///Clears buf and returns the written string
+    ///Clears buf and returns the written string.
+    /// NOT THREAD SAFE
     pub fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
         const res_id = self.getResourceId(extension, path, name) orelse return null;
         const entry = self.entries.get(res_id) orelse return null;
-        //const ext = self.extensions.getPtr(extension) orelse return null;
-        //const path_ = ext.getPtr(path) orelse return null;
-        //const entry = path_.getPtr(name) orelse return null;
         const dir = self.getDir(entry.dir_index) orelse return null;
         const res = try dir.fds.getOrPut(entry.archive_index);
         if (!res.found_existing) {
