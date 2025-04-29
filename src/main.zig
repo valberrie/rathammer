@@ -78,7 +78,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                 var sl = class.iconsprite;
                 if (std.mem.endsWith(u8, class.iconsprite, ".vmt"))
                     sl = class.iconsprite[0 .. class.iconsprite.len - 4];
-                res.value_ptr.* = try editor.loadTextureFromVpk(sl);
+                res.value_ptr.* = (try editor.loadTextureFromVpk(sl)).tex;
             }
         }
     }
@@ -175,6 +175,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         //const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
         //my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
         const split2 = split1[0].split(.vertical, split1[0].w * 0.5);
+        try editor.update();
         if (win.keyRising(.T))
             editor.edit_state.show_gui = !editor.edit_state.show_gui;
         if (!editor.edit_state.show_gui) {

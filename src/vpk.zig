@@ -114,6 +114,8 @@ pub const Context = struct {
     /// File object to optionally dump contents of all mounted vpk's
     vpk_dump_file: vpk_dump_file_t,
 
+    mutex: std.Thread.Mutex = .{},
+
     pub fn init(alloc: std.mem.Allocator) !Self {
         return .{
             .extension_map = IdMap.init(alloc),
@@ -168,6 +170,8 @@ pub const Context = struct {
     /// the vpk_set: hl2_pak.vpk -> hl2_pak_dir.vpk . This matches the way gameinfo.txt does it
     /// The passed in root dir must remain alive.
     pub fn addDir(self: *Self, root: std.fs.Dir, vpk_set: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
         if (!std.mem.endsWith(u8, vpk_set, ".vpk")) {
             log.err("Invalid vpk set: {s}", .{vpk_set});
             log.err("Vpk sets should be in the format: 'hl2_pak.vpk' which maps to the files: hl2_pak_xxx.vpk", .{});
@@ -287,17 +291,26 @@ pub const Context = struct {
         }
     }
 
+    /// Not thread safe
     pub fn getFileTempFmt(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype) !?[]const u8 {
+        return self.getFileTempFmtBuf(extension, fmt, args, &self.filebuf);
+    }
+
+    pub fn getFileTempFmtBuf(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype, buf: *std.ArrayList(u8)) !?[]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
         self.split_buf.clearRetainingCapacity();
         try self.split_buf.writer().print(fmt, args);
         sanatizeVpkString(self.split_buf.items);
         //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
         const sl = self.split_buf.items;
         const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;
-        return try self.getFileTemp(extension, sl[0..slash], sl[slash + 1 ..]);
+        buf.clearRetainingCapacity();
+        return try self.getFile(extension, sl[0..slash], sl[slash + 1 ..], buf);
     }
 
     /// Returns a buffer owned by Self which will be clobberd on next getFileTemp call
+    /// Is not thread safe, use getFileTempFmtBuf instead
     pub fn getFileTemp(self: *Self, extension: []const u8, path: []const u8, name: []const u8) !?[]const u8 {
         self.filebuf.clearRetainingCapacity();
         return self.getFile(extension, path, name, &self.filebuf);
@@ -309,6 +322,45 @@ pub const Context = struct {
             self.path_map.get(path) orelse return null,
             self.res_map.get(fname) orelse return null,
         );
+    }
+
+    /// Not thread safe
+    pub fn getResourceIdFmt(self: *Self, ext: []const u8, comptime fmt: []const u8, args: anytype) !?VpkResId {
+        self.split_buf.clearRetainingCapacity();
+        try self.split_buf.writer().print(fmt, args);
+        sanatizeVpkString(self.split_buf.items);
+        //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
+        const sl = self.split_buf.items;
+        const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;
+
+        return self.getResourceId(ext, sl[0..slash], sl[slash + 1 ..]);
+    }
+
+    /// Thread safe
+    pub fn getFileFromRes(self: *Self, res_id: VpkResId, buf: *std.ArrayList(u8)) !?[]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        const entry = self.entries.get(res_id) orelse return null;
+        const dir = self.getDir(entry.dir_index) orelse return null;
+        const res = try dir.fds.getOrPut(entry.archive_index);
+        if (!res.found_existing) {
+            errdefer _ = dir.fds.remove(entry.archive_index); //Prevent closing an unopened file messing with stack trace
+            self.strbuf.clearRetainingCapacity();
+            try self.strbuf.writer().print("{s}_{d:0>3}.vpk", .{ dir.prefix, entry.archive_index });
+
+            res.value_ptr.* = dir.root.openFile(self.strbuf.items, .{}) catch |err| switch (err) {
+                error.FileNotFound => {
+                    log.err("Couldn't open vpk file: {s}", .{self.strbuf.items});
+                    return err;
+                },
+                else => return err,
+            };
+        }
+
+        try buf.resize(entry.length);
+        try res.value_ptr.seekTo(entry.offset);
+        try res.value_ptr.reader().readNoEof(buf.items);
+        return buf.items;
     }
 
     ///Clears buf and returns the written string

@@ -18,6 +18,7 @@ const Skybox = @import("skybox.zig").Skybox;
 const Gizmo = @import("gizmo.zig").Gizmo;
 const raycast = @import("raycast_solid.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
+const texture_load_thread = @import("texture_load_thread.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -25,6 +26,7 @@ pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
     const Self = @This();
     tex: graph.Texture,
+    tex_res_id: vpk.VpkResId,
     mesh: meshutil.Mesh,
     contains: std.AutoHashMap(EcsT.Id, void),
     is_dirty: bool = false,
@@ -34,7 +36,7 @@ pub const MeshBatch = struct {
 
     pub fn deinit(self: *@This()) void {
         self.mesh.deinit();
-        self.tex.deinit();
+        //self.tex.deinit();
         self.contains.deinit();
     }
 
@@ -56,7 +58,7 @@ pub const MeshBatch = struct {
         while (it.next()) |id| {
             if (try editor.ecs.getOptPtr(id.key_ptr.*, .solid)) |solid| {
                 for (solid.sides.items) |*side| {
-                    if (side.tex_id == self.tex.id) {
+                    if (side.tex_id == self.tex_res_id) {
                         try side.rebuild(self, editor);
                     }
                 }
@@ -76,7 +78,7 @@ pub const Side = struct {
     index: std.ArrayList(u32),
     u: UVaxis,
     v: UVaxis,
-    tex_id: c_uint = 0, //Used for drawing immediate
+    tex_id: vpk.VpkResId = 0, //Used for drawing immediate
     tw: i32 = 0,
     th: i32 = 0,
     material: []const u8, //owned by somebody else
@@ -86,7 +88,7 @@ pub const Side = struct {
     }
 
     pub fn rebuild(side: *@This(), batch: *MeshBatch, editor: *Context) !void {
-        side.tex_id = batch.tex.id;
+        side.tex_id = batch.tex_res_id;
         side.tw = batch.tex.w;
         side.th = batch.tex.h;
         const mesh = &batch.mesh;
@@ -205,7 +207,7 @@ pub const Solid = struct {
         for (self.sides.items) |side| {
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
-                .texture = side.tex_id,
+                .texture = editor.getTexture(side.tex_id).id,
                 .camera = ._3d,
             } }) catch unreachable).billboard;
             try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
@@ -300,12 +302,15 @@ pub const Context = struct {
     fgd_ctx: fgd.EntCtx,
     icon_map: std.StringHashMap(graph.Texture),
 
+    textures: std.AutoHashMap(vpk.VpkResId, graph.Texture),
     models: std.StringHashMap(vvd.MultiMesh),
     skybox: Skybox,
 
     ecs: EcsT,
 
     temp_line_array: std.ArrayList([2]Vec3),
+
+    texture_load_ctx: texture_load_thread.Context,
 
     draw_state: struct {
         draw_tools: bool = true,
@@ -358,6 +363,8 @@ pub const Context = struct {
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
             .models = std.StringHashMap(vvd.MultiMesh).init(alloc),
+            .texture_load_ctx = try texture_load_thread.Context.init(alloc),
+            .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
             .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
 
@@ -388,6 +395,7 @@ pub const Context = struct {
             m.deinit();
         }
         self.models.deinit();
+        self.textures.deinit();
 
         var it = self.meshmap.iterator();
         while (it.next()) |item| {
@@ -396,6 +404,7 @@ pub const Context = struct {
         self.meshmap.deinit();
         self.name_arena.deinit();
         self.draw_state.ctx.deinit();
+        self.texture_load_ctx.deinit();
     }
 
     pub fn rebuildAllMeshes(self: *Self) !void {
@@ -436,8 +445,10 @@ pub const Context = struct {
             const res = try self.meshmap.getOrPutAdapted(side.material, StrCtx{});
             if (!res.found_existing) {
                 res.key_ptr.* = try self.storeString(side.material);
+                const tex = try self.loadTextureFromVpk(side.material);
                 res.value_ptr.* = .{
-                    .tex = try self.loadTextureFromVpk(side.material),
+                    .tex = tex.tex,
+                    .tex_res_id = tex.res_id,
                     .mesh = undefined,
                     .contains = std.AutoHashMap(EcsT.Id, void).init(self.alloc),
                 };
@@ -528,6 +539,12 @@ pub const Context = struct {
         return try self.string_storage.store(string);
     }
 
+    pub fn getTexture(self: *Self, res_id: vpk.VpkResId) graph.Texture {
+        if (self.textures.get(res_id)) |tex| return tex;
+
+        return missingTexture();
+    }
+
     pub fn loadTextureFromVpkFail(self: *Self, material: []const u8) !graph.Texture {
         if (try self.vpkctx.getFileTempFmt("vmt", "materials/{s}", .{material})) |tt| {
             var obj = try vdf.parse(self.alloc, tt);
@@ -571,7 +588,16 @@ pub const Context = struct {
         //break :blk graph.Texture.initFromBitmap(bmp, .{});
     }
 
-    pub fn loadTextureFromVpk(self: *Self, material: []const u8) !graph.Texture {
+    pub fn loadTextureFromVpk(self: *Self, material: []const u8) !struct { tex: graph.Texture, res_id: vpk.VpkResId } {
+        const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{material}) orelse return .{ .tex = missingTexture(), .res_id = 0 };
+        if (self.textures.get(res_id)) |tex| return .{ .tex = tex, .res_id = res_id };
+
+        try self.texture_load_ctx.loadTexture(material, res_id, &self.vpkctx);
+
+        return .{ .tex = missingTexture(), .res_id = res_id };
+    }
+
+    pub fn loadTextureFromVpkOld(self: *Self, material: []const u8) !graph.Texture {
         const err = in: {
             //const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
             if (try self.vpkctx.getFileTempFmt("vmt", "materials/{s}", .{material})) |tt| {
@@ -623,6 +649,31 @@ pub const Context = struct {
 
     fn camRay(self: *Self) [2]Vec3 {
         return [_]Vec3{ self.draw_state.cam3d.pos, self.draw_state.cam3d.front };
+    }
+
+    pub fn update(self: *Self) !void {
+        var count: usize = 0;
+        {
+            self.texture_load_ctx.completed_mutex.lock();
+            defer self.texture_load_ctx.completed_mutex.unlock();
+            count = self.texture_load_ctx.completed.items.len;
+            for (self.texture_load_ctx.completed.items) |*completed| {
+                const texture = try completed.data.deinitToTexture(self.texture_load_ctx.alloc);
+                try self.textures.put(completed.vpk_res_id, texture);
+            }
+            self.texture_load_ctx.completed.clearRetainingCapacity();
+        }
+        if (count > 0) {
+            std.debug.print("RETEXTURE ING {d}\n", .{count});
+            var mesh_it = self.meshmap.iterator();
+            while (mesh_it.next()) |mesh| {
+                if (mesh.value_ptr.tex_res_id == 0)
+                    continue; //missing tex
+
+                mesh.value_ptr.tex = self.textures.get(mesh.value_ptr.tex_res_id) orelse continue;
+                mesh.value_ptr.mesh.diffuse_texture = mesh.value_ptr.tex.id;
+            }
+        }
     }
 
     pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext) !void {

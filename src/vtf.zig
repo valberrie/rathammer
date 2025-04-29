@@ -199,18 +199,22 @@ fn mipResolution(mip_factor: u16, full_size: u32, is_comp: bool) u32 {
 }
 
 pub fn loadTexture(buf: []const u8, alloc: std.mem.Allocator) !graph.Texture {
-    const dat = try loadBuffer(buf, alloc);
-    defer alloc.free(dat.buffer);
-    return graph.Texture.initFromBuffer(dat.buffer, @intCast(dat.header.width), @intCast(dat.header.height), .{
-        .pixel_format = try dat.header.highres_fmt.toOpenGLFormat(),
-        //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-        .is_compressed = dat.header.highres_fmt.isCompressed(),
-    });
+    var dat = try loadBuffer(buf, alloc);
+    return dat.deinitToTexture(alloc);
 }
 
 pub const VtfBuf = struct {
     header: VtfHeader01,
     buffer: []const u8, //Caller must free
+
+    pub fn deinitToTexture(self: *@This(), alloc: std.mem.Allocator) !graph.Texture {
+        defer alloc.free(self.buffer);
+        return graph.Texture.initFromBuffer(self.buffer, @intCast(self.header.width), @intCast(self.header.height), .{
+            .pixel_format = try self.header.highres_fmt.toOpenGLFormat(),
+            //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
+            .is_compressed = self.header.highres_fmt.isCompressed(),
+        });
+    }
 };
 
 const log = std.log.scoped(.vtf);
