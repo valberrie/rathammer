@@ -140,6 +140,7 @@ fn dummyPrint(_: []const u8, _: anytype) void {}
 pub const MeshDeferred = struct {
     mesh: *MultiMesh, //Allocated, so vtables work
     res_id: vpk.VpkResId,
+    texture_ids: std.ArrayList(vpk.VpkResId),
 };
 
 //it sucks but it works
@@ -179,7 +180,6 @@ pub fn loadModelCrappy(
     var scratch = std.ArrayList(u8).init(alloc);
     defer scratch.deinit();
     var texts = std.ArrayList(vpk.VpkResId).init(alloc);
-    defer texts.deinit();
     outer: for (info.texture_names.items) |tname| {
         inner: for (info.texture_paths.items) |tpath| {
             scratch.clearRetainingCapacity();
@@ -410,10 +410,7 @@ pub fn loadModelCrappy(
     }
     //mmesh.initGl();
     //mmesh.setData();
-    for (texts.items) |tex| {
-        try pool_state.addNotify(tex, &mmesh.notify_vt);
-    }
-    return .{ .mesh = mmesh, .res_id = res_id };
+    return .{ .mesh = mmesh, .res_id = res_id, .texture_ids = texts };
 }
 
 //One vertex buffer, many index buffers

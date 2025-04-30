@@ -68,15 +68,17 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     vpk.timer.log("Vpk dir");
 
     try fgd.loadFgd(&editor.fgd_ctx, try std.fs.cwd().openDir("Half-Life 2/bin", .{}), "halflife2.fgd");
-    var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0) };
+    var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z };
     model_cam.yaw = 0;
     var start_index: usize = 0;
     var num_column: usize = 6;
     var selected_index: usize = 0;
     var name_buf = std.ArrayList(u8).init(alloc);
     defer name_buf.deinit();
-    var model_array = std.ArrayList([2][]const u8).init(alloc);
+    var model_array = std.ArrayList(vpk.VpkResId).init(alloc);
     defer model_array.deinit();
+    var model_array_sub = std.ArrayList(vpk.VpkResId).init(alloc);
+    defer model_array_sub.deinit();
 
     var tex_array = std.ArrayList(vpk.VpkResId).init(alloc);
     defer tex_array.deinit();
@@ -103,6 +105,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         editor.vpkctx.mutex.lock();
         defer editor.vpkctx.mutex.unlock();
         const vmt = editor.vpkctx.extension_map.get("vmt") orelse return;
+        const mdl = editor.vpkctx.extension_map.get("mdl") orelse return;
         var it = editor.vpkctx.entries.iterator();
         var excluded: usize = 0;
         outer: while (it.next()) |item| {
@@ -117,10 +120,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                     }
                 }
                 try tex_array.append(item.key_ptr.*);
+            } else if (id == mdl) {
+                try model_array.append(item.key_ptr.*);
             }
         }
         std.debug.print("excluded {d}\n", .{excluded});
     }
+
     //{ //Add all models to array
     //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
     //    while (it.next()) |path| {
@@ -205,15 +211,52 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         const split1 = winrect.split(.vertical, winrect.w * 0.8);
         //const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
         //my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
-        //const split2 = split1[0].split(.vertical, split1[0].w * 0.5);
+        const split2 = split1[0].split(.vertical, split1[0].w * 0.5);
+        const edit_split = if (editor.edit_state.gui_tab == .model) split2[0] else split1[0];
         try editor.update();
         if (win.keyRising(.T))
             editor.edit_state.show_gui = !editor.edit_state.show_gui;
         if (!editor.edit_state.show_gui) {
             try editor.draw3Dview(split1[0], &draw);
-        } else if (try os9gui.beginTlWindow(split1[0])) {
+        } else if (try os9gui.beginTlWindow(edit_split)) {
             defer os9gui.endTlWindow();
             switch (try os9gui.beginTabs(&editor.edit_state.gui_tab)) {
+                .model => {
+                    if (rebuild_tex_array) {
+                        start_index = 0;
+                        rebuild_tex_array = false;
+                        model_array_sub.clearRetainingCapacity();
+                        const io = std.mem.indexOf;
+                        for (model_array.items) |item| {
+                            const tt = editor.vpkctx.entries.get(item) orelse continue;
+                            if (io(u8, tt.path, tbox.arraylist.items) != null or io(u8, tt.name, tbox.arraylist.items) != null)
+                                try model_array_sub.append(item);
+                        }
+                    }
+                    const vl = try os9gui.beginV();
+                    vl.padding.top = 0;
+                    vl.padding.bottom = 0;
+                    defer os9gui.endL();
+                    os9gui.sliderEx(&start_index, 0, model_array.items.len, "", .{});
+                    {
+                        _ = try os9gui.beginH(2);
+                        defer os9gui.endL();
+                        const len = tbox.arraylist.items.len;
+                        try os9gui.textbox2(&tbox, .{});
+                        os9gui.label("Results {d}", .{model_array_sub.items.len});
+                        if (len != tbox.arraylist.items.len)
+                            rebuild_tex_array = true;
+                    }
+                    start_index = @min(start_index, model_array_sub.items.len);
+                    for (model_array_sub.items[start_index..], start_index..) |model, i| {
+                        const tt = editor.vpkctx.entries.get(model) orelse continue;
+                        if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = selected_index == i })) {
+                            selected_index = i;
+                        }
+                        if (os9gui.gui.layout.last_requested_bounds == null) //Hacky
+                            break;
+                    }
+                },
                 .texture => {
                     if (rebuild_tex_array) {
                         start_index = 0;
@@ -281,46 +324,59 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
             }
             os9gui.endTabs();
         }
-        //if (editor.edit_state.show_gui) {
-        //    if (selected_index < model_array.items.len) {
-        //        model_cam.updateDebugMove(.{
-        //            .down = win.keyHigh(.LCTRL),
-        //            .up = win.keyHigh(.SPACE),
-        //            .left = win.keyHigh(.A),
-        //            .right = win.keyHigh(.D),
-        //            .fwd = win.keyHigh(.W),
-        //            .bwd = win.keyHigh(.S),
-        //            .mouse_delta = win.mouse.delta,
-        //            .scroll_delta = win.mouse.wheel_delta.y,
-        //        });
-        //        const screen_area = split2[1];
-        //        const x: i32 = @intFromFloat(screen_area.x);
-        //        const y: i32 = @intFromFloat(screen_area.y);
-        //        const w: i32 = @intFromFloat(screen_area.w);
-        //        const h: i32 = @intFromFloat(screen_area.h);
+        if (editor.edit_state.show_gui and editor.edit_state.gui_tab == .model) {
+            if (selected_index < model_array_sub.items.len) {
+                const mouse_in = split2[1].containsPoint(win.mouse.pos);
+                model_cam.updateDebugMove(.{
+                    .down = win.keyHigh(.LCTRL),
+                    .up = win.keyHigh(.SPACE),
+                    .left = win.keyHigh(.A),
+                    .right = win.keyHigh(.D),
+                    .fwd = win.keyHigh(.W),
+                    .bwd = win.keyHigh(.S),
+                    .mouse_delta = if (mouse_in and win.mouse.left == .high) win.mouse.delta else .{ .x = 0, .y = 0 },
+                    .scroll_delta = win.mouse.wheel_delta.y,
+                });
+                const screen_area = split2[1];
+                const x: i32 = @intFromFloat(screen_area.x);
+                const y: i32 = @intFromFloat(screen_area.y);
+                const w: i32 = @intFromFloat(screen_area.w);
+                const h: i32 = @intFromFloat(screen_area.h);
 
-        //        graph.c.glViewport(x, y, w, h);
-        //        graph.c.glScissor(x, y, w, h);
-        //        graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
-        //        defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
-        //        //todo
-        //        //defer loading of all textures
+                graph.c.glViewport(x, y, w, h);
+                graph.c.glScissor(x, y, w, h);
+                graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+                defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+                //todo
+                //defer loading of all textures
 
-        //        //const modname = model_array.items[selected_index];
-        //        name_buf.clearRetainingCapacity();
-        //        //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
-        //        draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
-        //        //const name = "models/props_wasteland/exterior_fence002d.mdl";
-        //        //if (editor.models.getPtr(name_buf.items)) |mod| {
-        //        //    const view = model_cam.getMatrix(1, 1, 64 * 512);
-        //        //    const mat = graph.za.Mat4.identity();
-        //        //    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
-        //        //} else {
-        //        //    //std.debug.print("Could not find the model!\n", .{});
-        //        //}
-        //        try draw.flush(null, model_cam);
-        //    }
-        //}
+                const modid = model_array_sub.items[selected_index];
+                name_buf.clearRetainingCapacity();
+                //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
+                draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
+                if (editor.models.get(modid)) |mod| {
+                    if (mod) |mm| {
+                        const view = model_cam.getMatrix(1, 1, 64 * 512);
+                        const mat = graph.za.Mat4.identity();
+                        mm.drawSimple(view, mat, editor.draw_state.basic_shader);
+                    }
+                } else {
+                    if (editor.vpkctx.entries.get(modid)) |tt| {
+                        try name_buf.writer().print("{s}/{s}.mdl", .{ tt.path, tt.name });
+                        _ = try editor.loadModel(name_buf.items);
+                    }
+                }
+                //const name = "models/props_wasteland/exterior_fence002d.mdl";
+                //if (editor.models.getPtr(name_buf.items)) |mod| {
+                //    const view = model_cam.getMatrix(1, 1, 64 * 512);
+                //    const mat = graph.za.Mat4.identity();
+                //    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
+                //} else {
+                //    //std.debug.print("Could not find the model!\n", .{});
+                //}
+                try draw.flush(null, model_cam);
+            }
+        }
         try editor.drawInspector(split1[1], &os9gui);
         if (!last_frame_grabbed and split1[1].containsPoint(win.mouse.pos))
             grab_mouse = false;

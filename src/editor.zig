@@ -346,9 +346,10 @@ pub const Context = struct {
     edit_state: struct {
         show_gui: bool = false,
         gui_tab: enum {
+            model,
             texture,
             fgd,
-        } = .texture,
+        } = .model,
         state: enum {
             select,
             face_manip,
@@ -703,6 +704,14 @@ pub const Context = struct {
                 var model = completed.mesh;
                 model.initGl();
                 try self.models.put(completed.res_id, model);
+                for (completed.texture_ids.items) |tid| {
+                    try self.texture_load_ctx.addNotify(tid, &completed.mesh.notify_vt);
+                }
+                for (model.meshes.items) |*mesh| {
+                    const t = self.getTexture(mesh.tex_res_id);
+                    mesh.texture_id = t.id;
+                }
+                completed.texture_ids.deinit();
                 num_removed += 1;
 
                 const elapsed = timer.read();
