@@ -92,6 +92,7 @@ pub const Context = struct {
         res_id: VpkResId,
 
         path: []const u8,
+        name: []const u8,
     };
 
     /// These map the strings found in vpk to a numeric id.
@@ -286,6 +287,7 @@ pub const Context = struct {
                                     .length = entry_len,
                                     .res_id = res_id,
                                     .path = path_stored,
+                                    .name = fname_stored,
                                 };
                             } else {
                                 log.err("Duplicate resource is named: {s}", .{fname});

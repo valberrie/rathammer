@@ -80,6 +80,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
 
     var tex_array = std.ArrayList(vpk.VpkResId).init(alloc);
     defer tex_array.deinit();
+
+    var tbox = Os9Gui.DynamicTextbox.init(alloc);
+    defer tbox.deinit();
+    var rebuild_tex_array = true;
+    var tex_array_sub = std.ArrayList(vpk.VpkResId).init(alloc);
+    defer tex_array_sub.deinit();
     {
         const ep = "materials/";
         const exclude_list = [
@@ -208,29 +214,66 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         } else if (try os9gui.beginTlWindow(split1[0])) {
             defer os9gui.endTlWindow();
             switch (try os9gui.beginTabs(&editor.edit_state.gui_tab)) {
-                .model => {
+                .texture => {
+                    if (rebuild_tex_array) {
+                        start_index = 0;
+                        rebuild_tex_array = false;
+                        tex_array_sub.clearRetainingCapacity();
+                        const io = std.mem.indexOf;
+                        for (tex_array.items) |item| {
+                            const tt = editor.vpkctx.entries.get(item) orelse continue;
+                            if (io(u8, tt.path, tbox.arraylist.items) != null or io(u8, tt.name, tbox.arraylist.items) != null)
+                                try tex_array_sub.append(item);
+                        }
+                    }
+
                     const vl = try os9gui.beginV();
                     defer os9gui.endL();
-                    start_index = @min(start_index, tex_array.items.len);
-                    os9gui.sliderEx(&start_index, 0, @divFloor(tex_array.items.len, num_column), "", .{});
+                    start_index = @min(start_index, tex_array_sub.items.len);
+                    os9gui.sliderEx(&start_index, 0, @divFloor(tex_array_sub.items.len, num_column), "", .{});
                     os9gui.sliderEx(&num_column, 1, 10, "num column", .{});
+                    const len = tbox.arraylist.items.len;
+                    {
+                        _ = try os9gui.beginH(2);
+                        defer os9gui.endL();
+                        try os9gui.textbox2(&tbox, .{});
+                        os9gui.label("Results {d}", .{tex_array_sub.items.len});
+                    }
+                    if (len != tbox.arraylist.items.len)
+                        rebuild_tex_array = true;
                     const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
                     vl.pushRemaining();
 
                     const nc: f32 = @floatFromInt(num_column);
                     _ = try os9gui.beginL(Gui.TableLayout{ .columns = @intCast(num_column), .item_height = ar.w / nc });
                     defer os9gui.endL();
-                    const acc_ind = @min(start_index * num_column, tex_array.items.len);
-                    for (tex_array.items[acc_ind..], acc_ind..) |model, i| {
+                    const text_h = 40;
+                    const acc_ind = @min(start_index * num_column, tex_array_sub.items.len);
+                    const missing = edit.missingTexture();
+                    for (tex_array_sub.items[acc_ind..], acc_ind..) |model, i| {
+                        const tex = editor.getTexture(model);
+                        if (tex.id == missing.id) {
+                            try editor.loadTexture(model);
+                            continue;
+                        }
                         const area = os9gui.gui.getArea() orelse break;
                         const click = os9gui.gui.clickWidget(area);
                         if (click == .click)
                             selected_index = i;
                         //os9gui.gui.drawRectFilled(area, 0xffff);
-                        const tex = editor.getTexture(model);
-                        try editor.loadTexture(model);
                         os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
-                        //os9gui.gui.drawTextFmt("{s}/{s}", .{ model[0], model[1] }, graph.Rec(area.x, area.y, area.w, 20), 20, 0xffffffff, .{}, os9gui.font);
+                        const tr = graph.Rec(area.x, area.y + area.h - text_h, area.w, text_h);
+                        os9gui.gui.drawRectFilled(tr, 0xff);
+                        const tt = editor.vpkctx.entries.get(model) orelse continue;
+                        os9gui.gui.drawTextFmt(
+                            "{s}/{s}",
+                            .{ tt.path, tt.name },
+                            tr,
+                            text_h,
+                            0xffffffff,
+                            .{},
+                            os9gui.font,
+                        );
                         //os9gui.label("{s}/{s}", .{ model[0], model[1] });
                     }
                 },

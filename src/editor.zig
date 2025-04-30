@@ -346,9 +346,9 @@ pub const Context = struct {
     edit_state: struct {
         show_gui: bool = false,
         gui_tab: enum {
-            model,
+            texture,
             fgd,
-        } = .model,
+        } = .texture,
         state: enum {
             select,
             face_manip,
@@ -673,7 +673,7 @@ pub const Context = struct {
     }
 
     pub fn update(self: *Self) !void {
-        const MAX_UPDATE_TIME = std.time.ns_per_ms * 10;
+        const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
         var tcount: usize = 0;
