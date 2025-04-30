@@ -68,28 +68,53 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     vpk.timer.log("Vpk dir");
 
     try fgd.loadFgd(&editor.fgd_ctx, try std.fs.cwd().openDir("Half-Life 2/bin", .{}), "halflife2.fgd");
-    {
-        //Create an atlas for the icons
-        var it = editor.fgd_ctx.base.valueIterator();
-        while (it.next()) |class| {
-            if (class.iconsprite.len == 0) continue;
-            const res = try editor.icon_map.getOrPut(class.iconsprite);
-            if (!res.found_existing) {
-                var sl = class.iconsprite;
-                if (std.mem.endsWith(u8, class.iconsprite, ".vmt"))
-                    sl = class.iconsprite[0 .. class.iconsprite.len - 4];
-                res.value_ptr.* = (try editor.loadTextureFromVpk(sl)).tex;
-            }
-        }
-    }
     var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0) };
     model_cam.yaw = 0;
     var start_index: usize = 0;
+    var num_column: usize = 6;
     var selected_index: usize = 0;
     var name_buf = std.ArrayList(u8).init(alloc);
     defer name_buf.deinit();
     var model_array = std.ArrayList([2][]const u8).init(alloc);
     defer model_array.deinit();
+
+    var tex_array = std.ArrayList(vpk.VpkResId).init(alloc);
+    defer tex_array.deinit();
+    {
+        const ep = "materials/";
+        const exclude_list = [
+            _
+        ][]const u8{
+            "models",
+            "gamepadui",
+            "skybox",
+            "vgui",
+            "particle",
+            "console",
+            "sprites",
+            "backpack",
+        };
+        editor.vpkctx.mutex.lock();
+        defer editor.vpkctx.mutex.unlock();
+        const vmt = editor.vpkctx.extension_map.get("vmt") orelse return;
+        var it = editor.vpkctx.entries.iterator();
+        var excluded: usize = 0;
+        outer: while (it.next()) |item| {
+            const id = item.key_ptr.* >> 48;
+            if (id == vmt) {
+                if (std.mem.startsWith(u8, item.value_ptr.path, ep)) {
+                    for (exclude_list) |ex| {
+                        if (std.mem.startsWith(u8, item.value_ptr.path[ep.len..], ex)) {
+                            excluded += 1;
+                            continue :outer;
+                        }
+                    }
+                }
+                try tex_array.append(item.key_ptr.*);
+            }
+        }
+        std.debug.print("excluded {d}\n", .{excluded});
+    }
     //{ //Add all models to array
     //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
     //    while (it.next()) |path| {
@@ -174,27 +199,38 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         const split1 = winrect.split(.vertical, winrect.w * 0.8);
         //const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
         //my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
-        const split2 = split1[0].split(.vertical, split1[0].w * 0.5);
+        //const split2 = split1[0].split(.vertical, split1[0].w * 0.5);
         try editor.update();
         if (win.keyRising(.T))
             editor.edit_state.show_gui = !editor.edit_state.show_gui;
         if (!editor.edit_state.show_gui) {
             try editor.draw3Dview(split1[0], &draw);
-        } else if (try os9gui.beginTlWindow(split2[0])) {
+        } else if (try os9gui.beginTlWindow(split1[0])) {
             defer os9gui.endTlWindow();
             switch (try os9gui.beginTabs(&editor.edit_state.gui_tab)) {
                 .model => {
                     const vl = try os9gui.beginV();
-                    _ = vl;
                     defer os9gui.endL();
-                    os9gui.sliderEx(&start_index, 0, model_array.items.len, "", .{});
-                    for (model_array.items[start_index..], start_index..) |model, i| {
+                    start_index = @min(start_index, tex_array.items.len);
+                    os9gui.sliderEx(&start_index, 0, @divFloor(tex_array.items.len, num_column), "", .{});
+                    os9gui.sliderEx(&num_column, 1, 10, "num column", .{});
+                    const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
+                    vl.pushRemaining();
+
+                    const nc: f32 = @floatFromInt(num_column);
+                    _ = try os9gui.beginL(Gui.TableLayout{ .columns = @intCast(num_column), .item_height = ar.w / nc });
+                    defer os9gui.endL();
+                    const acc_ind = @min(start_index * num_column, tex_array.items.len);
+                    for (tex_array.items[acc_ind..], acc_ind..) |model, i| {
                         const area = os9gui.gui.getArea() orelse break;
                         const click = os9gui.gui.clickWidget(area);
                         if (click == .click)
                             selected_index = i;
-                        os9gui.gui.drawRectFilled(area, 0xffff);
-                        os9gui.gui.drawTextFmt("{s}/{s}", .{ model[0], model[1] }, graph.Rec(area.x, area.y, area.w, 20), 20, 0xffffffff, .{}, os9gui.font);
+                        //os9gui.gui.drawRectFilled(area, 0xffff);
+                        const tex = editor.getTexture(model);
+                        try editor.loadTexture(model);
+                        os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
+                        //os9gui.gui.drawTextFmt("{s}/{s}", .{ model[0], model[1] }, graph.Rec(area.x, area.y, area.w, 20), 20, 0xffffffff, .{}, os9gui.font);
                         //os9gui.label("{s}/{s}", .{ model[0], model[1] });
                     }
                 },
@@ -202,46 +238,46 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
             }
             os9gui.endTabs();
         }
-        if (editor.edit_state.show_gui) {
-            if (selected_index < model_array.items.len) {
-                model_cam.updateDebugMove(.{
-                    .down = win.keyHigh(.LCTRL),
-                    .up = win.keyHigh(.SPACE),
-                    .left = win.keyHigh(.A),
-                    .right = win.keyHigh(.D),
-                    .fwd = win.keyHigh(.W),
-                    .bwd = win.keyHigh(.S),
-                    .mouse_delta = win.mouse.delta,
-                    .scroll_delta = win.mouse.wheel_delta.y,
-                });
-                const screen_area = split2[1];
-                const x: i32 = @intFromFloat(screen_area.x);
-                const y: i32 = @intFromFloat(screen_area.y);
-                const w: i32 = @intFromFloat(screen_area.w);
-                const h: i32 = @intFromFloat(screen_area.h);
+        //if (editor.edit_state.show_gui) {
+        //    if (selected_index < model_array.items.len) {
+        //        model_cam.updateDebugMove(.{
+        //            .down = win.keyHigh(.LCTRL),
+        //            .up = win.keyHigh(.SPACE),
+        //            .left = win.keyHigh(.A),
+        //            .right = win.keyHigh(.D),
+        //            .fwd = win.keyHigh(.W),
+        //            .bwd = win.keyHigh(.S),
+        //            .mouse_delta = win.mouse.delta,
+        //            .scroll_delta = win.mouse.wheel_delta.y,
+        //        });
+        //        const screen_area = split2[1];
+        //        const x: i32 = @intFromFloat(screen_area.x);
+        //        const y: i32 = @intFromFloat(screen_area.y);
+        //        const w: i32 = @intFromFloat(screen_area.w);
+        //        const h: i32 = @intFromFloat(screen_area.h);
 
-                graph.c.glViewport(x, y, w, h);
-                graph.c.glScissor(x, y, w, h);
-                graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
-                defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
-                //todo
-                //defer loading of all textures
+        //        graph.c.glViewport(x, y, w, h);
+        //        graph.c.glScissor(x, y, w, h);
+        //        graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+        //        defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+        //        //todo
+        //        //defer loading of all textures
 
-                //const modname = model_array.items[selected_index];
-                name_buf.clearRetainingCapacity();
-                //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
-                draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
-                //const name = "models/props_wasteland/exterior_fence002d.mdl";
-                //if (editor.models.getPtr(name_buf.items)) |mod| {
-                //    const view = model_cam.getMatrix(1, 1, 64 * 512);
-                //    const mat = graph.za.Mat4.identity();
-                //    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
-                //} else {
-                //    //std.debug.print("Could not find the model!\n", .{});
-                //}
-                try draw.flush(null, model_cam);
-            }
-        }
+        //        //const modname = model_array.items[selected_index];
+        //        name_buf.clearRetainingCapacity();
+        //        //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
+        //        draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
+        //        //const name = "models/props_wasteland/exterior_fence002d.mdl";
+        //        //if (editor.models.getPtr(name_buf.items)) |mod| {
+        //        //    const view = model_cam.getMatrix(1, 1, 64 * 512);
+        //        //    const mat = graph.za.Mat4.identity();
+        //        //    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
+        //        //} else {
+        //        //    //std.debug.print("Could not find the model!\n", .{});
+        //        //}
+        //        try draw.flush(null, model_cam);
+        //    }
+        //}
         try editor.drawInspector(split1[1], &os9gui);
         if (!last_frame_grabbed and split1[1].containsPoint(win.mouse.pos))
             grab_mouse = false;

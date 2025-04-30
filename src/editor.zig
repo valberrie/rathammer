@@ -652,11 +652,18 @@ pub const Context = struct {
         //break :blk graph.Texture.initFromBitmap(bmp, .{});
     }
 
+    pub fn loadTexture(self: *Self, res_id: vpk.VpkResId) !void {
+        if (self.textures.get(res_id)) |_| return;
+        try self.textures.put(res_id, missingTexture());
+        try self.texture_load_ctx.loadTexture(res_id, &self.vpkctx);
+    }
+
     pub fn loadTextureFromVpk(self: *Self, material: []const u8) !struct { tex: graph.Texture, res_id: vpk.VpkResId } {
         const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{material}) orelse return .{ .tex = missingTexture(), .res_id = 0 };
         if (self.textures.get(res_id)) |tex| return .{ .tex = tex, .res_id = res_id };
 
-        try self.texture_load_ctx.loadTexture(material, res_id, &self.vpkctx);
+        try self.textures.put(res_id, missingTexture());
+        try self.texture_load_ctx.loadTexture(res_id, &self.vpkctx);
 
         return .{ .tex = missingTexture(), .res_id = res_id };
     }
@@ -676,9 +683,12 @@ pub const Context = struct {
             tcount = self.texture_load_ctx.completed.items.len;
             var num_rm_tex: usize = 0;
             for (self.texture_load_ctx.completed.items) |*completed| {
-                const texture = try completed.data.deinitToTexture(self.texture_load_ctx.alloc);
-                try self.textures.put(completed.vpk_res_id, texture);
-                self.texture_load_ctx.notifyTexture(completed.vpk_res_id, self);
+                if (completed.data.deinitToTexture(self.texture_load_ctx.alloc)) |texture| {
+                    try self.textures.put(completed.vpk_res_id, texture);
+                    self.texture_load_ctx.notifyTexture(completed.vpk_res_id, self);
+                } else |err| {
+                    log.err("texture init failed with : {}", .{err});
+                }
 
                 num_rm_tex += 1;
                 const elapsed = timer.read();

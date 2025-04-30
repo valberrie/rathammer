@@ -186,7 +186,7 @@ pub fn loadModelCrappy(
             try scratch.writer().print("{s}{s}", .{ tpath, tname });
             const tex_res_id = try vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{scratch.items}) orelse continue :inner;
             //const tex = editor.loadTextureFromVpk(scratch.items) catch continue :inner;
-            try pool_state.loadTexture(scratch.items, tex_res_id, vpkctx);
+            try pool_state.loadTexture(tex_res_id, vpkctx);
             //const tex = editor.loadTextureFromVpkFail(scratch.items) catch continue :inner;
             try texts.append(tex_res_id);
             continue :outer;

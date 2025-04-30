@@ -89,6 +89,9 @@ pub const Context = struct {
         archive_index: u16,
         offset: u32,
         length: u32,
+        res_id: VpkResId,
+
+        path: []const u8,
     };
 
     /// These map the strings found in vpk to a numeric id.
@@ -202,7 +205,7 @@ pub const Context = struct {
         try new_dir.fds.put(0x7fff, infile);
         try self.dirs.append(new_dir);
 
-        // read into fbs because File.Reader is slow!
+        // We read into fbs because File.Reader is slow!
         self.filebuf.clearRetainingCapacity();
         try infile.reader().readAllArrayList(&self.filebuf, std.math.maxInt(usize));
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = self.filebuf.items, .pos = 0 };
@@ -281,6 +284,8 @@ pub const Context = struct {
                                     .archive_index = arch_index,
                                     .offset = offset,
                                     .length = entry_len,
+                                    .res_id = res_id,
+                                    .path = path_stored,
                                 };
                             } else {
                                 log.err("Duplicate resource is named: {s}", .{fname});
@@ -315,8 +320,9 @@ pub const Context = struct {
     }
 
     /// Returns a buffer owned by Self which will be clobberd on next getFileTemp call
-    /// Is not thread safe, use getFileTempFmtBuf instead
     pub fn getFileTemp(self: *Self, extension: []const u8, path: []const u8, name: []const u8) !?[]const u8 {
+        self.mutex.lock();
+        defer self.mutex.unlock();
         self.filebuf.clearRetainingCapacity();
         return self.getFile(extension, path, name, &self.filebuf);
     }
@@ -372,7 +378,7 @@ pub const Context = struct {
 
     ///Clears buf and returns the written string.
     /// NOT THREAD SAFE
-    pub fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
+    fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
         const res_id = self.getResourceId(extension, path, name) orelse return null;
         const entry = self.entries.get(res_id) orelse return null;
         const dir = self.getDir(entry.dir_index) orelse return null;

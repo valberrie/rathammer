@@ -53,8 +53,8 @@ const ImageFormat = enum(i32) {
             .IMAGE_FORMAT_RGB888 => 24,
             .IMAGE_FORMAT_RGB888_BLUESCREEN => 24,
 
-            .IMAGE_FORMAT_RGBA8888 => 4,
-            .IMAGE_FORMAT_ABGR8888 => 4,
+            .IMAGE_FORMAT_RGBA8888 => 32,
+            .IMAGE_FORMAT_ABGR8888 => 32,
             .IMAGE_FORMAT_ARGB8888 => 32,
             .IMAGE_FORMAT_BGRA8888 => 32,
             .IMAGE_FORMAT_BGRX8888 => 32,
@@ -209,11 +209,16 @@ pub const VtfBuf = struct {
 
     pub fn deinitToTexture(self: *@This(), alloc: std.mem.Allocator) !graph.Texture {
         defer alloc.free(self.buffer);
-        return graph.Texture.initFromBuffer(self.buffer, @intCast(self.header.width), @intCast(self.header.height), .{
+        if (self.buffer.len == 0 or self.header.width > 0x1000 or self.header.height > 0x1000) {
+            std.debug.print("broken texture\n", .{});
+            return error.brokentexture;
+        }
+        const tex = graph.Texture.initFromBuffer(self.buffer, @intCast(self.header.width), @intCast(self.header.height), .{
             .pixel_format = try self.header.highres_fmt.toOpenGLFormat(),
             //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
             .is_compressed = self.header.highres_fmt.isCompressed(),
         });
+        return tex;
     }
 };
 
@@ -231,7 +236,7 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
     const header_size = try r.readInt(u32, .little);
 
     const h1 = try parseStruct(VtfHeader01, .little, r);
-    errdefer log.err("{}\n", .{h1});
+    //errdefer log.err("{}\n", .{h1});
 
     //var flags = std.enums.EnumSet(CompiledVtfFlags).initEmpty();
     //flags.bits.mask = h1.flags;
@@ -241,7 +246,7 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
     //}
 
     errdefer log.err("TOKEN POS {d} {d}", .{ fbs.pos, buffer.len });
-    if (version_min > 3) {
+    if (version_min > 5) { // versions 3, 4, 5 are bitwise equiv
         log.err("Vtf version {d}.{d}, not supported", .{ version_maj, version_min });
         return error.unsupportedVersion;
     }
@@ -258,7 +263,8 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
     //FIXME actually try to parse the resources in v3,v4
     for (0..h3.num_res) |_| {
         const re = try parseStruct(VtfResource, .little, r);
-        std.debug.print("RE {s} {}\n", .{ re.tag, re });
+        _ = re;
+        //std.debug.print("RE {s} {}\n", .{ re.tag, re });
     }
 
     fbs.pos = header_size; //Ensure we are in the correct position

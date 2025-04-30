@@ -137,12 +137,14 @@ pub const Context = struct {
         self.alloc.destroy(self.pool);
     }
 
-    pub fn loadTexture(self: *@This(), material: []const u8, res_id: vpk.VpkResId, vpkctx: *vpk.Context) !void {
-        try self.pool.spawn(workFunc, .{ self, material, res_id, vpkctx });
+    pub fn loadTexture(self: *@This(), res_id: vpk.VpkResId, vpkctx: *vpk.Context) !void {
+        try self.pool.spawn(workFunc, .{ self, res_id, vpkctx });
     }
 
-    pub fn workFunc(self: *@This(), material: []const u8, vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) void {
-        workFuncErr(self, material, vpk_res_id, vpkctx) catch return;
+    pub fn workFunc(self: *@This(), vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) void {
+        workFuncErr(self, vpk_res_id, vpkctx) catch |e| {
+            log.warn("{} for", .{e});
+        };
     }
 
     pub fn loadModel(self: *@This(), res_id: vpk.VpkResId, model_name: []const u8, vpkctx: *vpk.Context) !void {
@@ -156,54 +158,44 @@ pub const Context = struct {
         self.completed_models.append(mesh) catch return;
     }
 
-    pub fn workFuncErr(self: *@This(), material: []const u8, vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) !void {
+    pub fn workFuncErr(self: *@This(), vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) !void {
         const thread_state = try self.getState();
-        const err = in: {
-            //const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
-            if (try vpkctx.getFileFromRes(vpk_res_id, &thread_state.vtf_file_buffer)) |tt| {
-                var obj = try vdf.parse(self.alloc, tt);
-                defer obj.deinit();
-                //All vmt are a single root object with a shader name as key
-                if (obj.value.list.items.len > 0) {
-                    const fallback_keys = [_][]const u8{
-                        "$basetexture", "%tooltexture",
-                    };
-                    const ob = obj.value.list.items[0].val;
-                    switch (ob) {
-                        .obj => |o| {
-                            for (fallback_keys) |fbkey| {
-                                if (o.getFirst(fbkey)) |base| {
-                                    if (base == .literal) {
-                                        break :in vtf.loadBuffer(
-                                            (vpkctx.getFileTempFmtBuf(
-                                                "vtf",
-                                                "materials/{s}",
-                                                .{base.literal},
-                                                &thread_state.vtf_file_buffer,
-                                            ) catch |err| break :in err) orelse {
-                                                break :in error.notfound;
-                                            },
-                                            self.alloc,
-                                        ) catch |err| break :in err;
-                                    }
+        //const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
+        if (try vpkctx.getFileFromRes(vpk_res_id, &thread_state.vtf_file_buffer)) |tt| {
+            var obj = try vdf.parse(self.alloc, tt);
+            defer obj.deinit();
+            //All vmt are a single root object with a shader name as key
+            if (obj.value.list.items.len > 0) {
+                const fallback_keys = [_][]const u8{
+                    "$basetexture", "%tooltexture",
+                };
+                const ob = obj.value.list.items[0].val;
+                switch (ob) {
+                    .obj => |o| {
+                        for (fallback_keys) |fbkey| {
+                            if (o.getFirst(fbkey)) |base| {
+                                if (base == .literal) {
+                                    const buf = try vtf.loadBuffer(
+                                        try vpkctx.getFileTempFmtBuf(
+                                            "vtf",
+                                            "materials/{s}",
+                                            .{base.literal},
+                                            &thread_state.vtf_file_buffer,
+                                        ) orelse return error.notfound,
+                                        self.alloc,
+                                    );
+                                    try self.insertCompleted(.{
+                                        .data = buf,
+                                        .vpk_res_id = vpk_res_id,
+                                    });
                                 }
                             }
-                        },
-                        else => {},
-                    }
+                        }
+                    },
+                    else => {},
                 }
             }
-            break :in error.missingTexture;
-        };
-        const unwrapped = err catch |e| {
-            _ = material;
-            log.warn("{} for", .{e});
-            return; //TODO notify
-        };
-        try self.insertCompleted(.{
-            .data = unwrapped,
-            .vpk_res_id = vpk_res_id,
-        });
+        }
     }
 };
 
