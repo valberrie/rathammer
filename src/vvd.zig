@@ -242,9 +242,9 @@ pub fn loadModelCrappy(
                         .z = v.pos.z,
                         .u = v.uv.x,
                         .v = v.uv.y,
-                        .nx = 0,
-                        .ny = 0,
-                        .nz = 0,
+                        .nx = v.norm.x,
+                        .ny = v.norm.y,
+                        .nz = v.norm.z,
                         .color = 0xff_ff_ff_ff,
                     });
                     try w.print("v {d} {d} {d}\n", .{ v.pos.x, v.pos.y, v.pos.z });

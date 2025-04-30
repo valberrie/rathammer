@@ -166,6 +166,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     while (!win.should_exit) {
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
         win.grabMouse(grab_mouse);
+        //TODO add a cool down for wait events?
         win.pumpEvents(.poll);
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
@@ -291,13 +292,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                     _ = try os9gui.beginL(Gui.TableLayout{ .columns = @intCast(num_column), .item_height = ar.w / nc });
                     defer os9gui.endL();
                     const acc_ind = @min(start_index * num_column, tex_array_sub.items.len);
-                    const missing = edit.missingTexture();
+                    //const missing = edit.missingTexture();
                     for (tex_array_sub.items[acc_ind..], acc_ind..) |model, i| {
                         const tex = editor.getTexture(model);
-                        if (tex.id == missing.id) {
-                            try editor.loadTexture(model);
-                            continue;
-                        }
+                        //if (tex.id == missing.id) {
+                        try editor.loadTexture(model);
+                        //continue;
+                        //}
                         const area = os9gui.gui.getArea() orelse break;
                         const text_h = area.h / 8;
                         const click = os9gui.gui.clickWidget(area);
@@ -326,6 +327,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         }
         if (editor.edit_state.show_gui and editor.edit_state.gui_tab == .model) {
             if (selected_index < model_array_sub.items.len) {
+                const sp = split2[1];
                 const mouse_in = split2[1].containsPoint(win.mouse.pos);
                 model_cam.updateDebugMove(.{
                     .down = win.keyHigh(.LCTRL),
@@ -353,10 +355,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                 const modid = model_array_sub.items[selected_index];
                 name_buf.clearRetainingCapacity();
                 //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
-                draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
+                //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
                 if (editor.models.get(modid)) |mod| {
                     if (mod) |mm| {
-                        const view = model_cam.getMatrix(1, 1, 64 * 512);
+                        const view = model_cam.getMatrix(sp.h / sp.w, 1, 64 * 512);
                         const mat = graph.za.Mat4.identity();
                         mm.drawSimple(view, mat, editor.draw_state.basic_shader);
                     }

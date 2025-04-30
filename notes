@@ -5,12 +5,6 @@ Feature completeness comes after ease of use.
 2d view implementation will require some thought
 maybe start with an orthographic view with GL_LINES
 
-Large TODO
-support vmt
-support models
-draw billboarded entity (light, soundscape etc)
-
-
 TODO
 use the deferred renderer so it looks real pretty
 Decide on how editing will be handled
@@ -41,7 +35,6 @@ body parts:
 
 sheesh
 
-
 DRAWING the models we are moving.
 poly component (transformable?)
 
@@ -63,10 +56,3 @@ is it really that simple?
 Fast grab of faces, all solids are convex polyhedra, meaning a ray intersecting the solid will intersect exactly twice.
 holding down a key will select exit face rather than enter
 
-How do we do it?
-
-How do we submit requests for model load?
-must be idempotent
-simplest way is to reserve an id for it
-
-FIRST get textures deffered load
