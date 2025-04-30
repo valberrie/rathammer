@@ -75,7 +75,11 @@ const ImageFormat = enum(i32) {
             .IMAGE_FORMAT_RGBA8888 => graph.c.GL_RGBA,
             .IMAGE_FORMAT_BGR888 => graph.c.GL_BGR,
             .IMAGE_FORMAT_RGB888 => graph.c.GL_RGB,
-            else => error.formatNotSupported, //Most formats can be supported trivially by adding the correct mapping to gl enums
+            .IMAGE_FORMAT_UV88 => graph.c.GL_RG,
+            else => {
+                std.debug.print("FORMAT {s}\n", .{@tagName(self)});
+                return error.formatNotSupported;
+            }, //Most formats can be supported trivially by adding the correct mapping to gl enums
         };
     }
     pub fn isCompressed(self: @This()) bool {
@@ -236,7 +240,7 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
     const header_size = try r.readInt(u32, .little);
 
     const h1 = try parseStruct(VtfHeader01, .little, r);
-    //errdefer log.err("{}\n", .{h1});
+    errdefer log.err("{}\n", .{h1});
 
     //var flags = std.enums.EnumSet(CompiledVtfFlags).initEmpty();
     //flags.bits.mask = h1.flags;

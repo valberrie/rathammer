@@ -181,7 +181,10 @@ pub const Context = struct {
                                             "materials/{s}",
                                             .{base.literal},
                                             &thread_state.vtf_file_buffer,
-                                        ) orelse return error.notfound,
+                                        ) orelse {
+                                            std.debug.print("Not found: {s} \n", .{base.literal});
+                                            return error.notfound;
+                                        },
                                         self.alloc,
                                     );
                                     try self.insertCompleted(.{

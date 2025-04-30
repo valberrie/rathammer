@@ -247,7 +247,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                     const nc: f32 = @floatFromInt(num_column);
                     _ = try os9gui.beginL(Gui.TableLayout{ .columns = @intCast(num_column), .item_height = ar.w / nc });
                     defer os9gui.endL();
-                    const text_h = 40;
                     const acc_ind = @min(start_index * num_column, tex_array_sub.items.len);
                     const missing = edit.missingTexture();
                     for (tex_array_sub.items[acc_ind..], acc_ind..) |model, i| {
@@ -257,6 +256,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                             continue;
                         }
                         const area = os9gui.gui.getArea() orelse break;
+                        const text_h = area.h / 8;
                         const click = os9gui.gui.clickWidget(area);
                         if (click == .click)
                             selected_index = i;
