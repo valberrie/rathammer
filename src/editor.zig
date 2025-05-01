@@ -497,6 +497,8 @@ pub const Context = struct {
     }
 
     pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        var timer = try std.time.Timer.start();
+        defer log.info("Loaded vmf in {d}ms", .{timer.read() / std.time.ns_per_ms});
         const infile = try path.openFile(filename, .{});
         defer infile.close();
 

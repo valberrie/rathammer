@@ -277,17 +277,20 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                     }
                     if (len != tbox.arraylist.items.len)
                         rebuild_tex_array = true;
-                    const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
+                    //const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
                     vl.pushRemaining();
                     const scroll_area = os9gui.gui.getArea() orelse return error.broken;
                     os9gui.gui.draw9Slice(scroll_area, os9gui.style.getRect(.basic_inset), os9gui.style.texture, os9gui.scale);
                     const ins = scroll_area.inset(3 * os9gui.scale);
                     start_index = @min(start_index, model_array_sub.items.len);
-                    _ = try os9gui.gui.beginLayout(Gui.SubRectLayout, .{ .rect = ins }, .{});
+                    _ = try os9gui.gui.beginLayout(Gui.SubRectLayout, .{ .rect = ins }, .{ .scissor = ins });
                     defer os9gui.gui.endLayout();
 
                     const nc: f32 = @floatFromInt(num_column);
-                    _ = try os9gui.beginL(Gui.TableLayout{ .columns = @intCast(num_column), .item_height = ar.w / nc });
+                    _ = try os9gui.beginL(Gui.TableLayout{
+                        .columns = @intCast(num_column),
+                        .item_height = ins.w / nc,
+                    });
                     defer os9gui.endL();
                     const acc_ind = @min(start_index * num_column, tex_array_sub.items.len);
                     //const missing = edit.missingTexture();
