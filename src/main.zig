@@ -20,6 +20,8 @@ const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const vvd = @import("vvd.zig");
 
+const assetbrowse = @import("asset_browser.zig");
+
 pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     var arg_it = try std.process.argsWithAllocator(alloc);
     defer arg_it.deinit();
@@ -72,53 +74,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     try fgd.loadFgd(&editor.fgd_ctx, fgd_dir, args.fgd orelse "halflife2.fgd");
     var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z };
     model_cam.yaw = 0;
-    var start_index: usize = 0;
-    var num_column: usize = 6;
-    var selected_index: usize = 0;
     var name_buf = std.ArrayList(u8).init(alloc);
     defer name_buf.deinit();
-    var model_array = std.ArrayList(vpk.VpkResId).init(alloc);
-    defer model_array.deinit();
-    var model_array_sub = std.ArrayList(vpk.VpkResId).init(alloc);
-    defer model_array_sub.deinit();
 
-    var tex_array = std.ArrayList(vpk.VpkResId).init(alloc);
-    defer tex_array.deinit();
-
-    var tbox = Os9Gui.DynamicTextbox.init(alloc);
-    defer tbox.deinit();
-    var rebuild_tex_array = true;
-    var tex_array_sub = std.ArrayList(vpk.VpkResId).init(alloc);
-    defer tex_array_sub.deinit();
-    {
-        const ep = "materials/";
-        const exclude_list = [_][]const u8{
-            "models", "gamepadui", "skybox", "vgui", "particle", "console", "sprites", "backpack",
-        };
-        editor.vpkctx.mutex.lock();
-        defer editor.vpkctx.mutex.unlock();
-        const vmt = editor.vpkctx.extension_map.get("vmt") orelse return;
-        const mdl = editor.vpkctx.extension_map.get("mdl") orelse return;
-        var it = editor.vpkctx.entries.iterator();
-        var excluded: usize = 0;
-        outer: while (it.next()) |item| {
-            const id = item.key_ptr.* >> 48;
-            if (id == vmt) {
-                if (std.mem.startsWith(u8, item.value_ptr.path, ep)) {
-                    for (exclude_list) |ex| {
-                        if (std.mem.startsWith(u8, item.value_ptr.path[ep.len..], ex)) {
-                            excluded += 1;
-                            continue :outer;
-                        }
-                    }
-                }
-                try tex_array.append(item.key_ptr.*);
-            } else if (id == mdl) {
-                try model_array.append(item.key_ptr.*);
-            }
-        }
-        std.debug.print("excluded {d}\n", .{excluded});
-    }
+    var browser = assetbrowse.AssetBrowserGui.init(alloc);
+    defer browser.deinit();
+    try browser.populate(&editor.vpkctx);
 
     //{ //Add all models to array
     //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
@@ -212,122 +173,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
             editor.edit_state.show_gui = !editor.edit_state.show_gui;
         if (!editor.edit_state.show_gui) {
             try editor.draw3Dview(split1[0], &draw);
-        } else if (try os9gui.beginTlWindow(edit_split)) {
-            defer os9gui.endTlWindow();
-            switch (try os9gui.beginTabs(&editor.edit_state.gui_tab)) {
-                .model => {
-                    if (rebuild_tex_array) {
-                        start_index = 0;
-                        rebuild_tex_array = false;
-                        model_array_sub.clearRetainingCapacity();
-                        const io = std.mem.indexOf;
-                        for (model_array.items) |item| {
-                            const tt = editor.vpkctx.entries.get(item) orelse continue;
-                            if (io(u8, tt.path, tbox.arraylist.items) != null or io(u8, tt.name, tbox.arraylist.items) != null)
-                                try model_array_sub.append(item);
-                        }
-                    }
-                    const vl = try os9gui.beginV();
-                    vl.padding.top = 0;
-                    vl.padding.bottom = 0;
-                    defer os9gui.endL();
-                    os9gui.sliderEx(&start_index, 0, model_array.items.len, "", .{});
-                    {
-                        _ = try os9gui.beginH(2);
-                        defer os9gui.endL();
-                        const len = tbox.arraylist.items.len;
-                        try os9gui.textbox2(&tbox, .{});
-                        os9gui.label("Results {d}", .{model_array_sub.items.len});
-                        if (len != tbox.arraylist.items.len)
-                            rebuild_tex_array = true;
-                    }
-                    for (model_array_sub.items[start_index..], start_index..) |model, i| {
-                        const tt = editor.vpkctx.entries.get(model) orelse continue;
-                        if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = selected_index == i })) {
-                            selected_index = i;
-                        }
-                        if (os9gui.gui.layout.last_requested_bounds == null) //Hacky
-                            break;
-                    }
-                },
-                .texture => {
-                    if (rebuild_tex_array) {
-                        start_index = 0;
-                        rebuild_tex_array = false;
-                        tex_array_sub.clearRetainingCapacity();
-                        const io = std.mem.indexOf;
-                        for (tex_array.items) |item| {
-                            const tt = editor.vpkctx.entries.get(item) orelse continue;
-                            if (io(u8, tt.path, tbox.arraylist.items) != null or io(u8, tt.name, tbox.arraylist.items) != null)
-                                try tex_array_sub.append(item);
-                        }
-                    }
-
-                    const vl = try os9gui.beginV();
-                    defer os9gui.endL();
-                    start_index = @min(start_index, tex_array_sub.items.len);
-                    os9gui.sliderEx(&start_index, 0, @divFloor(tex_array_sub.items.len, num_column), "", .{});
-                    os9gui.sliderEx(&num_column, 1, 10, "num column", .{});
-                    const len = tbox.arraylist.items.len;
-                    {
-                        _ = try os9gui.beginH(2);
-                        defer os9gui.endL();
-                        try os9gui.textbox2(&tbox, .{});
-                        os9gui.label("Results {d}", .{tex_array_sub.items.len});
-                    }
-                    if (len != tbox.arraylist.items.len)
-                        rebuild_tex_array = true;
-                    //const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
-                    vl.pushRemaining();
-                    const scroll_area = os9gui.gui.getArea() orelse return error.broken;
-                    os9gui.gui.draw9Slice(scroll_area, os9gui.style.getRect(.basic_inset), os9gui.style.texture, os9gui.scale);
-                    const ins = scroll_area.inset(3 * os9gui.scale);
-                    start_index = @min(start_index, model_array_sub.items.len);
-                    _ = try os9gui.gui.beginLayout(Gui.SubRectLayout, .{ .rect = ins }, .{ .scissor = ins });
-                    defer os9gui.gui.endLayout();
-
-                    const nc: f32 = @floatFromInt(num_column);
-                    _ = try os9gui.beginL(Gui.TableLayout{
-                        .columns = @intCast(num_column),
-                        .item_height = ins.w / nc,
-                    });
-                    defer os9gui.endL();
-                    const acc_ind = @min(start_index * num_column, tex_array_sub.items.len);
-                    //const missing = edit.missingTexture();
-                    for (tex_array_sub.items[acc_ind..], acc_ind..) |model, i| {
-                        const tex = editor.getTexture(model);
-                        //if (tex.id == missing.id) {
-                        try editor.loadTexture(model);
-                        //continue;
-                        //}
-                        const area = os9gui.gui.getArea() orelse break;
-                        const text_h = area.h / 8;
-                        const click = os9gui.gui.clickWidget(area);
-                        if (click == .click)
-                            selected_index = i;
-                        //os9gui.gui.drawRectFilled(area, 0xffff);
-                        os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
-                        const tr = graph.Rec(area.x, area.y + area.h - text_h, area.w, text_h);
-                        os9gui.gui.drawRectFilled(tr, 0xff);
-                        const tt = editor.vpkctx.entries.get(model) orelse continue;
-                        os9gui.gui.drawTextFmt(
-                            "{s}/{s}",
-                            .{ tt.path, tt.name },
-                            tr,
-                            text_h,
-                            0xffffffff,
-                            .{},
-                            os9gui.font,
-                        );
-                        //os9gui.label("{s}/{s}", .{ model[0], model[1] });
-                    }
-                },
-                else => {},
-            }
-            os9gui.endTabs();
+        } else {
+            try browser.drawEditWindow(edit_split, &os9gui, &editor);
         }
         if (editor.edit_state.show_gui and editor.edit_state.gui_tab == .model) {
-            if (selected_index < model_array_sub.items.len) {
+            const selected_index = browser.selected_index_model;
+            if (selected_index < browser.model_list_sub.items.len) {
                 const sp = split2[1];
                 const mouse_in = split2[1].containsPoint(win.mouse.pos);
                 model_cam.updateDebugMove(.{
@@ -353,7 +204,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                 //todo
                 //defer loading of all textures
 
-                const modid = model_array_sub.items[selected_index];
+                const modid = browser.model_list_sub.items[selected_index];
                 name_buf.clearRetainingCapacity();
                 //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
                 //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
