@@ -9,6 +9,8 @@ threadlocal var error_msg_buffer: [1024]u8 = undefined;
 const config = @import("config");
 const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
 
+//TODO support mounting of loose files aswell.
+
 pub const VpkResId = u64;
 ///16 bits: extension_index
 ///16 bits: path_index
@@ -155,11 +157,12 @@ pub const Context = struct {
         self.entries.deinit();
     }
 
+    /// All identifiers within the vpk are lowercased and \ -> /
     pub fn sanatizeVpkString(str: []u8) void {
         for (str) |*ch| {
             ch.* = switch (ch.*) {
                 '\\' => '/',
-                'A'...'Z' => ch.* | 0b00100000,
+                'A'...'Z' => ch.* | 0b00100000, //Lowercase
                 else => ch.*,
             };
         }
@@ -203,6 +206,7 @@ pub const Context = struct {
             },
             else => return err,
         };
+        // 0x7fff is the marker for files stored inside the dir.vpk
         try new_dir.fds.put(0x7fff, infile);
         try self.dirs.append(new_dir);
 
@@ -329,6 +333,7 @@ pub const Context = struct {
         return self.getFile(extension, path, name, &self.filebuf);
     }
 
+    // Thread safe, assuming no dirs are currently being mounted.
     pub fn getResourceId(self: *Self, extension: []const u8, path: []const u8, fname: []const u8) ?VpkResId {
         return encodeResourceId(
             self.extension_map.get(extension) orelse return null,

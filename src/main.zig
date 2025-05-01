@@ -27,8 +27,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("vmf", .string, "vmf to load"),
-        Arg("basedir", .string, "base directory of the game"),
-        Arg("gameinfo", .string, "directory of gameinfo"),
+        Arg("basedir", .string, "base directory of the game, \"Half-Life 2\""),
+        Arg("gamedir", .string, "directory of gameinfo.txt, \"Half-Life 2/hl2\""),
+        Arg("fgd", .string, "name of fgd file, relative to basedir/bin"),
         Arg("scale", .number, "scale the model"),
     }, &arg_it);
 
@@ -60,14 +61,15 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     loadctx.cb("Loading");
 
     const base_dir = try std.fs.cwd().openDir(args.basedir orelse "Half-Life 2", .{});
-    const game_dir = try std.fs.cwd().openDir(args.gameinfo orelse "Half-Life 2/hl2", .{});
+    const game_dir = try std.fs.cwd().openDir(args.gamedir orelse "Half-Life 2/hl2", .{});
 
     try gameinfo.loadGameinfo(alloc, base_dir, game_dir, &editor.vpkctx);
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
 
-    try fgd.loadFgd(&editor.fgd_ctx, try std.fs.cwd().openDir("Half-Life 2/bin", .{}), "halflife2.fgd");
+    const fgd_dir = try base_dir.openDir("bin", .{});
+    try fgd.loadFgd(&editor.fgd_ctx, fgd_dir, args.fgd orelse "halflife2.fgd");
     var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z };
     model_cam.yaw = 0;
     var start_index: usize = 0;
@@ -90,17 +92,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     defer tex_array_sub.deinit();
     {
         const ep = "materials/";
-        const exclude_list = [
-            _
-        ][]const u8{
-            "models",
-            "gamepadui",
-            "skybox",
-            "vgui",
-            "particle",
-            "console",
-            "sprites",
-            "backpack",
+        const exclude_list = [_][]const u8{
+            "models", "gamepadui", "skybox", "vgui", "particle", "console", "sprites", "backpack",
         };
         editor.vpkctx.mutex.lock();
         defer editor.vpkctx.mutex.unlock();
@@ -248,7 +241,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                         if (len != tbox.arraylist.items.len)
                             rebuild_tex_array = true;
                     }
-                    start_index = @min(start_index, model_array_sub.items.len);
                     for (model_array_sub.items[start_index..], start_index..) |model, i| {
                         const tt = editor.vpkctx.entries.get(model) orelse continue;
                         if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = selected_index == i })) {
@@ -287,6 +279,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
                         rebuild_tex_array = true;
                     const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
                     vl.pushRemaining();
+                    const scroll_area = os9gui.gui.getArea() orelse return error.broken;
+                    os9gui.gui.draw9Slice(scroll_area, os9gui.style.getRect(.basic_inset), os9gui.style.texture, os9gui.scale);
+                    const ins = scroll_area.inset(3 * os9gui.scale);
+                    start_index = @min(start_index, model_array_sub.items.len);
+                    _ = try os9gui.gui.beginLayout(Gui.SubRectLayout, .{ .rect = ins }, .{});
+                    defer os9gui.gui.endLayout();
 
                     const nc: f32 = @floatFromInt(num_column);
                     _ = try os9gui.beginL(Gui.TableLayout{ .columns = @intCast(num_column), .item_height = ar.w / nc });
