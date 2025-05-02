@@ -65,7 +65,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         return error.gameConfigNotFound;
     };
 
-    const cwd = std.fs.cwd();
+    const cwd = if (args.custom_cwd) |cc| try std.fs.cwd().openDir(cc, .{}) else std.fs.cwd();
     const base_dir = try cwd.openDir(args.basedir orelse game_conf.base_dir, .{});
     const game_dir = try cwd.openDir(args.gamedir orelse game_conf.game_dir, .{});
     const fgd_dir = try cwd.openDir(args.fgddir orelse game_conf.fgd_dir, .{});
@@ -329,6 +329,7 @@ pub fn main() !void {
         Arg("nthread", .number, "How many threads."),
         Arg("gui_scale", .number, "Scale the gui"),
         Arg("game", .string, "Name of a game defined in config.vdf"),
+        Arg("custom_cwd", .string, "override the directory used for game"),
     }, &arg_it);
     try wrappedMain(alloc, args);
     _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
