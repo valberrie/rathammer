@@ -5,6 +5,7 @@ const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const edit = @import("editor.zig");
 const Gui = graph.Gui;
+//TODO center camera view on model on new model load
 
 const log = std.log.scoped(.asset_browser);
 pub const AssetBrowserGui = struct {
@@ -54,12 +55,17 @@ pub const AssetBrowserGui = struct {
         self.mat_search.deinit();
     }
 
-    pub fn populate(self: *Self, vpkctx: *vpk.Context) !void {
-        const ep = "materials/";
+    pub fn populate(
+        self: *Self,
+        vpkctx: *vpk.Context,
+        exclude_prefix: []const u8,
+        material_exclude_list: []const []const u8,
+    ) !void {
+        //const ep = "materials/";
         //TODO make these configurable
-        const exclude_list = [_][]const u8{
-            "models", "gamepadui", "skybox", "vgui", "particle", "console", "sprites", "backpack",
-        };
+        //const exclude_list = [_][]const u8{
+        //    "models", "gamepadui", "skybox", "vgui", "particle", "console", "sprites", "backpack",
+        //};
         vpkctx.mutex.lock();
         defer vpkctx.mutex.unlock();
         const vmt = vpkctx.extension_map.get("vmt") orelse return;
@@ -69,9 +75,9 @@ pub const AssetBrowserGui = struct {
         outer: while (it.next()) |item| {
             const id = item.key_ptr.* >> 48;
             if (id == vmt) {
-                if (std.mem.startsWith(u8, item.value_ptr.path, ep)) {
-                    for (exclude_list) |ex| {
-                        if (std.mem.startsWith(u8, item.value_ptr.path[ep.len..], ex)) {
+                if (std.mem.startsWith(u8, item.value_ptr.path, exclude_prefix)) {
+                    for (material_exclude_list) |ex| {
+                        if (std.mem.startsWith(u8, item.value_ptr.path[exclude_prefix.len..], ex)) {
                             excluded += 1;
                             continue :outer;
                         }
@@ -127,7 +133,6 @@ pub const AssetBrowserGui = struct {
                     }
                 },
                 .texture => {
-                    const tbox = self.mat_search;
                     if (self.mat_needs_rebuild) {
                         self.start_index_mat = 0;
                         self.mat_needs_rebuild = false;
@@ -135,7 +140,7 @@ pub const AssetBrowserGui = struct {
                         const io = std.mem.indexOf;
                         for (self.mat_list.items) |item| {
                             const tt = editor.vpkctx.entries.get(item) orelse continue;
-                            if (io(u8, tt.path, tbox.arraylist.items) != null or io(u8, tt.name, tbox.arraylist.items) != null)
+                            if (io(u8, tt.path, self.mat_search.arraylist.items) != null or io(u8, tt.name, self.mat_search.arraylist.items) != null)
                                 try self.mat_list_sub.append(item);
                         }
                     }
@@ -145,14 +150,15 @@ pub const AssetBrowserGui = struct {
                     self.start_index_mat = @min(self.start_index_mat, self.mat_list_sub.items.len);
                     os9gui.sliderEx(&self.start_index_mat, 0, @divFloor(self.mat_list_sub.items.len, self.num_texture_column), "", .{});
                     os9gui.sliderEx(&self.num_texture_column, 1, 10, "num column", .{});
-                    const len = tbox.arraylist.items.len;
+                    const len = self.mat_search.arraylist.items.len;
                     {
                         _ = try os9gui.beginH(2);
                         defer os9gui.endL();
                         try os9gui.textbox2(&self.mat_search, .{ .make_active = should_focus_tb });
                         os9gui.label("Results {d}", .{self.mat_list_sub.items.len});
                     }
-                    if (len != tbox.arraylist.items.len)
+
+                    if (len != self.mat_search.arraylist.items.len)
                         self.mat_needs_rebuild = true;
                     //const ar = os9gui.gui.getArea() orelse graph.Rec(0, 0, 0, 0);
                     vl.pushRemaining();

@@ -1,0 +1,32 @@
+This file outlines various tasks in the project.
+Lines with no indentation indicate the beginning of a topic
+
+Optimization
+    Lowering frame rates when possible:
+        By default the app updates at whatever frequency vsync sets.
+        This is an issue with movements (camera) (use a dt).
+        If no state has changed why redraw.
+        win.pumpEvents can be set to .wait which would only forcibly update every second.
+        We could also check window focus and just wait so the app doesn't burn cpu when unfocused.
+        (.wait) has issues currently. When moving the camera pos, a keydown event is sent, we then need to switch to .poll until all move keys are released.
+
+        Excessive optimization:
+            Determine which events require redraw.
+            For example, a mouse move event only requires immediate redraw if in a 3d view with cursor captured and some object being manipulated
+            If the gui becomes expensive, manually determine what state the inspector depends on, then cache the gui's RenderTexture.
+
+Dependencies:
+    Using a gui toolkit, qt, gtk, tk?
+        This is only worth doing if it improves the cpu usage of the app.
+        Support for rendering complex text layouts such as RTL or vertical is very low priority.
+        Valve games use exclusively Ascii for asset naming.
+        Determine the cost of our Imgui
+        Having sdl and libepoxy as our only dependencies makes building easy.
+
+Interface
+    Tool based (enum)?
+    2d editing?
+
+Utility
+    Configuring keybindings, 
+        Just use a vdf file

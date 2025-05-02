@@ -1,0 +1,47 @@
+// Define all keybinds
+keys {
+    // keyboard names can optionally be prefixed with "scancode" or "keycode" otherwise the key name is bound as a keycode
+
+    // Scancodes map to physical keys on the keyboard. 'w' is always the same physical key regardless of layout.
+    cam_forward     scancode_w 
+    cam_back        scancode_s
+    cam_strafe_l    scancode_a
+    cam_strafe_r    scancode_d
+}
+
+window {
+    width_px    800
+    height_px   600
+}
+
+
+//All directory paths are relative to the program's cwd
+games {
+    basic_hl2 {
+        base_dir    "Half-Life 2" 
+        game_dir    "Half-Life 2/hl2" 
+        fgd_dir     "Half-Life 2/bin"
+
+        //Relative to fgd_dir. fgd's can include other fgd's so setting 
+        //fgd_dir rather than specifying the path in "fgd" is required.
+        fgd         "halflife2.fgd" 
+
+        //List paths which will be omitted from material search
+        asset_browser_exclude {
+            prefix "materials/"
+
+            
+            entry "models" //This becomes "materials/models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+            entry "backpack"
+        }
+    }
+}
+//The name of a game defined in "games"
+default_game basic_hl2
+

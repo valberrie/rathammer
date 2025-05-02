@@ -21,22 +21,14 @@ const Gui = graph.Gui;
 const vvd = @import("vvd.zig");
 
 const assetbrowse = @import("asset_browser.zig");
+const Conf = @import("config.zig");
 
-pub fn wrappedMain(alloc: std.mem.Allocator) !void {
-    var arg_it = try std.process.argsWithAllocator(alloc);
-    defer arg_it.deinit();
-
-    const Arg = graph.ArgGen.Arg;
-    const args = try graph.ArgGen.parseArgs(&.{
-        Arg("vmf", .string, "vmf to load"),
-        Arg("basedir", .string, "base directory of the game, \"Half-Life 2\""),
-        Arg("gamedir", .string, "directory of gameinfo.txt, \"Half-Life 2/hl2\""),
-        Arg("fgd", .string, "name of fgd file, relative to basedir/bin"),
-        Arg("scale", .number, "scale the model"),
-    }, &arg_it);
-
+pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
+    var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
+    defer loaded_config.deinit();
+    const config = loaded_config.config;
     var win = try graph.SDL.Window.createWindow("Rat Hammer - 鼠", .{
-        .window_size = .{ .x = 800, .y = 600 },
+        .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
     });
     defer win.destroyWindow();
 
@@ -45,7 +37,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
     //materials/concrete/concretewall008a
     //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
     //var my_tex = try vtf.loadTexture(o.?, alloc);
-    var editor = try Editor.init(alloc);
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null);
     defer editor.deinit();
 
     var draw = graph.ImmediateDrawingContext.init(alloc);
@@ -58,20 +50,32 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
         .win = &win,
         .timer = try std.time.Timer.start(),
     };
-    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), 2);
+    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2);
     defer os9gui.deinit();
     loadctx.cb("Loading");
 
-    const base_dir = try std.fs.cwd().openDir(args.basedir orelse "Half-Life 2", .{});
-    const game_dir = try std.fs.cwd().openDir(args.gamedir orelse "Half-Life 2/hl2", .{});
+    if (config.default_game.len == 0) {
+        std.debug.print("config.vdf must specify a default_game!\n", .{});
+        return error.incompleteConfig;
+    }
+
+    const game_name = args.game orelse config.default_game;
+    const game_conf = config.games.map.get(game_name) orelse {
+        std.debug.print("{s} is not defined in the \"games\" section\n", .{game_name});
+        return error.gameConfigNotFound;
+    };
+
+    const cwd = std.fs.cwd();
+    const base_dir = try cwd.openDir(args.basedir orelse game_conf.base_dir, .{});
+    const game_dir = try cwd.openDir(args.gamedir orelse game_conf.game_dir, .{});
+    const fgd_dir = try cwd.openDir(args.fgddir orelse game_conf.fgd_dir, .{});
 
     try gameinfo.loadGameinfo(alloc, base_dir, game_dir, &editor.vpkctx);
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
 
-    const fgd_dir = try base_dir.openDir("bin", .{});
-    try fgd.loadFgd(&editor.fgd_ctx, fgd_dir, args.fgd orelse "halflife2.fgd");
+    try fgd.loadFgd(&editor.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
     var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z };
     model_cam.yaw = 0;
     var name_buf = std.ArrayList(u8).init(alloc);
@@ -79,7 +83,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
 
     var browser = assetbrowse.AssetBrowserGui.init(alloc);
     defer browser.deinit();
-    try browser.populate(&editor.vpkctx);
+    try browser.populate(&editor.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
 
     //{ //Add all models to array
     //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
@@ -318,6 +322,20 @@ pub fn wrappedMain(alloc: std.mem.Allocator) !void {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
     const alloc = gpa.allocator();
-    try wrappedMain(alloc);
+    var arg_it = try std.process.argsWithAllocator(alloc);
+    defer arg_it.deinit();
+
+    const Arg = graph.ArgGen.Arg;
+    const args = try graph.ArgGen.parseArgs(&.{
+        Arg("vmf", .string, "vmf to load"),
+        Arg("basedir", .string, "base directory of the game, \"Half-Life 2\""),
+        Arg("gamedir", .string, "directory of gameinfo.txt, \"Half-Life 2/hl2\""),
+        Arg("fgddir", .string, "directory of fgd file"),
+        Arg("fgd", .string, "name of fgd file"),
+        Arg("nthread", .number, "How many threads."),
+        Arg("gui_scale", .number, "Scale the gui"),
+        Arg("game", .string, "Name of a game defined in config.vdf"),
+    }, &arg_it);
+    try wrappedMain(alloc, args);
     _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
 }

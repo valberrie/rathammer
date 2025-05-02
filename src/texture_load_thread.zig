@@ -49,10 +49,12 @@ pub const Context = struct {
     texture_notify: std.AutoHashMap(vpk.VpkResId, std.ArrayList(*DeferredNotifyVtable)),
     notify_mutex: Mutex = .{},
 
-    pub fn init(alloc: std.mem.Allocator) !@This() {
+    pub fn init(alloc: std.mem.Allocator, worker_thread_count: ?u32) !@This() {
         const num_cpu = try std.Thread.getCpuCount();
+        const count = worker_thread_count orelse @max(num_cpu, 2) - 1;
         const pool = try alloc.create(std.Thread.Pool);
-        try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(@max(num_cpu, 2) - 1) });
+        //try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(@max(num_cpu, 2) - 1) });
+        try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(count) });
         return .{
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),
             .alloc = alloc,

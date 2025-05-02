@@ -31,7 +31,7 @@ pub const Solid = struct {
 const StringVec = struct {
     v: graph.za.Vec3,
 
-    pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
+    pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
         if (val.* != .literal)
             return error.notgood;
         var it = std.mem.splitScalar(u8, val.literal, ' ');
@@ -57,7 +57,7 @@ pub const Side = struct {
         translation: f64,
         scale: f64,
 
-        pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
+        pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
             if (val.* != .literal)
                 return error.notgood;
 
@@ -75,7 +75,7 @@ pub const Side = struct {
     };
     id: u32,
     plane: struct {
-        pub fn parseVdf(val: *const vdf.KV.Value, _: std.mem.Allocator) !@This() {
+        pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
             if (val.* != .literal)
                 return error.notgood;
 

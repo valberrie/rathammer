@@ -26,36 +26,6 @@ pub fn build(b: *std.Build) void {
     opts.addOption(bool, "dump_vpk", b.option(bool, "dumpvpk", "dump all vpk entries to text file") orelse false);
     exe.root_module.addOptions("config", opts);
 
-    //exe.root_module.addCSourceFiles(.{
-    //    .root = b.path("clibrary/vtf/VTFLib"),
-    //    .flags = &.{
-    //        "-std=c++17",
-    //    },
-    //    .files = &.{
-    //        "Error.cpp",
-    //        //"FileReader.cpp",
-    //        //"FileWriter.cpp",
-    //        "Float16.cpp",
-    //        "MemoryReader.cpp",
-    //        "MemoryWriter.cpp",
-    //        "Proc.cpp",
-    //        "ProcReader.cpp",
-    //        "ProcWriter.cpp",
-    //        "VMTFile.cpp",
-    //        "VMTGroupNode.cpp",
-    //        "VMTIntegerNode.cpp",
-    //        "VMTNode.cpp",
-    //        "VMTSingleNode.cpp",
-    //        "VMTStringNode.cpp",
-    //        "VMTValueNode.cpp",
-    //        "VMTWrapper.cpp",
-    //        "VTFFile.cpp",
-    //        "VTFLib.cpp",
-    //        "VTFMathlib.cpp",
-    //        "VTFWrapper.cpp",
-    //    },
-    //});
-
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).

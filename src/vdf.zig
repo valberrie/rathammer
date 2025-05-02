@@ -1,5 +1,6 @@
 const std = @import("std");
 const graph = @import("graph");
+const StringStorage = @import("string.zig").StringStorage;
 pub const Vec3 = graph.za.Vec3_f64;
 pub const KV = struct {
     pub const Value = union(enum) { literal: []const u8, obj: *Object };
@@ -44,12 +45,39 @@ pub const Object = struct {
     }
 };
 
-pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Allocator) !T {
+//pub fn fromValue(comptime T: type, value : *const KV.Value, alloc: std.mem.Allocator)
+pub const ValueCtx = struct {
+    strings: ?StringStorage,
+    alloc: std.mem.Allocator,
+};
+
+fn getArrayListChild(comptime T: type) ?type {
+    const in = @typeInfo(T);
+    if (in != .Struct)
+        return null;
+    if (@hasDecl(T, "Slice")) {
+        const info = @typeInfo(T.Slice);
+        if (info == .Pointer and info.Pointer.size == .Slice) {
+            const t = std.ArrayList(info.Pointer.child);
+            if (T == t)
+                return info.Pointer.child;
+        }
+    }
+    return null;
+}
+
+test "is array list" {
+    const T = std.ArrayList(u8);
+    try std.testing.expect(getArrayListChild(T) == u8);
+    try std.testing.expect(getArrayListChild([]u8) == null);
+}
+
+pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Allocator, strings: ?*StringStorage) !T {
     const info = @typeInfo(T);
     switch (info) {
         .Struct => |s| {
             if (std.meta.hasFn(T, "parseVdf")) {
-                return try T.parseVdf(value, alloc);
+                return try T.parseVdf(value, alloc, strings);
             }
             var ret: T = undefined;
             if (value.* != .obj) {
@@ -57,16 +85,17 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
             }
             inline for (s.fields) |f| {
                 const child_info = @typeInfo(f.type);
-                const do_many = child_info == .Pointer and child_info.Pointer.size == .Slice and child_info.Pointer.child != u8;
+                const is_alist = getArrayListChild(f.type);
+                const do_many = (is_alist != null) or (child_info == .Pointer and child_info.Pointer.size == .Slice and child_info.Pointer.child != u8);
                 if (!do_many and f.default_value != null) {
                     @field(ret, f.name) = @as(*const f.type, @alignCast(@ptrCast(f.default_value.?))).*;
                 }
-                const ar_c = if (do_many) child_info.Pointer.child else void;
+                const ar_c = is_alist orelse if (do_many) child_info.Pointer.child else void;
                 var vec = std.ArrayList(ar_c).init(alloc);
                 for (value.obj.list.items) |*item| {
                     if (std.mem.eql(u8, item.key, f.name)) {
                         if (do_many) {
-                            const val = fromValue(ar_c, &item.val, alloc) catch blk: {
+                            const val = fromValue(ar_c, &item.val, alloc, strings) catch blk: {
                                 //std.debug.print("parse FAILED {any}\n", .{item.val});
                                 break :blk null;
                             };
@@ -74,13 +103,14 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                                 try vec.append(v);
                         } else {
                             //A regular struct field
-                            @field(ret, f.name) = try fromValue(f.type, &item.val, alloc);
+                            @field(ret, f.name) = try fromValue(f.type, &item.val, alloc, strings);
                             break;
                         }
                     }
                 }
-                if (do_many)
-                    @field(ret, f.name) = vec.items;
+                if (do_many) {
+                    @field(ret, f.name) = if (is_alist != null) vec else vec.items;
+                }
             }
             return ret;
         },
@@ -89,6 +119,8 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
         },
         .Pointer => |p| {
             if (p.size != .Slice or p.child != u8) @compileError("no ptr");
+            if (strings) |strs|
+                return try strs.store(value.literal);
             return value.literal;
         },
         else => @compileError("not supported " ++ @typeName(T) ++ " " ++ @tagName(info)),
@@ -312,13 +344,29 @@ pub fn printObj(obj: Object, ident: usize) void {
     }
 }
 
-test {
+test "parsing config" {
     const alloc = std.testing.allocator;
-    const in = try std.fs.cwd().openFile("tf/gameinfo.txt", .{});
+    const in = try std.fs.cwd().openFile("config.vdf", .{});
     const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
     defer alloc.free(slice);
 
     var val = try parse(alloc, slice);
     defer val.deinit();
     printObj(val.value, 0);
+
+    var aa = std.heap.ArenaAllocator.init(alloc);
+    defer aa.deinit();
+    const conf = fromValue(struct {
+        keys: struct {
+            cam_forward: []const u8,
+            cam_back: []const u8,
+            cam_strafe_l: []const u8,
+            cam_strafe_r: []const u8,
+        },
+        window: struct {
+            height_px: i32,
+            width_px: i32,
+        },
+    }, &.{ .obj = &val.value }, aa.allocator(), null);
+    std.debug.print("{any}\n", .{conf});
 }

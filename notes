@@ -55,4 +55,3 @@ is it really that simple?
 
 Fast grab of faces, all solids are convex polyhedra, meaning a ray intersecting the solid will intersect exactly twice.
 holding down a key will select exit face rather than enter
-

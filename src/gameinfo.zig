@@ -30,7 +30,7 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
             title: []const u8 = "",
             type: []const u8 = "",
         } = .{},
-    }, &.{ .obj = &obj.value }, aa.allocator());
+    }, &.{ .obj = &obj.value }, aa.allocator(), null);
     log.info("Loading gameinfo {s} {s}", .{ gameinfo.gameinfo.game, gameinfo.gameinfo.title });
 
     const fs = try obj.value.recursiveGetFirst(&.{ "gameinfo", "filesystem", "searchpaths" });

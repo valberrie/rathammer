@@ -372,7 +372,7 @@ pub const Context = struct {
         scroll_a: graph.Vec2f = .{ .x = 0, .y = 0 },
     } = .{},
 
-    pub fn init(alloc: std.mem.Allocator) !Self {
+    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32) !Self {
         return .{
             .alloc = alloc,
             .fgd_ctx = fgd.EntCtx.init(alloc),
@@ -385,7 +385,7 @@ pub const Context = struct {
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
             .models = std.AutoHashMap(vpk.VpkResId, ?*vvd.MultiMesh).init(alloc),
-            .texture_load_ctx = try texture_load_thread.Context.init(alloc),
+            .texture_load_ctx = try texture_load_thread.Context.init(alloc, num_threads),
             .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
             .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
@@ -508,7 +508,7 @@ pub const Context = struct {
         var obj = try vdf.parse(self.alloc, slice);
         defer obj.deinit();
         loadctx.cb("vmf parsed");
-        const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator());
+        const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
         try self.skybox.loadSky(vmf_.world.skyname, &self.vpkctx);
         {
             var gen_timer = try std.time.Timer.start();
