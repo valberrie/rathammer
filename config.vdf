@@ -15,8 +15,8 @@ keys {
 }
 
 window {
-    width_px    800
-    height_px   600
+    width_px    1920
+    height_px   1080
 }
 
 
