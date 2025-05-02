@@ -4,7 +4,6 @@ const Rec = graph.Rec;
 const Vec2f = graph.Vec2f;
 const V3f = graph.za.Vec3;
 const meshutil = graph.meshutil;
-const csg = @import("csg.zig");
 const vdf = @import("vdf.zig");
 const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
@@ -12,13 +11,12 @@ const fgd = @import("fgd.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
 const gameinfo = @import("gameinfo.zig");
-const vtf = @import("vtf.zig");
 const Vec3 = V3f;
 const util3d = @import("util_3d.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const Gui = graph.Gui;
-const vvd = @import("vvd.zig");
+const Split = @import("splitter.zig");
 
 const assetbrowse = @import("asset_browser.zig");
 const Conf = @import("config.zig");
@@ -85,6 +83,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer browser.deinit();
     try browser.populate(&editor.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
 
+    editor.draw_state.cam3d.fov = config.window.cam_fov;
+
     //{ //Add all models to array
     //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
     //    while (it.next()) |path| {
@@ -117,8 +117,41 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var last_frame_grabbed: bool = true;
     var grab_mouse = true;
 
-    //var sky = try skybox.Skybox.init(alloc, "skybox/sky_day01_06", &editor.vpkctx);
-    //defer sky.deinit();
+    const Pane = enum {
+        main_3d_view,
+        asset_browser,
+        inspector,
+        model_preview,
+        model_browser,
+        file_browser,
+    };
+    var areas_buf: [10]graph.Rect = undefined;
+    var fb = try guiutil.FileBrowser.init(alloc, cwd);
+    defer fb.deinit();
+
+    const Tab = struct {
+        split: []const Split.Op,
+        panes: []const Pane,
+    };
+    const tabs = [_]Tab{
+        .{
+            .split = &.{ .{ .left, 0.7 }, .{ .left, 1 } },
+            .panes = &.{ .main_3d_view, .inspector },
+        },
+        .{
+            .split = &.{.{ .left, 1 }},
+            .panes = &.{.asset_browser},
+        },
+        .{
+            .split = &.{ .{ .left, 0.6 }, .{ .left, 1 } },
+            .panes = &.{ .model_browser, .model_preview },
+        },
+        .{
+            .split = &.{.{ .left, 1 }},
+            .panes = &.{.file_browser},
+        },
+    };
+    var tab_index: usize = 0;
 
     win.grabMouse(true);
     while (!win.should_exit) {
@@ -132,9 +165,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
         defer last_frame_grabbed = grab_mouse;
 
-        editor.edit_state.btn_x_trans = win.keystate(._1);
-        editor.edit_state.btn_y_trans = win.keystate(._2);
-        editor.edit_state.btn_z_trans = win.keystate(._3);
         editor.edit_state.lmouse = win.mouse.left;
         editor.edit_state.rmouse = win.mouse.right;
         if (editor.edit_state.lmouse == .rising) {}
@@ -146,11 +176,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             editor.edit_state.trans_end = win.mouse.pos;
         }
 
-        //grab_mouse = !(win.keyHigh(.LSHIFT) or editor.edit_state.btn_x_trans == .high or editor.edit_state.btn_y_trans == .high or editor.edit_state.btn_z_trans == .high);
-        grab_mouse = !(win.keyHigh(.LSHIFT) or editor.edit_state.show_gui);
-        if (last_frame_grabbed and !grab_mouse) { //Mouse just ungrabbed
-            graph.c.SDL_WarpMouseInWindow(win.win, draw.screen_dimensions.x / 2, draw.screen_dimensions.y / 2);
-        }
         const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
         try os9gui.beginFrame(is, &win);
 
@@ -166,72 +191,92 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .mouse_delta = if (last_frame_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
         };
-        editor.draw_state.cam3d.updateDebugMove(cam_state);
 
         graph.c.glEnable(graph.c.GL_BLEND);
-        const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
-        const split1 = winrect.split(.vertical, winrect.w * 0.8);
-        //const view_3d = editor.draw_state.cam3d.getMatrix(split1[0].w / split1[0].h, 1, editor.draw_state.cam_far_plane);
-        //my_mesh.drawSimple(view_3d, graph.za.Mat4.identity(), editor.draw_state.basic_shader);
-        const split2 = split1[0].split(.vertical, split1[0].w * 0.5);
-        const edit_split = if (editor.edit_state.gui_tab == .model) split2[0] else split1[0];
         try editor.update();
-        if (win.keyRising(.T))
-            editor.edit_state.show_gui = !editor.edit_state.show_gui;
-        if (!editor.edit_state.show_gui) {
-            try editor.draw3Dview(split1[0], &draw);
-        } else {
-            try browser.drawEditWindow(edit_split, &os9gui, &editor, &config);
+        const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
+        for (config.keys.workspace.items, 0..) |b, i| {
+            if (win.isBindState(b.b, .rising))
+                tab_index = i;
         }
-        if (editor.edit_state.show_gui and editor.edit_state.gui_tab == .model) {
-            const selected_index = browser.selected_index_model;
-            if (selected_index < browser.model_list_sub.items.len) {
-                const sp = split2[1];
-                const mouse_in = split2[1].containsPoint(win.mouse.pos);
-                model_cam.updateDebugMove(if (mouse_in and win.mouse.left == .high) cam_state else .{});
-                const screen_area = split2[1];
-                const x: i32 = @intFromFloat(screen_area.x);
-                const y: i32 = @intFromFloat(screen_area.y);
-                const w: i32 = @intFromFloat(screen_area.w);
-                const h: i32 = @intFromFloat(screen_area.h);
+        tab_index = @min(tab_index, tabs.len - 1);
 
-                graph.c.glViewport(x, y, w, h);
-                graph.c.glScissor(x, y, w, h);
-                graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
-                defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
-                //todo
-                //defer loading of all textures
+        const tab = tabs[tab_index];
+        const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
+        var mouse_is_claimed = false;
+        for (tab.panes, 0..) |pane, p_i| {
+            const pane_area = areas[p_i];
+            const has_mouse = pane_area.containsPoint(win.mouse.pos);
+            switch (pane) {
+                .main_3d_view => {
+                    editor.draw_state.cam3d.updateDebugMove(if (grab_mouse) cam_state else .{});
+                    if (grab_mouse or has_mouse) {
+                        grab_mouse = !(win.keyHigh(.LSHIFT));
+                        mouse_is_claimed = true;
+                    }
+                    if (last_frame_grabbed and !grab_mouse) { //Mouse just ungrabbed
+                        const center = pane_area.center();
+                        graph.c.SDL_WarpMouseInWindow(win.win, center.x, center.y);
+                    }
+                    try editor.draw3Dview(pane_area, &draw);
+                },
+                .model_browser => try browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .model),
+                .asset_browser => {
+                    try browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .texture);
+                },
+                .inspector => try editor.drawInspector(pane_area, &os9gui),
+                .model_preview => {
+                    const selected_index = browser.selected_index_model;
+                    if (selected_index < browser.model_list_sub.items.len) {
+                        const sp = pane_area;
+                        if (has_mouse or grab_mouse) {
+                            grab_mouse = win.mouse.left == .high;
+                            mouse_is_claimed = true;
+                        }
+                        model_cam.updateDebugMove(if (win.mouse.left == .high) cam_state else .{});
+                        const screen_area = pane_area;
+                        const x: i32 = @intFromFloat(screen_area.x);
+                        const y: i32 = @intFromFloat(screen_area.y);
+                        const w: i32 = @intFromFloat(screen_area.w);
+                        const h: i32 = @intFromFloat(screen_area.h);
 
-                const modid = browser.model_list_sub.items[selected_index];
-                name_buf.clearRetainingCapacity();
-                //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
-                //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
-                if (editor.models.get(modid)) |mod| {
-                    if (mod) |mm| {
-                        const view = model_cam.getMatrix(sp.h / sp.w, 1, 64 * 512);
-                        const mat = graph.za.Mat4.identity();
-                        mm.drawSimple(view, mat, editor.draw_state.basic_shader);
+                        graph.c.glViewport(x, y, w, h);
+                        graph.c.glScissor(x, y, w, h);
+                        graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+                        defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+                        //todo
+                        //defer loading of all textures
+
+                        const modid = browser.model_list_sub.items[selected_index];
+                        name_buf.clearRetainingCapacity();
+                        //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
+                        //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
+                        if (editor.models.get(modid)) |mod| {
+                            if (mod) |mm| {
+                                const view = model_cam.getMatrix(sp.h / sp.w, 1, 64 * 512);
+                                const mat = graph.za.Mat4.identity();
+                                mm.drawSimple(view, mat, editor.draw_state.basic_shader);
+                            }
+                        } else {
+                            if (editor.vpkctx.entries.get(modid)) |tt| {
+                                try name_buf.writer().print("{s}/{s}.mdl", .{ tt.path, tt.name });
+                                _ = try editor.loadModel(name_buf.items);
+                            }
+                        }
+                        try draw.flush(null, model_cam);
                     }
-                } else {
-                    if (editor.vpkctx.entries.get(modid)) |tt| {
-                        try name_buf.writer().print("{s}/{s}.mdl", .{ tt.path, tt.name });
-                        _ = try editor.loadModel(name_buf.items);
+                },
+                .file_browser => {
+                    if (try os9gui.beginTlWindow(pane_area)) {
+                        defer os9gui.endTlWindow();
+                        try fb.update(&os9gui);
                     }
-                }
-                //const name = "models/props_wasteland/exterior_fence002d.mdl";
-                //if (editor.models.getPtr(name_buf.items)) |mod| {
-                //    const view = model_cam.getMatrix(1, 1, 64 * 512);
-                //    const mat = graph.za.Mat4.identity();
-                //    mod.drawSimple(view, mat, editor.draw_state.basic_shader);
-                //} else {
-                //    //std.debug.print("Could not find the model!\n", .{});
-                //}
-                try draw.flush(null, model_cam);
+                },
             }
         }
-        try editor.drawInspector(split1[1], &os9gui);
-        if (!last_frame_grabbed and split1[1].containsPoint(win.mouse.pos))
+        if (!mouse_is_claimed)
             grab_mouse = false;
+
         if (win.keyRising(.E)) {
             editor.edit_state.state = .select;
             //var rcast_timer = try std.time.Timer.start();

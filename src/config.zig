@@ -12,13 +12,14 @@ pub const Config = struct {
         cam_strafe_r: Keybind,
         cam_down: Keybind,
         cam_up: Keybind,
-
         quit: Keybind,
         focus_search: Keybind,
+        workspace: std.ArrayList(Keybind),
     },
     window: struct {
         height_px: i32 = 600,
         width_px: i32 = 800,
+        cam_fov: f32 = 90,
     },
     default_game: []const u8 = "",
     games: struct {
@@ -62,6 +63,7 @@ pub const ConfigCtx = struct {
         while (it.next()) |item|
             item.asset_browser_exclude.entry.deinit();
         self.config.games.map.deinit();
+        self.config.keys.workspace.deinit();
         self.strings.deinit();
     }
 };

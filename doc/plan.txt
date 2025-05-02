@@ -34,6 +34,7 @@ Features
         Support loading arbitrary kvs from vmf. 
         create a vdf_map component and associate it with entities.
 
+    Undo/Redo stack
 
     Displacements
         Loading
@@ -54,11 +55,39 @@ Interface
     vmf loading and saving.
         Could use gui.FileBrowser
 
+    How to manage all the different window panes?
+        filebrowser
+        inspector
+        texture browser
+        material browser
+        save dialog?
+        primitive creator
+        keybinding cheatsheet
+        main 3d view
+        
+        What if it was entirely user defined? 
+            It could be specified via config.vdf.
+            Splits would be specified. 3d views can capture mice
+
+FeatureCreep
+    Drawing the 3d skybox
+    Model Animation
+    Lighting
+
 Utility
     Configuring keybindings, 
         Just use a vdf file
     Export to obj
     Executing a build script for map compilation
+    A lua api?
+    Generating primitives:
+        cube
+        sphere
+        arch
+        cylinder
+        cone
+        stairs
+
 
 Build
     Windows

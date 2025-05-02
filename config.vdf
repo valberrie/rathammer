@@ -12,11 +12,18 @@ keys {
 
     quit            "left_ctrl+escape"
     focus_search    "left_ctrl+keycode:f"
+
+    workspace      left_alt+1
+    workspace      left_alt+2
+    workspace      left_alt+3
+    workspace      left_alt+4
+    workspace      left_alt+5
 }
 
 window {
     width_px    1920
     height_px   1080
+    cam_fov     85
 }
 
 

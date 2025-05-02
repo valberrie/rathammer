@@ -98,12 +98,13 @@ pub const AssetBrowserGui = struct {
         os9gui: *Os9Gui,
         editor: *edit.Context,
         config: *const Config.Config,
+        tab: enum { model, texture },
     ) !void {
         const should_focus_tb = os9gui.gui.isBindState(config.keys.focus_search.b, .rising);
         if (try os9gui.beginTlWindow(screen_area)) {
             defer os9gui.endTlWindow();
 
-            switch (try os9gui.beginTabs(&editor.edit_state.gui_tab)) {
+            switch (tab) {
                 .model => {
                     if (self.model_needs_rebuild) {
                         self.start_index_model = 0;
@@ -232,9 +233,8 @@ pub const AssetBrowserGui = struct {
                         //os9gui.label("{s}/{s}", .{ model[0], model[1] });
                     }
                 },
-                else => {},
             }
-            os9gui.endTabs();
+            //os9gui.endTabs();
         }
     }
 };
