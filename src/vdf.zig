@@ -79,6 +79,8 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
             if (std.meta.hasFn(T, "parseVdf")) {
                 return try T.parseVdf(value, alloc, strings);
             }
+            //IF hasField vdf_generic then
+            //add any fields that were not visted to vdf_generic
             var ret: T = undefined;
             if (value.* != .obj) {
                 return error.broken;
@@ -116,6 +118,9 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
         },
         .Int => {
             return try std.fmt.parseInt(T, value.literal, 0);
+        },
+        .Float => {
+            return try std.fmt.parseFloat(T, value.literal);
         },
         .Pointer => |p| {
             if (p.size != .Slice or p.child != u8) @compileError("no ptr");

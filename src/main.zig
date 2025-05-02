@@ -122,6 +122,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     win.grabMouse(true);
     while (!win.should_exit) {
+        if (win.bindHigh(config.keys.quit.b))
+            win.should_exit = true;
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
         win.grabMouse(grab_mouse);
         //TODO add a cool down for wait events?
@@ -154,16 +156,17 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         if (win.keyRising(.TAB))
             editor.draw_state.draw_tools = !editor.draw_state.draw_tools;
-        editor.draw_state.cam3d.updateDebugMove(.{
-            .down = win.keyHigh(.LCTRL),
-            .up = win.keyHigh(.SPACE),
-            .left = win.keyHigh(.A),
-            .right = win.keyHigh(.D),
-            .fwd = win.keyHigh(.W),
-            .bwd = win.keyHigh(.S),
+        const cam_state = graph.ptypes.Camera3D.MoveState{
+            .down = win.bindHigh(config.keys.cam_down.b),
+            .up = win.bindHigh(config.keys.cam_up.b),
+            .left = win.bindHigh(config.keys.cam_strafe_l.b),
+            .right = win.bindHigh(config.keys.cam_strafe_r.b),
+            .fwd = win.bindHigh(config.keys.cam_forward.b),
+            .bwd = win.bindHigh(config.keys.cam_back.b),
             .mouse_delta = if (last_frame_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
-        });
+        };
+        editor.draw_state.cam3d.updateDebugMove(cam_state);
 
         graph.c.glEnable(graph.c.GL_BLEND);
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
@@ -178,23 +181,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         if (!editor.edit_state.show_gui) {
             try editor.draw3Dview(split1[0], &draw);
         } else {
-            try browser.drawEditWindow(edit_split, &os9gui, &editor);
+            try browser.drawEditWindow(edit_split, &os9gui, &editor, &config);
         }
         if (editor.edit_state.show_gui and editor.edit_state.gui_tab == .model) {
             const selected_index = browser.selected_index_model;
             if (selected_index < browser.model_list_sub.items.len) {
                 const sp = split2[1];
                 const mouse_in = split2[1].containsPoint(win.mouse.pos);
-                model_cam.updateDebugMove(.{
-                    .down = win.keyHigh(.LCTRL),
-                    .up = win.keyHigh(.SPACE),
-                    .left = win.keyHigh(.A),
-                    .right = win.keyHigh(.D),
-                    .fwd = win.keyHigh(.W),
-                    .bwd = win.keyHigh(.S),
-                    .mouse_delta = if (mouse_in and win.mouse.left == .high) win.mouse.delta else .{ .x = 0, .y = 0 },
-                    .scroll_delta = win.mouse.wheel_delta.y,
-                });
+                model_cam.updateDebugMove(if (mouse_in and win.mouse.left == .high) cam_state else .{});
                 const screen_area = split2[1];
                 const x: i32 = @intFromFloat(screen_area.x);
                 const y: i32 = @intFromFloat(screen_area.y);

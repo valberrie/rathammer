@@ -4,6 +4,7 @@ const vpk = @import("vpk.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const edit = @import("editor.zig");
+const Config = @import("config.zig");
 const Gui = graph.Gui;
 //TODO center camera view on model on new model load
 
@@ -91,8 +92,14 @@ pub const AssetBrowserGui = struct {
         log.info("excluded {d} materials", .{excluded});
     }
 
-    pub fn drawEditWindow(self: *Self, screen_area: graph.Rect, os9gui: *Os9Gui, editor: *edit.Context) !void {
-        const should_focus_tb = (os9gui.gui.keyState(.F) == .rising and os9gui.gui.isKeyDown(.LCTRL));
+    pub fn drawEditWindow(
+        self: *Self,
+        screen_area: graph.Rect,
+        os9gui: *Os9Gui,
+        editor: *edit.Context,
+        config: *const Config.Config,
+    ) !void {
+        const should_focus_tb = os9gui.gui.isBindState(config.keys.focus_search.b, .rising);
         if (try os9gui.beginTlWindow(screen_area)) {
             defer os9gui.endTlWindow();
 

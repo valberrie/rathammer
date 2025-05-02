@@ -1,12 +1,17 @@
 // Define all keybinds
 keys {
-    // keyboard names can optionally be prefixed with "scancode" or "keycode" otherwise the key name is bound as a keycode
+    // keyboard names can optionally be prefixed with "scancode:" or "keycode:" otherwise the key name is bound as a keycode
 
     // Scancodes map to physical keys on the keyboard. 'w' is always the same physical key regardless of layout.
-    cam_forward     scancode_w 
-    cam_back        scancode_s
-    cam_strafe_l    scancode_a
-    cam_strafe_r    scancode_d
+    cam_forward     scancode:w 
+    cam_back        scancode:s
+    cam_strafe_l    scancode:a
+    cam_strafe_r    scancode:d
+    cam_up          scancode:space
+    cam_down        scancode:left_ctrl
+
+    quit            "left_ctrl+escape"
+    focus_search    "left_ctrl+keycode:f"
 }
 
 window {
@@ -43,5 +48,5 @@ games {
     }
 }
 //The name of a game defined in "games"
-default_game basic_hl2
+default_game     basic_hl2
 

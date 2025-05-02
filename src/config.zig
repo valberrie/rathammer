@@ -10,6 +10,11 @@ pub const Config = struct {
         cam_back: Keybind,
         cam_strafe_l: Keybind,
         cam_strafe_r: Keybind,
+        cam_down: Keybind,
+        cam_up: Keybind,
+
+        quit: Keybind,
+        focus_search: Keybind,
     },
     window: struct {
         height_px: i32 = 600,
@@ -62,32 +67,51 @@ pub const ConfigCtx = struct {
 };
 
 pub const Keybind = struct {
-    b: union {
-        keycode: graph.SDL.keycodes.Keycode,
-        scancode: graph.SDL.keycodes.Scancode,
-    },
+    b: graph.SDL.NewBind,
     pub fn parseVdf(v: *const vdf.KV.Value, _: std.mem.Allocator, _: anytype) !@This() {
         const stw = std.mem.startsWith;
         if (v.* != .literal)
             return error.notgood;
-        const is_scancode = stw(u8, v.literal, "scancode_");
-        var start_i = if (is_scancode) "scancode_".len else 0;
-        if (stw(u8, v.literal, "keycode_"))
-            start_i = "keycode_".len;
 
-        const slice1 = v.literal[start_i..];
-        //std.debug.print("{s}\n", .{slice1});
-        const scancode = graph.SDL.getScancodeFromName(slice1);
-        if (scancode == 0) {
-            std.debug.print("Not a key {s}\n", .{v.literal});
-            return error.notAKey;
+        var buf: [128]u8 = undefined;
+        var it = std.mem.tokenizeScalar(u8, v.literal, '+');
+        var ret = graph.SDL.NewBind{
+            .key = undefined,
+            .mod = 0,
+        };
+        var has_key: bool = false;
+        while (it.next()) |key_name| {
+            const is_scancode = stw(u8, key_name, "scancode:");
+            var start_i = if (is_scancode) "scancode:".len else 0;
+            if (stw(u8, key_name, "keycode:"))
+                start_i = "keycode:".len;
+
+            const slice1 = key_name[start_i..];
+            if (slice1.len > buf.len)
+                return error.keyNameTooLong;
+            @memcpy(buf[0..slice1.len], slice1);
+            std.mem.replaceScalar(u8, buf[0..slice1.len], '_', ' ');
+            //std.debug.print("{s}\n", .{slice1});
+            const scancode = graph.SDL.getScancodeFromName(buf[0..slice1.len]);
+            if (scancode == 0) {
+                std.debug.print("Not a key {s}\n", .{key_name});
+                return error.notAKey;
+            }
+
+            const Kmod = graph.SDL.keycodes.Keymod;
+            const keymod = Kmod.fromScancode(@enumFromInt(scancode));
+            ret.key = if (is_scancode) .{ .scancode = @enumFromInt(scancode) } else .{ .keycode = graph.SDL.getKeyFromScancode(@enumFromInt(scancode)) };
+            if (keymod != @intFromEnum(Kmod.NONE)) {
+                ret.mod |= keymod;
+            }
+            has_key = true;
+
+            //const keyc = graph.SDL.getKeyFromScancode(@enumFromInt(scancode));
+            //std.debug.print("{s}\n", .{graph.c.SDL_GetKeyName(@intFromEnum(keyc))});
         }
-
-        //const keyc = graph.SDL.getKeyFromScancode(@enumFromInt(scancode));
-        //std.debug.print("{s}\n", .{graph.c.SDL_GetKeyName(@intFromEnum(keyc))});
-        if (is_scancode)
-            return .{ .b = .{ .scancode = @enumFromInt(scancode) } };
-        return .{ .b = .{ .keycode = graph.SDL.getKeyFromScancode(@enumFromInt(scancode)) } };
+        if (!has_key)
+            return error.noKeySpecified;
+        return .{ .b = ret };
     }
 };
 

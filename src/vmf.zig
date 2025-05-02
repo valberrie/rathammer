@@ -6,6 +6,7 @@ const graph = @import("graph");
 pub const Vmf = struct {
     world: World,
     entity: []const Entity,
+    viewsettings: ViewSettings,
 };
 
 pub const VersionInfo = struct {
@@ -16,11 +17,40 @@ pub const VersionInfo = struct {
     prefab: u32,
 };
 
+//TODO are these fully recursive
+pub const VisGroups = struct {
+    //visgroup
+};
+
+pub const ViewSettings = struct {
+    bSnapToGrid: i32,
+    bShowGrid: i32,
+    nGridSpacing: i32,
+    bShow3DGrid: i32,
+};
+
 pub const World = struct {
     id: u32,
     mapversion: u32,
     skyname: []const u8,
     solid: []const Solid,
+    classname: []const u8,
+    sounds: []const u8,
+    MaxRange: []const u8,
+    startdark: []const u8,
+    gametitle: []const u8,
+    newunit: []const u8,
+    defaultteam: []const u8,
+    fogenable: []const u8,
+    fogblend: []const u8,
+    fogcolor: []const u8,
+    fogcolor2: []const u8,
+    fogdir: []const u8,
+    fogstart: []const u8,
+    fogend: []const u8,
+    light: []const u8,
+    ResponseContext: []const u8,
+    maxpropscreenwidth: []const u8,
 };
 
 pub const Solid = struct {
@@ -28,19 +58,11 @@ pub const Solid = struct {
     side: []const Side,
 };
 
-const StringVec = struct {
-    v: graph.za.Vec3,
-
-    pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
-        if (val.* != .literal)
-            return error.notgood;
-        var it = std.mem.splitScalar(u8, val.literal, ' ');
-        var ret: @This() = undefined;
-        ret.v.data[0] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
-        ret.v.data[1] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
-        ret.v.data[2] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
-        return ret;
-    }
+pub const DispInfo = struct {
+    power: i32 = 4,
+    elevation: f32,
+    subdiv: i32,
+    startposition: StringVecBracket,
 };
 
 pub const Entity = struct {
@@ -95,6 +117,10 @@ pub const Side = struct {
     uaxis: UvCoord,
     vaxis: UvCoord,
     material: []const u8,
+    lightmapscale: i32,
+    rotation: f32,
+    smoothing_groups: i32,
+    dispinfo: DispInfo,
 };
 
 fn parseVec(
@@ -152,12 +178,39 @@ fn parseVec(
     return ret;
 }
 
+const StringVec = struct {
+    v: graph.za.Vec3,
+
+    pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
+        if (val.* != .literal)
+            return error.notgood;
+        var it = std.mem.splitScalar(u8, val.literal, ' ');
+        var ret: @This() = undefined;
+        ret.v.data[0] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
+        ret.v.data[1] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
+        ret.v.data[2] = try std.fmt.parseFloat(f32, it.next() orelse return error.wrongOrigin);
+        return ret;
+    }
+};
+
+const StringVecBracket = struct {
+    v: graph.za.Vec3,
+
+    pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
+        if (val.* != .literal)
+            return error.notgood;
+        var i: usize = 0;
+        const a = try parseVec(val.literal, &i, 3, '[', ']', f32);
+        return .{ .v = graph.za.Vec3.new(a[0], a[1], a[2]) };
+    }
+};
+
 test "parse vec" {
     const str = "(0 12 12.3   ) (0 12E3 88)  ";
     var i: usize = 0;
 
-    const a = try parseVec(str, &i, 3, '(', ')');
-    const b = try parseVec(str, &i, 3, '(', ')');
+    const a = try parseVec(str, &i, 3, '(', ')', f32);
+    const b = try parseVec(str, &i, 3, '(', ')', f32);
     try std.testing.expectEqual(a[0], 0);
     try std.testing.expectEqual(b[0], 0);
     try std.testing.expectEqual(b[2], 88);
@@ -166,7 +219,7 @@ test "parse vec" {
 test "parse big" {
     const str = "[0 0 0 0] 0.02";
     var i: usize = 0;
-    const a = try parseVec(str, &i, 4, '[', ']');
+    const a = try parseVec(str, &i, 4, '[', ']', f32);
     std.debug.print("{any}\n", .{a});
     std.debug.print("{s}\n", .{str[i..]});
     const scale = try std.fmt.parseFloat(f64, std.mem.trimLeft(u8, str[i..], " "));

@@ -23,10 +23,48 @@ Dependencies:
         Determine the cost of our Imgui
         Having sdl and libepoxy as our only dependencies makes building easy.
 
+Features
+    Add loose file capability to vpk.Context
+    Save vmf file.
+        This requires first loading all fields in existing vmfs
+        Then serializing any state we have built up.
+        This should probably wait until after we have decided how all entities are stored.
+        Check if real Hammer will read vmf's with unix line endings
+
+        Support loading arbitrary kvs from vmf. 
+        create a vdf_map component and associate it with entities.
+
+
+    Displacements
+        Loading
+        Editing
+    
+
 Interface
     Tool based (enum)?
     2d editing?
 
+    Rotation gizmo
+    Scale gizmo
+    Model placement
+    Texture application
+    Vertex tool
+    Face translation
+
+    vmf loading and saving.
+        Could use gui.FileBrowser
+
 Utility
     Configuring keybindings, 
         Just use a vdf file
+    Export to obj
+    Executing a build script for map compilation
+
+Build
+    Windows
+        How the heck do people build software on Windows?
+        Currently we use msys. See if distribution of dlls is allowed
+        How to programmatically copy all required dlls to project
+        How to set a custom directory for dll search like LD_LIBRARY_PATH
+    Linux
+        Do linker paths need to be configurable for build scripts (aur).
