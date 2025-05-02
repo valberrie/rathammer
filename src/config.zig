@@ -3,6 +3,7 @@ const vdf = @import("vdf.zig");
 const graph = @import("graph");
 const StringStorage = @import("string.zig").StringStorage;
 
+// TODO all values should have a default value
 /// The user's 'config.vdf' maps directly into this structure
 pub const Config = struct {
     keys: struct {
@@ -15,6 +16,7 @@ pub const Config = struct {
         quit: Keybind,
         focus_search: Keybind,
         workspace: std.ArrayList(Keybind),
+        select: Keybind,
     },
     window: struct {
         height_px: i32 = 600,

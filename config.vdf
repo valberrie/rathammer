@@ -13,6 +13,8 @@ keys {
     quit            "left_ctrl+escape"
     focus_search    "left_ctrl+keycode:f"
 
+    select          scancode:E
+
     workspace      left_alt+1
     workspace      left_alt+2
     workspace      left_alt+3

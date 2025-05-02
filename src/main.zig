@@ -124,34 +124,52 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         model_preview,
         model_browser,
         file_browser,
+        about,
     };
     var areas_buf: [10]graph.Rect = undefined;
     var fb = try guiutil.FileBrowser.init(alloc, cwd);
     defer fb.deinit();
 
+    var splits: [256]Split.Op = undefined;
+    var panes: [256]Pane = undefined;
+    var SI: usize = 0;
+    var PI: usize = 0;
     const Tab = struct {
-        split: []const Split.Op,
-        panes: []const Pane,
+        split: []Split.Op,
+        panes: []Pane,
+
+        fn newSplit(s: []Split.Op, i: *usize, sp: []const Split.Op) []Split.Op {
+            @memcpy(s[i.* .. i.* + sp.len], sp);
+            defer i.* += sp.len;
+            return s[i.* .. i.* + sp.len];
+        }
+
+        fn newPane(p: []Pane, pi: *usize, ps: []const Pane) []Pane {
+            @memcpy(p[pi.* .. pi.* + ps.len], ps);
+            defer pi.* += ps.len;
+            return p[pi.* .. pi.* + ps.len];
+        }
     };
     const tabs = [_]Tab{
         .{
-            .split = &.{ .{ .left, 0.7 }, .{ .left, 1 } },
-            .panes = &.{ .main_3d_view, .inspector },
+            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .inspector }),
         },
         .{
-            .split = &.{.{ .left, 1 }},
-            .panes = &.{.asset_browser},
+            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
+            .panes = Tab.newPane(&panes, &PI, &.{.asset_browser}),
         },
         .{
-            .split = &.{ .{ .left, 0.6 }, .{ .left, 1 } },
-            .panes = &.{ .model_browser, .model_preview },
+            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .left, 1 } }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .model_browser, .model_preview }),
         },
         .{
-            .split = &.{.{ .left, 1 }},
-            .panes = &.{.file_browser},
+            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
+            .panes = Tab.newPane(&panes, &PI, &.{.about}),
         },
     };
     var tab_index: usize = 0;
+    var show_tab_editor = false;
 
     win.grabMouse(true);
     while (!win.should_exit) {
@@ -164,6 +182,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
         defer last_frame_grabbed = grab_mouse;
+
+        if (win.keyRising(._9))
+            show_tab_editor = !show_tab_editor;
 
         editor.edit_state.lmouse = win.mouse.left;
         editor.edit_state.rmouse = win.mouse.right;
@@ -219,6 +240,19 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         graph.c.SDL_WarpMouseInWindow(win.win, center.x, center.y);
                     }
                     try editor.draw3Dview(pane_area, &draw);
+                },
+                .about => {
+                    if (try os9gui.beginTlWindow(pane_area)) {
+                        defer os9gui.endTlWindow();
+                        _ = try os9gui.beginV();
+                        defer os9gui.endL();
+                        os9gui.label("Hello this is the rat hammer 鼠", .{});
+                        try os9gui.enumCombo(
+                            "Select pane {s}",
+                            .{@tagName(pane)},
+                            &tabs[tab_index].panes[p_i],
+                        );
+                    }
                 },
                 .model_browser => try browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .model),
                 .asset_browser => {
@@ -277,7 +311,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         if (!mouse_is_claimed)
             grab_mouse = false;
 
-        if (win.keyRising(.E)) {
+        if (win.isBindState(config.keys.select.b, .rising)) {
             editor.edit_state.state = .select;
             //var rcast_timer = try std.time.Timer.start();
             //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
@@ -352,6 +386,20 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         //try draw.flush(null, editor.draw_state.cam3d);
 
+        if (show_tab_editor) {
+            const thing = winrect.inset(winrect.h / 5);
+            if (try os9gui.beginTlWindow(thing)) {
+                defer os9gui.endTlWindow();
+                _ = try os9gui.beginV();
+                defer os9gui.endL();
+                for (tabs) |tabl| {
+                    for (tabl.split) |*s| {
+                        os9gui.slider(&s[1], 0, 1);
+                    }
+                    os9gui.hr();
+                }
+            }
+        }
         try os9gui.endFrame(&draw);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
