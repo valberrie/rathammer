@@ -185,19 +185,44 @@ pub const AssetBrowserGui = struct {
                         _ = try os9gui.beginH(2);
                         defer os9gui.endL();
                         const len = self.model_search.arraylist.items.len;
-                        try os9gui.textbox2(&self.model_search, .{ .make_active = should_focus_tb });
+                        try os9gui.textbox2(&self.model_search, .{ .make_active = should_focus_tb, .make_inactive = os9gui.gui.isKeyDown(.RETURN) });
                         os9gui.label("Results {d}", .{self.model_list_sub.items.len});
                         if (len != self.model_search.arraylist.items.len)
                             self.model_needs_rebuild = true;
                     }
+                    var moved_with_keyboard = false;
+                    if (os9gui.gui.isBindState(config.keys.down_line.b, .rising)) {
+                        self.selected_index_model += 1;
+                        moved_with_keyboard = true;
+                    }
+
+                    if (os9gui.gui.isBindState(config.keys.up_line.b, .rising) and self.selected_index_model > 0) {
+                        self.selected_index_model -= 1;
+                        moved_with_keyboard = true;
+                    }
+
+                    self.start_index_model = @min(self.model_list_sub.items.len, self.start_index_model);
                     for (self.model_list_sub.items[self.start_index_model..], self.start_index_model..) |model, i| {
                         const tt = editor.vpkctx.entries.get(model) orelse continue;
-                        if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = self.selected_index_model == i })) {
+                        if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = self.selected_index_model == i }))
                             self.selected_index_model = i;
+                        if (self.selected_index_model == i)
                             self.selected_model_vpk_id = model;
-                        }
-                        if (os9gui.gui.layout.last_requested_bounds == null) //Hacky
+                        if (os9gui.gui.layout.last_requested_bounds == null) {
+                            if (moved_with_keyboard) {
+                                const pad = 5;
+                                const ii: i64 = @intCast(i);
+                                const sm: i64 = @intCast(self.selected_index_model);
+                                const start: i64 = @intCast(self.start_index_model);
+                                if (sm - pad < start) {
+                                    self.start_index_model = @max(0, (sm - pad));
+                                } else if (sm + pad > ii) {
+                                    //j = (sm + pad ) - ii
+                                    self.start_index_model += @max(0, (sm + pad) - ii);
+                                }
+                            }
                             break;
+                        }
                     }
                 },
                 .texture => {

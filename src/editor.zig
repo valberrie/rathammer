@@ -567,6 +567,15 @@ pub const Context = struct {
         //try self.set.insert(newsolid.id, newsolid);
     }
 
+    pub fn screenRay(self: *Self, screen_area: graph.Rect, view_3d: Mat4) []const raycast.RcastItem {
+        const rc = util3d.screenSpaceRay(
+            screen_area.dim(),
+            if (self.draw_state.grab.was) screen_area.center() else self.edit_state.mpos,
+            view_3d,
+        );
+        return self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false) catch &.{};
+    }
+
     pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         var timer = try std.time.Timer.start();
         defer log.info("Loaded vmf in {d}ms", .{timer.read() / std.time.ns_per_ms});
@@ -802,7 +811,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext) !void {
+    pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window) !void {
         try self.draw_state.ctx.beginNoClear(screen_area.dim());
         // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
         // "draw" still has depth buffer
@@ -852,6 +861,16 @@ pub const Context = struct {
 
         if (self.edit_state.btn_x_trans == .rising or self.edit_state.btn_y_trans == .rising)
             self.edit_state.state = .face_manip;
+
+        if (win.isBindState(self.config.keys.select.b, .rising)) {
+            self.edit_state.state = .select;
+            const pot = self.screenRay(screen_area, view_3d);
+            if (pot.len > 0) {
+                self.edit_state.id = pot[0].id;
+            }
+            //var rcast_timer = try std.time.Timer.start();
+            //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
+        }
 
         if (self.edit_state.id) |id| {
             switch (self.edit_state.state) {
@@ -996,12 +1015,7 @@ pub const Context = struct {
                         const omod = self.models.get(res_id);
                         if (omod != null and omod.? != null) {
                             const mod = omod.?.?;
-                            const rc = util3d.screenSpaceRay(
-                                screen_area.dim(),
-                                if (self.draw_state.grab.is) screen_area.center() else self.edit_state.mpos,
-                                view_3d,
-                            );
-                            const pot = try self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false);
+                            const pot = self.screenRay(screen_area, view_3d);
                             if (pot.len > 0) {
                                 const p = pot[0];
                                 var point = p.point;

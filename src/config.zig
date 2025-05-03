@@ -7,6 +7,8 @@ const StringStorage = @import("string.zig").StringStorage;
 /// The user's 'config.vdf' maps directly into this structure
 pub const Config = struct {
     keys: struct {
+        const SC = graph.SDL.NewBind.Scancode;
+        const KC = graph.SDL.NewBind.Keycode;
         cam_forward: Keybind,
         cam_back: Keybind,
         cam_strafe_l: Keybind,
@@ -17,6 +19,9 @@ pub const Config = struct {
         focus_search: Keybind,
         workspace: std.ArrayList(Keybind),
         select: Keybind,
+
+        down_line: Keybind = .{ .b = KC(.j, 0) }, //j
+        up_line: Keybind = .{ .b = KC(.k, 0) }, //k
     },
     window: struct {
         height_px: i32 = 600,

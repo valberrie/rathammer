@@ -196,9 +196,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             const has_mouse = pane_area.containsPoint(win.mouse.pos);
             switch (pane) {
                 .main_3d_view => {
-                    editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is) cam_state else .{});
+                    editor.draw_state.cam3d.updateDebugMove(if (has_mouse) cam_state else .{});
                     editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
-                    try editor.draw3Dview(pane_area, &draw);
+                    try editor.draw3Dview(pane_area, &draw, &win);
                 },
                 .about => {
                     if (try os9gui.beginTlWindow(pane_area)) {
@@ -237,16 +237,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
         editor.draw_state.grab.endFrame();
-
-        if (win.isBindState(config.keys.select.b, .rising)) {
-            editor.edit_state.state = .select;
-            const pot = try editor.rayctx.findNearestSolid(&editor.ecs, editor.draw_state.cam3d.pos, editor.draw_state.cam3d.front, &editor.csgctx, false);
-            if (pot.len > 0) {
-                editor.edit_state.id = pot[0].id;
-            }
-            //var rcast_timer = try std.time.Timer.start();
-            //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
-        }
 
         //try draw.flush(null, editor.draw_state.cam3d);
 
