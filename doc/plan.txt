@@ -68,11 +68,15 @@ Interface
         What if it was entirely user defined? 
             It could be specified via config.vdf.
             Splits would be specified. 3d views can capture mice
+        Interface for user to create splits and assign panes to each section
 
 FeatureCreep
     Drawing the 3d skybox
     Model Animation
     Lighting
+    Network transparent editing. Coop editing over tcp
+    Precedural model placement (draw a (pipe, fence, cable) path, gets filled with models)
+    Actual csg?
 
 Utility
     Configuring keybindings, 

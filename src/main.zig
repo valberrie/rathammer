@@ -25,7 +25,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
     defer loaded_config.deinit();
     const config = loaded_config.config;
-    var win = try graph.SDL.Window.createWindow("Rat Hammer - 鼠", .{
+    var win = try graph.SDL.Window.createWindow("Rat Hammer - ラット　ハンマー", .{
         .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
     });
     defer win.destroyWindow();
@@ -42,14 +42,19 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
+    const splash = try graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{});
     var loadctx = edit.LoadCtx{
         .draw = &draw,
         .font = &font,
         .win = &win,
+        .splash = splash,
         .timer = try std.time.Timer.start(),
+        .gtimer = try std.time.Timer.start(),
+        .expected_cb = 100,
     };
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2);
     defer os9gui.deinit();
+
     loadctx.cb("Loading");
 
     if (config.default_game.len == 0) {
@@ -95,6 +100,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     //}
 
     try editor.loadVmf(std.fs.cwd(), args.vmf orelse "sdk_materials.vmf", &loadctx);
+
+    loadctx.time = loadctx.gtimer.read();
 
     const RcastItem = struct {
         id: edit.EcsT.Id,
@@ -164,8 +171,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .panes = Tab.newPane(&panes, &PI, &.{ .model_browser, .model_preview }),
         },
         .{
-            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
-            .panes = Tab.newPane(&panes, &PI, &.{.about}),
+            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .left, 1 } }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .about, .about }),
         },
     };
     var tab_index: usize = 0;
@@ -401,6 +408,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
         try os9gui.endFrame(&draw);
+        try loadctx.loadedSplash(win.keys.len > 0);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
     }

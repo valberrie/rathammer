@@ -1067,11 +1067,19 @@ pub const Context = struct {
 };
 
 pub const LoadCtx = struct {
+    const builtin = @import("builtin");
     buffer: [256]u8 = undefined,
     timer: std.time.Timer,
     draw: *graph.ImmediateDrawingContext,
     win: *graph.SDL.Window,
     font: *graph.Font,
+    splash: graph.Texture,
+    draw_splash: bool = true,
+    gtimer: std.time.Timer,
+    time: u64 = 0,
+
+    expected_cb: usize = 1, // these are used to update progress bar
+    cb_count: usize = 0,
 
     pub fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
         //No need for high fps when loading, this is 15fps
@@ -1084,15 +1092,52 @@ pub const LoadCtx = struct {
     }
 
     pub fn cb(self: *@This(), message: []const u8) void {
+        self.cb_count += 1;
         if (self.timer.read() / std.time.ns_per_ms < 8) {
             return;
         }
         self.timer.reset();
         self.win.pumpEvents(.poll);
-        self.draw.begin(0x222222ff, self.win.screen_dimensions.toF()) catch return;
-        self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
+        self.draw.begin(0x678caaff, self.win.screen_dimensions.toF()) catch return;
+        //self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
+        const perc: f32 = @as(f32, @floatFromInt(self.cb_count)) / @as(f32, @floatFromInt(self.expected_cb));
+        self.drawSplash(perc, message);
         self.draw.end(null) catch return;
         self.win.swap(); //So the window doesn't look too broken while loading
+    }
+
+    pub fn drawSplash(self: *@This(), perc: f32, message: []const u8) void {
+        const cx = self.draw.screen_dimensions.x / 2;
+        const cy = self.draw.screen_dimensions.y / 2;
+        const w: f32 = @floatFromInt(self.splash.w);
+        const h: f32 = @floatFromInt(self.splash.h);
+        const sr = graph.Rec(cx - w / 2, cy - h / 2, w, h);
+        const tbox = graph.Rec(sr.x + 10, sr.y + 156, 420, 16);
+        const pbar = graph.Rec(sr.x + 8, sr.y + 172, 430, 6);
+        self.draw.rectTex(sr, self.splash.rect(), self.splash);
+        self.draw.text(
+            tbox.pos(),
+            message,
+            &self.font.font,
+            tbox.h,
+            0xff,
+        );
+        self.draw.rect(pbar.split(.vertical, pbar.w * perc)[0], 0xf7a41dff);
+    }
+
+    pub fn loadedSplash(self: *@This(), end: bool) !void {
+        if (self.draw_splash) {
+            var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
+            try fbs.writer().print("v0.0.1 Loaded in {d:.2} ms. {s}.{s}.{s}", .{
+                self.time / std.time.ns_per_ms,
+                @tagName(builtin.mode),
+                @tagName(builtin.target.os.tag),
+                @tagName(builtin.target.cpu.arch),
+            });
+            self.drawSplash(1.0, fbs.getWritten());
+            if (end)
+                self.draw_splash = false;
+        }
     }
 };
 
