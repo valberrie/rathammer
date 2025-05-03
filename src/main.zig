@@ -10,7 +10,6 @@ const vpk = @import("vpk.zig");
 const fgd = @import("fgd.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
-const gameinfo = @import("gameinfo.zig");
 const Vec3 = V3f;
 const util3d = @import("util_3d.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
@@ -18,7 +17,6 @@ const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const Split = @import("splitter.zig");
 
-const assetbrowse = @import("asset_browser.zig");
 const Conf = @import("config.zig");
 
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
@@ -35,7 +33,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     //materials/concrete/concretewall008a
     //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
     //var my_tex = try vtf.loadTexture(o.?, alloc);
-    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null);
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config);
     defer editor.deinit();
 
     var draw = graph.ImmediateDrawingContext.init(alloc);
@@ -43,61 +41,33 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
     const splash = try graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{});
+    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2);
+    defer os9gui.deinit();
     var loadctx = edit.LoadCtx{
         .draw = &draw,
         .font = &font,
         .win = &win,
         .splash = splash,
+        .os9gui = &os9gui,
         .timer = try std.time.Timer.start(),
         .gtimer = try std.time.Timer.start(),
         .expected_cb = 100,
     };
-    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2);
-    defer os9gui.deinit();
 
     loadctx.cb("Loading");
 
-    if (config.default_game.len == 0) {
-        std.debug.print("config.vdf must specify a default_game!\n", .{});
-        return error.incompleteConfig;
-    }
+    try editor.postInit(args);
 
-    const game_name = args.game orelse config.default_game;
-    const game_conf = config.games.map.get(game_name) orelse {
-        std.debug.print("{s} is not defined in the \"games\" section\n", .{game_name});
-        return error.gameConfigNotFound;
-    };
-
-    const cwd = if (args.custom_cwd) |cc| try std.fs.cwd().openDir(cc, .{}) else std.fs.cwd();
-    const base_dir = try cwd.openDir(args.basedir orelse game_conf.base_dir, .{});
-    const game_dir = try cwd.openDir(args.gamedir orelse game_conf.game_dir, .{});
-    const fgd_dir = try cwd.openDir(args.fgddir orelse game_conf.fgd_dir, .{});
-
-    try gameinfo.loadGameinfo(alloc, base_dir, game_dir, &editor.vpkctx);
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
 
-    try fgd.loadFgd(&editor.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
     var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z };
     model_cam.yaw = 0;
     var name_buf = std.ArrayList(u8).init(alloc);
     defer name_buf.deinit();
 
-    var browser = assetbrowse.AssetBrowserGui.init(alloc);
-    defer browser.deinit();
-    try browser.populate(&editor.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
-
     editor.draw_state.cam3d.fov = config.window.cam_fov;
-
-    //{ //Add all models to array
-    //    var it = editor.vpkctx.extensions.get("mdl").?.iterator();
-    //    while (it.next()) |path| {
-    //        var ent = path.value_ptr.iterator();
-    //        while (ent.next()) |entt|
-    //            try model_array.append([2][]const u8{ path.key_ptr.*, entt.key_ptr.* });
-    //    }
-    //}
 
     try editor.loadVmf(std.fs.cwd(), args.vmf orelse "sdk_materials.vmf", &loadctx);
 
@@ -134,7 +104,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         about,
     };
     var areas_buf: [10]graph.Rect = undefined;
-    var fb = try guiutil.FileBrowser.init(alloc, cwd);
+    var fb = try guiutil.FileBrowser.init(alloc, std.fs.cwd());
     defer fb.deinit();
 
     var splits: [256]Split.Op = undefined;
@@ -231,6 +201,18 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         const tab = tabs[tab_index];
         const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
+        {
+            const state_btns = [_]graph.SDL.keycodes.Scancode{ ._1, ._2, ._3, ._4, ._5, ._6, ._7 };
+            const num_field = @typeInfo(@TypeOf(editor.edit_state.state)).Enum.fields.len;
+            for (state_btns, 0..) |sbtn, i| {
+                if (i >= num_field)
+                    break;
+                if (win.keyRising(sbtn)) {
+                    editor.edit_state.state = @enumFromInt(i);
+                }
+            }
+        }
+
         var mouse_is_claimed = false;
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
@@ -261,14 +243,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         );
                     }
                 },
-                .model_browser => try browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .model),
+                .model_browser => try editor.asset_browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .model),
                 .asset_browser => {
-                    try browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .texture);
+                    try editor.asset_browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .texture);
                 },
                 .inspector => try editor.drawInspector(pane_area, &os9gui),
                 .model_preview => {
-                    const selected_index = browser.selected_index_model;
-                    if (selected_index < browser.model_list_sub.items.len) {
+                    const selected_index = editor.asset_browser.selected_index_model;
+                    if (selected_index < editor.asset_browser.model_list_sub.items.len) {
                         const sp = pane_area;
                         if (has_mouse or grab_mouse) {
                             grab_mouse = win.mouse.left == .high;
@@ -288,7 +270,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         //todo
                         //defer loading of all textures
 
-                        const modid = browser.model_list_sub.items[selected_index];
+                        const modid = editor.asset_browser.model_list_sub.items[selected_index];
                         name_buf.clearRetainingCapacity();
                         //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
                         //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
@@ -320,75 +302,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         if (win.isBindState(config.keys.select.b, .rising)) {
             editor.edit_state.state = .select;
+            const pot = try editor.rayctx.findNearestSolid(&editor.ecs, editor.draw_state.cam3d.pos, editor.draw_state.cam3d.front, &editor.csgctx, false);
+            if (pot.len > 0) {
+                editor.edit_state.id = pot[0].id;
+            }
             //var rcast_timer = try std.time.Timer.start();
             //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
-            raycast_pot.clearRetainingCapacity();
-            var bbit = editor.ecs.iterator(.bounding_box);
-            while (bbit.next()) |bb| {
-                //for (editor.set.dense.items, 0..) |solid, i| {
-                //draw.cube(pos, ext, 0xffffffff);
-                if (util3d.doesRayIntersectBBZ(editor.draw_state.cam3d.pos, editor.draw_state.cam3d.front, bb.a, bb.b)) |inter| {
-                    const len = inter.distance(editor.draw_state.cam3d.pos);
-                    try raycast_pot.append(.{ .id = bbit.i, .dist = len });
-                }
-            }
-            if (true) {
-                raycast_pot_fine.clearRetainingCapacity();
-                for (raycast_pot.items) |bp_rc| {
-                    if (try editor.ecs.getOptPtr(bp_rc.id, .solid)) |solid| {
-                        for (solid.sides.items) |side| {
-                            if (side.verts.items.len < 3) continue;
-                            // triangulate using csg
-                            // for each tri call mollertrumbor, breaking if enc
-                            const ind = try editor.csgctx.triangulateAny(side.verts.items, 0);
-                            const ts = side.verts.items;
-                            const ro = editor.draw_state.cam3d.pos;
-                            const rd = editor.draw_state.cam3d.front;
-                            for (0..@divExact(ind.len, 3)) |i_i| {
-                                const i = i_i * 3;
-
-                                if (util3d.mollerTrumboreIntersection(
-                                    ro,
-                                    rd,
-                                    ts[ind[i]],
-                                    ts[ind[i + 1]],
-                                    ts[ind[i + 2]],
-                                )) |inter| {
-                                    const len = inter.distance(editor.draw_state.cam3d.pos);
-                                    try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = inter });
-                                    break;
-                                }
-                            }
-
-                            //const plane = util3d.trianglePlane(side.verts.items[0..3].*);
-                            //if (util3d.doesRayIntersectConvexPolygon(
-                            //    editor.draw_state.cam3d.pos,
-                            //    editor.draw_state.cam3d.front,
-                            //    plane,
-                            //    side.verts.items,
-                            //)) |point| {
-                            //    const len = point.distance(editor.draw_state.cam3d.pos);
-                            //    try raycast_pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = point });
-                            //}
-                        }
-                    } else {
-                        try raycast_pot_fine.append(bp_rc);
-                    }
-                }
-
-                std.sort.insertion(RcastItem, raycast_pot_fine.items, {}, RcastItem.lessThan);
-                if (raycast_pot_fine.items.len > 0) {
-                    // std.debug.print("Count {d} {d}\n", .{ raycast_pot.items.len, raycast_pot_fine.items.len });
-                    // for (raycast_pot_fine.items) |itt|
-                    //     std.debug.print("ID: {d} {d} {}\n", .{ itt.id, itt.dist, itt.point });
-                    editor.edit_state.id = raycast_pot_fine.items[0].id;
-                }
-            } else {
-                std.sort.insertion(RcastItem, raycast_pot.items, {}, RcastItem.lessThan);
-                if (raycast_pot.items.len > 0) {
-                    editor.edit_state.id = raycast_pot.items[0].id;
-                }
-            }
         }
 
         //try draw.flush(null, editor.draw_state.cam3d);
@@ -407,8 +326,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 }
             }
         }
-        try os9gui.endFrame(&draw);
         try loadctx.loadedSplash(win.keys.len > 0);
+        try os9gui.endFrame(&draw);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
     }

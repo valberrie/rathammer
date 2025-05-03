@@ -43,7 +43,7 @@ pub const Config = struct {
         }
     },
 };
-const GameEntry = struct {
+pub const GameEntry = struct {
     base_dir: []const u8,
     game_dir: []const u8,
     fgd_dir: []const u8,

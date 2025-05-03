@@ -11,6 +11,7 @@ const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
 const fgd = @import("fgd.zig");
 const vvd = @import("vvd.zig");
+const gameinfo = @import("gameinfo.zig");
 const profile = @import("profile.zig");
 const Gui = graph.Gui;
 const StringStorage = @import("string.zig").StringStorage;
@@ -19,6 +20,8 @@ const Gizmo = @import("gizmo.zig").Gizmo;
 const raycast = @import("raycast_solid.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
 const texture_load_thread = @import("texture_load_thread.zig");
+const assetbrowse = @import("asset_browser.zig");
+const Conf = @import("config.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -311,6 +314,7 @@ pub const Context = struct {
     const Self = @This();
     const ButtonState = graph.SDL.ButtonState;
 
+    rayctx: raycast.Ctx,
     csgctx: csg.Context,
     vpkctx: vpk.Context,
     meshmap: MeshMap,
@@ -326,6 +330,8 @@ pub const Context = struct {
     textures: std.AutoHashMap(vpk.VpkResId, graph.Texture),
     models: std.AutoHashMap(vpk.VpkResId, ?*vvd.MultiMesh),
     skybox: Skybox,
+
+    asset_browser: assetbrowse.AssetBrowserGui,
 
     ecs: EcsT,
 
@@ -353,6 +359,7 @@ pub const Context = struct {
         state: enum {
             select,
             face_manip,
+            model_place,
         } = .select,
 
         id: ?EcsT.Id = null,
@@ -372,11 +379,28 @@ pub const Context = struct {
         scroll_a: graph.Vec2f = .{ .x = 0, .y = 0 },
     } = .{},
 
-    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32) !Self {
+    config: Conf.Config,
+    game_conf: Conf.GameEntry,
+    dirs: struct {
+        const Dir = std.fs.Dir;
+        cwd: Dir,
+        base: Dir,
+        game: Dir,
+        fgd: Dir,
+    },
+
+    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
         return .{
+            //These are initilized in editor.postInit
+            .dirs = undefined,
+            .game_conf = undefined,
+
+            .rayctx = raycast.Ctx.init(alloc),
+            .config = config,
             .alloc = alloc,
             .fgd_ctx = fgd.EntCtx.init(alloc),
             .string_storage = StringStorage.init(alloc),
+            .asset_browser = assetbrowse.AssetBrowserGui.init(alloc),
             .name_arena = std.heap.ArenaAllocator.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
@@ -401,13 +425,37 @@ pub const Context = struct {
         };
     }
 
+    pub fn postInit(self: *Self, args: anytype) !void {
+        if (self.config.default_game.len == 0) {
+            std.debug.print("config.vdf must specify a default_game!\n", .{});
+            return error.incompleteConfig;
+        }
+        const game_name = args.game orelse self.config.default_game;
+        const game_conf = self.config.games.map.get(game_name) orelse {
+            std.debug.print("{s} is not defined in the \"games\" section\n", .{game_name});
+            return error.gameConfigNotFound;
+        };
+        self.game_conf = game_conf;
+
+        const cwd = if (args.custom_cwd) |cc| try std.fs.cwd().openDir(cc, .{}) else std.fs.cwd();
+        const base_dir = try cwd.openDir(args.basedir orelse game_conf.base_dir, .{});
+        const game_dir = try cwd.openDir(args.gamedir orelse game_conf.game_dir, .{});
+        const fgd_dir = try cwd.openDir(args.fgddir orelse game_conf.fgd_dir, .{});
+        self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir };
+        try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx);
+        try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
+        try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
+    }
+
     pub fn deinit(self: *Self) void {
         self.ecs.deinit();
         self.fgd_ctx.deinit();
         self.icon_map.deinit();
         self.lower_buf.deinit();
         self.string_storage.deinit();
+        self.rayctx.deinit();
         self.scratch_buf.deinit();
+        self.asset_browser.deinit();
         self.csgctx.deinit();
         self.vpkctx.deinit();
         self.skybox.deinit();
@@ -801,7 +849,7 @@ pub const Context = struct {
                                     r[0],
                                     r[1],
                                     solid,
-                                    self,
+                                    &self.csgctx,
                                 )) |face_inter| {
                                     const d = face_inter.point.distance(self.draw_state.cam3d.pos);
                                     if (d < near) {
@@ -918,6 +966,10 @@ pub const Context = struct {
                         }
                     }
                 },
+                .model_place => {
+                    // if self.asset_browser.selected_model_vpk_id exists,
+                    // do a raycast into the world and draw a model at nearest intersection with solid
+                },
             }
         }
         try draw.flush(null, self.draw_state.cam3d);
@@ -968,6 +1020,7 @@ pub const Context = struct {
                 //defer os9gui.endL();
                 if (try os9gui.beginVScroll(&self.misc_gui_state.scroll_a, .{ .sw = area.w, .sh = 1000000 })) |scr| {
                     defer os9gui.endVScroll(scr);
+                    os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
                     if (self.edit_state.id) |id| {
                         if (try self.ecs.getOptPtr(id, .entity)) |ent| {
                             if (self.fgd_ctx.base.get(ent.class)) |base| {
@@ -1072,6 +1125,7 @@ pub const LoadCtx = struct {
     timer: std.time.Timer,
     draw: *graph.ImmediateDrawingContext,
     win: *graph.SDL.Window,
+    os9gui: *graph.Os9Gui,
     font: *graph.Font,
     splash: graph.Texture,
     draw_splash: bool = true,
@@ -1099,9 +1153,11 @@ pub const LoadCtx = struct {
         self.timer.reset();
         self.win.pumpEvents(.poll);
         self.draw.begin(0x678caaff, self.win.screen_dimensions.toF()) catch return;
+        self.os9gui.beginFrame(.{}, self.win) catch return;
         //self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
         const perc: f32 = @as(f32, @floatFromInt(self.cb_count)) / @as(f32, @floatFromInt(self.expected_cb));
         self.drawSplash(perc, message);
+        self.os9gui.endFrame(self.draw) catch return;
         self.draw.end(null) catch return;
         self.win.swap(); //So the window doesn't look too broken while loading
     }
@@ -1112,17 +1168,29 @@ pub const LoadCtx = struct {
         const w: f32 = @floatFromInt(self.splash.w);
         const h: f32 = @floatFromInt(self.splash.h);
         const sr = graph.Rec(cx - w / 2, cy - h / 2, w, h);
-        const tbox = graph.Rec(sr.x + 10, sr.y + 156, 420, 16);
+        const tbox = graph.Rec(sr.x + 10, sr.y + 156, 420, 22);
         const pbar = graph.Rec(sr.x + 8, sr.y + 172, 430, 6);
-        self.draw.rectTex(sr, self.splash.rect(), self.splash);
-        self.draw.text(
-            tbox.pos(),
-            message,
-            &self.font.font,
+        _ = self.os9gui.beginTlWindow(sr) catch return;
+        defer self.os9gui.endTlWindow();
+        self.os9gui.gui.drawRectTextured(sr, 0xffffffff, self.splash.rect(), self.splash);
+        self.os9gui.gui.drawTextFmt(
+            "{s}",
+            .{message},
+            tbox,
             tbox.h,
             0xff,
+            .{},
+            self.os9gui.font,
         );
-        self.draw.rect(pbar.split(.vertical, pbar.w * perc)[0], 0xf7a41dff);
+        self.os9gui.gui.drawRectFilled(pbar.split(.vertical, pbar.w * perc)[0], 0xf7a41dff);
+        //self.draw.rectTex(sr, self.splash.rect(), self.splash);
+        //self.draw.text(
+        //    tbox.pos(),
+        //    message,
+        //    &self.font.font,
+        //    tbox.h,
+        //    0xff,
+        //);
     }
 
     pub fn loadedSplash(self: *@This(), end: bool) !void {

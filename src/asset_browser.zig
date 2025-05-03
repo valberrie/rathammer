@@ -30,6 +30,7 @@ pub const AssetBrowserGui = struct {
     model_needs_rebuild: bool = true,
     mat_needs_rebuild: bool = true,
 
+    selected_model_vpk_id: ?vpk.VpkResId = null,
     selected_index_model: usize = 0,
     selected_index_mat: usize = 0,
 
@@ -135,6 +136,7 @@ pub const AssetBrowserGui = struct {
                         const tt = editor.vpkctx.entries.get(model) orelse continue;
                         if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = self.selected_index_model == i })) {
                             self.selected_index_model = i;
+                            self.selected_model_vpk_id = model;
                         }
                         if (os9gui.gui.layout.last_requested_bounds == null) //Hacky
                             break;
