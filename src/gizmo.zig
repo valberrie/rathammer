@@ -112,6 +112,7 @@ pub const Gizmo = struct {
         var min_dist: f32 = std.math.floatMax(f32);
         switch (lmouse) {
             .rising => {
+                var caught_one = false;
                 const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
                 //TODO do a depth test
                 for (cubes, 0..) |cu, ci| {
@@ -119,6 +120,7 @@ pub const Gizmo = struct {
                     if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(cu))) |inter| {
                         const d = inter.distance(camera_pos);
                         if (d < min_dist) {
+                            caught_one = true;
                             min_dist = d;
                             draw.point3D(inter, 0x7f_ff_ff_ff);
                             self.selected_axis.setFromIndex(ci);
@@ -133,7 +135,9 @@ pub const Gizmo = struct {
                         }
                     }
                 }
-                return .rising;
+                if (caught_one)
+                    return .rising;
+                return .low;
             },
             .high => {
                 if (self.selected_axis == .none)

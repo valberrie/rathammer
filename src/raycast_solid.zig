@@ -37,6 +37,12 @@ pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csg
             }
         }
     }
+    if (count == 2) { //Manually sort by distance
+        const d1 = RAYCAST_RESULT_BUFFER[0].point.distance(r_o);
+        const d2 = RAYCAST_RESULT_BUFFER[1].point.distance(r_o);
+        if (d1 > d2)
+            std.mem.swap(RaycastResult, &RAYCAST_RESULT_BUFFER[0], &RAYCAST_RESULT_BUFFER[1]);
+    }
     return RAYCAST_RESULT_BUFFER[0..count];
 }
 

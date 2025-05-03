@@ -80,6 +80,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         model_browser,
         file_browser,
         about,
+        settings,
     };
     var areas_buf: [10]graph.Rect = undefined;
     var fb = try guiutil.FileBrowser.init(alloc, std.fs.cwd());
@@ -119,11 +120,15 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .panes = Tab.newPane(&panes, &PI, &.{ .model_browser, .model_preview }),
         },
         .{
-            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .left, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .about, .about }),
+            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
+            .panes = Tab.newPane(&panes, &PI, &.{.main_3d_view}),
+        },
+        .{
+            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
+            .panes = Tab.newPane(&panes, &PI, &.{.settings}),
         },
     };
-    var tab_index: usize = 0;
+    var tab_index: usize = tabs.len - 2;
     var show_tab_editor = false;
 
     win.grabMouse(true);
@@ -175,6 +180,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             if (win.isBindState(b.b, .rising))
                 tab_index = i;
         }
+
+        if (win.isBindState(config.keys.grid_inc.b, .rising))
+            editor.edit_state.grid_snap *= 2;
+        if (win.isBindState(config.keys.grid_dec.b, .rising))
+            editor.edit_state.grid_snap /= 2;
+        editor.edit_state.grid_snap = std.math.clamp(editor.edit_state.grid_snap, 1, 4096);
         tab_index = @min(tab_index, tabs.len - 1);
 
         const tab = tabs[tab_index];
@@ -196,7 +207,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             const has_mouse = pane_area.containsPoint(win.mouse.pos);
             switch (pane) {
                 .main_3d_view => {
-                    editor.draw_state.cam3d.updateDebugMove(if (has_mouse) cam_state else .{});
+                    editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
                     editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
                     try editor.draw3Dview(pane_area, &draw, &win);
                 },
@@ -227,6 +238,16 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         &editor,
                         &draw,
                     );
+                },
+                .settings => {
+                    if (try os9gui.beginTlWindow(pane_area)) {
+                        defer os9gui.endTlWindow();
+                        _ = try os9gui.beginV();
+                        defer os9gui.endL();
+                        const ds = &editor.draw_state;
+                        _ = os9gui.checkbox("draw tools", &ds.draw_tools);
+                        _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
+                    }
                 },
                 .file_browser => {
                     if (try os9gui.beginTlWindow(pane_area)) {

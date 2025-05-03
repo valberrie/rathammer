@@ -22,6 +22,10 @@ pub const Config = struct {
 
         down_line: Keybind = .{ .b = KC(.j, 0) }, //j
         up_line: Keybind = .{ .b = KC(.k, 0) }, //k
+        grab_far: Keybind = .{ .b = SC(.Q, 0) },
+
+        grid_inc: Keybind = .{ .b = SC(.R, 0) },
+        grid_dec: Keybind = .{ .b = SC(.F, 0) },
     },
     window: struct {
         height_px: i32 = 600,
