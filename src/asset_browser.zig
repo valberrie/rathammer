@@ -3,6 +3,7 @@ const graph = @import("graph");
 const vpk = @import("vpk.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
+const Vec3 = graph.za.Vec3;
 const edit = @import("editor.zig");
 const Config = @import("config.zig");
 const Gui = graph.Gui;
@@ -36,9 +37,13 @@ pub const AssetBrowserGui = struct {
 
     min_column: i32 = 1,
     max_column: i32 = 10,
+    name_buf: std.ArrayList(u8),
+
+    model_cam: graph.Camera3D = .{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z },
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
+            .name_buf = std.ArrayList(u8).init(alloc),
             .model_list = IdVec.init(alloc),
             .mat_list = IdVec.init(alloc),
             .model_list_sub = IdVec.init(alloc),
@@ -55,6 +60,7 @@ pub const AssetBrowserGui = struct {
         self.mat_list_sub.deinit();
         self.model_search.deinit();
         self.mat_search.deinit();
+        self.name_buf.deinit();
     }
 
     pub fn populate(
@@ -91,6 +97,58 @@ pub const AssetBrowserGui = struct {
             }
         }
         log.info("excluded {d} materials", .{excluded});
+    }
+
+    pub fn drawModelPreview(
+        self: *Self,
+        win: *graph.SDL.Window,
+        pane_area: graph.Rect,
+        has_mouse: bool,
+        cam_state: graph.ptypes.Camera3D.MoveState,
+        editor: *edit.Context,
+        draw: *graph.ImmediateDrawingContext,
+    ) !void {
+        const selected_index = self.selected_index_model;
+        if (selected_index < self.model_list_sub.items.len) {
+            const sp = pane_area;
+            editor.draw_state.grab.setGrab(
+                has_mouse,
+                !(win.mouse.left == .high),
+                win,
+                pane_area.center(),
+            );
+            self.model_cam.updateDebugMove(if (win.mouse.left == .high) cam_state else .{});
+            const screen_area = pane_area;
+            const x: i32 = @intFromFloat(screen_area.x);
+            const y: i32 = @intFromFloat(screen_area.y);
+            const w: i32 = @intFromFloat(screen_area.w);
+            const h: i32 = @intFromFloat(screen_area.h);
+
+            graph.c.glViewport(x, y, w, h);
+            graph.c.glScissor(x, y, w, h);
+            graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+            defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+            //todo
+            //defer loading of all textures
+
+            const modid = self.model_list_sub.items[selected_index];
+            self.name_buf.clearRetainingCapacity();
+            //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
+            //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
+            if (editor.models.get(modid)) |mod| {
+                if (mod) |mm| {
+                    const view = self.model_cam.getMatrix(sp.w / sp.h, 1, 64 * 512);
+                    const mat = graph.za.Mat4.identity();
+                    mm.drawSimple(view, mat, editor.draw_state.basic_shader);
+                }
+            } else {
+                if (editor.vpkctx.entries.get(modid)) |tt| {
+                    try self.name_buf.writer().print("{s}/{s}.mdl", .{ tt.path, tt.name });
+                    _ = try editor.loadModel(self.name_buf.items);
+                }
+            }
+            try draw.flush(null, self.model_cam);
+        }
     }
 
     pub fn drawEditWindow(

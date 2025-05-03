@@ -347,6 +347,28 @@ pub const Context = struct {
 
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,
+
+        grab: struct {
+            is: bool = false,
+            was: bool = false,
+            claimed: bool = false,
+
+            pub fn setGrab(self: *@This(), area_has_mouse: bool, ungrab_key_down: bool, win: *graph.SDL.Window, center: graph.Vec2f) void {
+                if (self.is or area_has_mouse) {
+                    self.is = !ungrab_key_down;
+                    self.claimed = true;
+                }
+                if (self.was and !self.is) {
+                    graph.c.SDL_WarpMouseInWindow(win.win, center.x, center.y);
+                }
+            }
+
+            pub fn endFrame(self: *@This()) void {
+                self.was = self.is;
+                if (!self.claimed)
+                    self.is = false;
+            }
+        } = .{},
     },
 
     edit_state: struct {
@@ -371,6 +393,7 @@ pub const Context = struct {
         btn_x_trans: ButtonState = .low,
         btn_y_trans: ButtonState = .low,
         btn_z_trans: ButtonState = .low,
+        mpos: graph.Vec2f = undefined,
         trans_begin: graph.Vec2f = undefined,
         trans_end: graph.Vec2f = undefined,
     } = .{},
@@ -845,7 +868,7 @@ pub const Context = struct {
                             if (sel_near == .high) {
                                 const r = self.camRay();
                                 //Find the face it intersects with
-                                if (try raycast.doesRayIntersectSolid(
+                                for (try raycast.doesRayIntersectSolid(
                                     r[0],
                                     r[1],
                                     solid,
@@ -969,6 +992,46 @@ pub const Context = struct {
                 .model_place => {
                     // if self.asset_browser.selected_model_vpk_id exists,
                     // do a raycast into the world and draw a model at nearest intersection with solid
+                    if (self.asset_browser.selected_model_vpk_id) |res_id| {
+                        const omod = self.models.get(res_id);
+                        if (omod != null and omod.? != null) {
+                            const mod = omod.?.?;
+                            const rc = util3d.screenSpaceRay(
+                                screen_area.dim(),
+                                if (self.draw_state.grab.is) screen_area.center() else self.edit_state.mpos,
+                                view_3d,
+                            );
+                            const pot = try self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false);
+                            if (pot.len > 0) {
+                                const p = pot[0];
+                                var point = p.point;
+                                point.data = @floor(point.data); //Only integer
+                                const mat1 = graph.za.Mat4.fromTranslate(point);
+                                //zyx
+                                //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                                mod.drawSimple(view_3d, mat1, self.draw_state.basic_shader);
+                                //Draw the model at
+                                if (self.edit_state.lmouse == .rising) {
+                                    const new = try self.ecs.createEntity();
+                                    var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+                                    bb.origin_offset = mod.hull_min.scale(-1);
+                                    bb.a = mod.hull_min;
+                                    bb.b = mod.hull_max;
+                                    bb.setFromOrigin(point);
+                                    try self.ecs.attach(new, .entity, .{
+                                        .origin = point,
+                                        .angle = Vec3.zero(),
+                                        .class = try self.storeString("prop_static"),
+                                        .model = null,
+                                        //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
+                                        .model_id = res_id,
+                                        .sprite = null,
+                                    });
+                                    try self.ecs.attach(new, .bounding_box, bb);
+                                }
+                            }
+                        }
+                    }
                 },
             }
         }

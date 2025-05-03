@@ -5,7 +5,13 @@ const edit = @import("editor.zig");
 const Vec3 = graph.za.Vec3;
 const csg = @import("csg.zig");
 
-pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csgctx: *csg.Context) !?struct { point: Vec3, side_index: usize } {
+const RaycastResult = struct {
+    point: Vec3,
+    side_index: usize,
+};
+threadlocal var RAYCAST_RESULT_BUFFER: [2]RaycastResult = undefined;
+pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csgctx: *csg.Context) ![]const RaycastResult {
+    var count: usize = 0;
     //TODO check all, this can intersect 0,1,2 times
     for (solid.sides.items, 0..) |side, s_i| {
         if (side.verts.items.len < 3) continue;
@@ -22,11 +28,16 @@ pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csg
                 ts[ind[i + 1]],
                 ts[ind[i + 2]],
             )) |inter| {
-                return .{ .point = inter, .side_index = s_i };
+                count += 1;
+                if (count > 2)
+                    return error.invalidSolid;
+                RAYCAST_RESULT_BUFFER[count - 1] = .{ .point = inter, .side_index = s_i };
+
+                //return .{ .point = inter, .side_index = s_i };
             }
         }
     }
-    return null;
+    return RAYCAST_RESULT_BUFFER[0..count];
 }
 
 pub const RcastItem = struct {
@@ -71,7 +82,7 @@ pub const Ctx = struct {
             self.pot_fine.clearRetainingCapacity();
             for (self.pot.items) |bp_rc| {
                 if (try ecs.getOptPtr(bp_rc.id, .solid)) |solid| {
-                    if (try doesRayIntersectSolid(ray_o, ray_d, solid, csgctx)) |in| {
+                    for (try doesRayIntersectSolid(ray_o, ray_d, solid, csgctx)) |in| {
                         const len = in.point.distance(ray_o);
                         try self.pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = in.point });
                     }

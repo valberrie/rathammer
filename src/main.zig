@@ -3,11 +3,7 @@ const graph = @import("graph");
 const Rec = graph.Rec;
 const Vec2f = graph.Vec2f;
 const V3f = graph.za.Vec3;
-const meshutil = graph.meshutil;
-const vdf = @import("vdf.zig");
-const vmf = @import("vmf.zig");
 const vpk = @import("vpk.zig");
-const fgd = @import("fgd.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
 const Vec3 = V3f;
@@ -23,7 +19,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
     defer loaded_config.deinit();
     const config = loaded_config.config;
-    var win = try graph.SDL.Window.createWindow("Rat Hammer - ラット　ハンマー", .{
+    var win = try graph.SDL.Window.createWindow("Rat Hammer - ラットハンマー", .{
         .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
     });
     defer win.destroyWindow();
@@ -73,26 +69,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     loadctx.time = loadctx.gtimer.read();
 
-    const RcastItem = struct {
-        id: edit.EcsT.Id,
-        dist: f32,
-        point: graph.za.Vec3 = undefined,
-
-        pub fn lessThan(_: void, a: @This(), b: @This()) bool {
-            return a.dist < b.dist;
-        }
-    };
-    var raycast_pot = std.ArrayList(RcastItem).init(alloc);
-    defer raycast_pot.deinit();
-
-    var raycast_pot_fine = std.ArrayList(RcastItem).init(alloc);
-    defer raycast_pot_fine.deinit();
-
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
-
-    var last_frame_grabbed: bool = true;
-    var grab_mouse = true;
 
     const Pane = enum {
         main_3d_view,
@@ -153,12 +131,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         if (win.bindHigh(config.keys.quit.b))
             win.should_exit = true;
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
-        win.grabMouse(grab_mouse);
+        win.grabMouse(editor.draw_state.grab.is);
         //TODO add a cool down for wait events?
         win.pumpEvents(.poll);
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
-        defer last_frame_grabbed = grab_mouse;
 
         if (win.keyRising(._9))
             show_tab_editor = !show_tab_editor;
@@ -173,6 +150,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
             editor.edit_state.trans_end = win.mouse.pos;
         }
+        editor.edit_state.mpos = win.mouse.pos;
 
         const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
         try os9gui.beginFrame(is, &win);
@@ -186,7 +164,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .right = win.bindHigh(config.keys.cam_strafe_r.b),
             .fwd = win.bindHigh(config.keys.cam_forward.b),
             .bwd = win.bindHigh(config.keys.cam_back.b),
-            .mouse_delta = if (last_frame_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
+            .mouse_delta = if (editor.draw_state.grab.was) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
         };
 
@@ -213,21 +191,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
 
-        var mouse_is_claimed = false;
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             const has_mouse = pane_area.containsPoint(win.mouse.pos);
             switch (pane) {
                 .main_3d_view => {
-                    editor.draw_state.cam3d.updateDebugMove(if (grab_mouse) cam_state else .{});
-                    if (grab_mouse or has_mouse) {
-                        grab_mouse = !(win.keyHigh(.LSHIFT));
-                        mouse_is_claimed = true;
-                    }
-                    if (last_frame_grabbed and !grab_mouse) { //Mouse just ungrabbed
-                        const center = pane_area.center();
-                        graph.c.SDL_WarpMouseInWindow(win.win, center.x, center.y);
-                    }
+                    editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is) cam_state else .{});
+                    editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
                     try editor.draw3Dview(pane_area, &draw);
                 },
                 .about => {
@@ -249,45 +219,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 },
                 .inspector => try editor.drawInspector(pane_area, &os9gui),
                 .model_preview => {
-                    const selected_index = editor.asset_browser.selected_index_model;
-                    if (selected_index < editor.asset_browser.model_list_sub.items.len) {
-                        const sp = pane_area;
-                        if (has_mouse or grab_mouse) {
-                            grab_mouse = win.mouse.left == .high;
-                            mouse_is_claimed = true;
-                        }
-                        model_cam.updateDebugMove(if (win.mouse.left == .high) cam_state else .{});
-                        const screen_area = pane_area;
-                        const x: i32 = @intFromFloat(screen_area.x);
-                        const y: i32 = @intFromFloat(screen_area.y);
-                        const w: i32 = @intFromFloat(screen_area.w);
-                        const h: i32 = @intFromFloat(screen_area.h);
-
-                        graph.c.glViewport(x, y, w, h);
-                        graph.c.glScissor(x, y, w, h);
-                        graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
-                        defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
-                        //todo
-                        //defer loading of all textures
-
-                        const modid = editor.asset_browser.model_list_sub.items[selected_index];
-                        name_buf.clearRetainingCapacity();
-                        //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
-                        //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
-                        if (editor.models.get(modid)) |mod| {
-                            if (mod) |mm| {
-                                const view = model_cam.getMatrix(sp.h / sp.w, 1, 64 * 512);
-                                const mat = graph.za.Mat4.identity();
-                                mm.drawSimple(view, mat, editor.draw_state.basic_shader);
-                            }
-                        } else {
-                            if (editor.vpkctx.entries.get(modid)) |tt| {
-                                try name_buf.writer().print("{s}/{s}.mdl", .{ tt.path, tt.name });
-                                _ = try editor.loadModel(name_buf.items);
-                            }
-                        }
-                        try draw.flush(null, model_cam);
-                    }
+                    try editor.asset_browser.drawModelPreview(
+                        &win,
+                        pane_area,
+                        has_mouse,
+                        cam_state,
+                        &editor,
+                        &draw,
+                    );
                 },
                 .file_browser => {
                     if (try os9gui.beginTlWindow(pane_area)) {
@@ -297,8 +236,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 },
             }
         }
-        if (!mouse_is_claimed)
-            grab_mouse = false;
+        editor.draw_state.grab.endFrame();
 
         if (win.isBindState(config.keys.select.b, .rising)) {
             editor.edit_state.state = .select;
