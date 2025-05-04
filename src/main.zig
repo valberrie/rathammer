@@ -262,6 +262,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         const ds = &editor.draw_state;
                         _ = os9gui.checkbox("draw tools", &ds.draw_tools);
                         _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
+                        _ = os9gui.checkbox("draw model", &ds.tog.models);
+                        _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
                     }
                 },
                 .file_browser => {

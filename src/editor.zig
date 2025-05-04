@@ -444,27 +444,29 @@ pub const Entity = struct {
 
     pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx) void {
         const ENT_RENDER_DIST = 64 * 10;
-        if (ent.model_id) |m| {
-            if (editor.models.getPtr(m)) |o_mod| {
-                if (o_mod.*) |mod| {
-                    const M4 = graph.za.Mat4;
-                    //x: fwd
-                    //y:left
-                    //z: up
+        const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
+        if (editor.draw_state.tog.models and dist < editor.draw_state.tog.model_render_dist) {
+            if (ent.model_id) |m| {
+                if (editor.models.getPtr(m)) |o_mod| {
+                    if (o_mod.*) |mod| {
+                        const M4 = graph.za.Mat4;
+                        //x: fwd
+                        //y:left
+                        //z: up
 
-                    const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
-                    const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
-                    const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
-                    const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
-                    //zyx
-                    const mat3 = mat1.mul(z.mul(y1.mul(x1)));
-                    //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-                    mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+                        const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
+                        const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
+                        const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
+                        const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
+                        //zyx
+                        const mat3 = mat1.mul(z.mul(y1.mul(x1)));
+                        //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                        mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+                    }
                 }
             }
         }
         _ = draw;
-        const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (dist > ENT_RENDER_DIST)
             return;
         //TODO set the model size of entities hitbox thingy
@@ -520,6 +522,9 @@ pub const Context = struct {
             wireframe: bool = false,
             tools: bool = true,
             sprite: bool = true,
+            models: bool = true,
+
+            model_render_dist: f32 = 512 * 2,
         } = .{},
 
         draw_tools: bool = true,
@@ -739,8 +744,6 @@ pub const Context = struct {
             const tex = try self.loadTextureFromVpk(side.material);
             const res = try self.meshmap.getOrPut(tex.res_id);
             if (!res.found_existing) {
-                std.debug.print("putting {s}\n", .{side.material});
-                //res.key_ptr.* = tex.res_id;
                 res.value_ptr.* = try self.alloc.create(MeshBatch);
                 res.value_ptr.*.* = .{
                     .notify_vt = .{ .notify_fn = &MeshBatch.notify },
@@ -818,11 +821,13 @@ pub const Context = struct {
                     { //Fgd stuff
                         if (self.fgd_ctx.base.get(ent.classname)) |base| {
                             var sl = base.iconsprite;
-                            if (std.mem.endsWith(u8, base.iconsprite, ".vmt"))
-                                sl = base.iconsprite[0 .. base.iconsprite.len - 4];
-                            const sprite_tex_ = try self.loadTextureFromVpk(sl);
-                            if (sprite_tex_.res_id != 0)
-                                sprite_tex = sprite_tex_.res_id;
+                            if (sl.len > 0) {
+                                if (std.mem.endsWith(u8, base.iconsprite, ".vmt"))
+                                    sl = base.iconsprite[0 .. base.iconsprite.len - 4];
+                                const sprite_tex_ = try self.loadTextureFromVpk(sl);
+                                if (sprite_tex_.res_id != 0)
+                                    sprite_tex = sprite_tex_.res_id;
+                            }
                         }
                     }
                     bb.setFromOrigin(ent.origin.v);

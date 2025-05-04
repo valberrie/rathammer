@@ -68,4 +68,6 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
             }
         }
     }
+    //TODO this is temp
+    try vpkctx.addLooseDir(game_dir, ".");
 }

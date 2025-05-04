@@ -10,6 +10,10 @@ const config = @import("config");
 const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
 
 //TODO support mounting of loose files aswell.
+//Modify the way getResourceId works so it never returns null
+//if res_id is not found in self.entries, we instead search through self.loose_dirs
+//for each loose_dir:
+//  fs.tryOpen(path)
 
 pub const VpkResId = u64;
 ///16 bits: extension_index
@@ -23,6 +27,18 @@ pub fn encodeResourceId(extension_index: u64, path_index: u64, entry_index: u64)
     return extension_index << 48 | path_index << 32 | entry_index;
 }
 
+pub fn decodeResourceId(id: VpkResId) struct {
+    ext: u64,
+    path: u64,
+    name: u64,
+} {
+    return .{
+        .ext = id >> 48,
+        .path = id << 16 >> (32 + 16),
+        .name = id << 32 >> 32,
+    };
+}
+
 /// Given one or more vpk dir files, allows you to request file contents
 pub const Context = struct {
     const log = std.log.scoped(.vpk);
@@ -33,28 +49,46 @@ pub const Context = struct {
     const IdMap = struct {
         /// All strings are stored by parent vpk.Context.arena
         map: std.StringHashMap(u32),
+        lut: std.ArrayList([]const u8), //Strings owned by arena
         counter: u32 = 0,
+        mutex: std.Thread.Mutex = .{},
 
         pub fn init(alloc: std.mem.Allocator) @This() {
             return .{
                 .map = std.StringHashMap(u32).init(alloc),
+                .lut = std.ArrayList([]const u8).init(alloc),
             };
         }
 
         pub fn deinit(self: *@This()) void {
+            self.mutex.lock();
             self.map.deinit();
+            self.lut.deinit();
+        }
+
+        pub fn getName(self: *@This(), id: u32) ?[]const u8 {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            if (id == 0) return null;
+            if (id - 1 >= self.lut.items.len) return null;
+            return self.lut.items[id - 1];
         }
 
         pub fn getPut(self: *@This(), res_name: []const u8) !u32 {
+            self.mutex.lock();
+            defer self.mutex.unlock();
             if (self.map.get(res_name)) |entry| return entry;
 
             self.counter += 1;
             const new_id = self.counter;
+            try self.lut.append(res_name);
             try self.map.put(res_name, new_id);
             return new_id;
         }
 
-        pub fn get(self: *const @This(), res_name: []const u8) ?u32 {
+        pub fn get(self: *@This(), res_name: []const u8) ?u32 {
+            self.mutex.lock();
+            defer self.mutex.unlock();
             return self.map.get(res_name);
         }
     };
@@ -106,6 +140,7 @@ pub const Context = struct {
     /// This maps a encodeResourceId id to a vpk entry
     entries: IdEntryMap,
 
+    loose_dirs: std.ArrayList(std.fs.Dir),
     dirs: std.ArrayList(Dir),
     /// Stores all long lived strings used by vpkctx. Mostly keys into IdMap
     string_storage: StringStorage,
@@ -128,6 +163,7 @@ pub const Context = struct {
             .path_map = IdMap.init(alloc),
             .res_map = IdMap.init(alloc),
             .entries = IdEntryMap.init(alloc),
+            .loose_dirs = std.ArrayList(std.fs.Dir).init(alloc),
 
             .strbuf = std.ArrayList(u8).init(alloc),
             .split_buf = std.ArrayList(u8).init(alloc),
@@ -150,6 +186,9 @@ pub const Context = struct {
         self.strbuf.deinit();
         self.filebuf.deinit();
         self.split_buf.deinit();
+        for (self.loose_dirs.items) |*dir|
+            dir.close();
+        self.loose_dirs.deinit();
 
         self.extension_map.deinit();
         self.path_map.deinit();
@@ -168,10 +207,31 @@ pub const Context = struct {
         }
     }
 
+    //Not thread safe
+    fn namesFromId(self: *Self, id: VpkResId) ?struct {
+        ext: []const u8,
+        path: []const u8,
+        name: []const u8,
+    } {
+        const ids = decodeResourceId(id);
+        return .{
+            .name = self.res_map.getName(@intCast(ids.name)) orelse return null,
+            .ext = self.extension_map.getName(@intCast(ids.ext)) orelse return null,
+            .path = self.path_map.getName(@intCast(ids.path)) orelse return null,
+        };
+    }
+
     fn writeDump(self: *Self, comptime fmt: []const u8, args: anytype) void {
         if (config.dump_vpk) {
             self.vpk_dump_file.writer().print(fmt, args) catch return;
         }
+    }
+
+    pub fn addLooseDir(self: *Self, root: std.fs.Dir, path: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        try self.loose_dirs.append(try root.openDir(path, .{}));
     }
 
     /// the vpk_set: hl2_pak.vpk -> hl2_pak_dir.vpk . This matches the way gameinfo.txt does it
@@ -308,37 +368,34 @@ pub const Context = struct {
         }
     }
 
+    /// Only call this from the main thread.
     pub fn getFileTempFmt(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype) !?[]const u8 {
+        //Also , race condition
         return self.getFileTempFmtBuf(extension, fmt, args, &self.filebuf);
     }
 
     pub fn getFileTempFmtBuf(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype, buf: *std.ArrayList(u8)) !?[]const u8 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-        self.split_buf.clearRetainingCapacity();
-        try self.split_buf.writer().print(fmt, args);
-        sanatizeVpkString(self.split_buf.items);
-        //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
-        const sl = self.split_buf.items;
-        const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;
+        const res_id = try self.getResourceIdFmt(extension, fmt, args) orelse return null;
         buf.clearRetainingCapacity();
-        return try self.getFile(extension, sl[0..slash], sl[slash + 1 ..], buf);
+        return try self.getFileFromRes(res_id, buf);
     }
 
     /// Returns a buffer owned by Self which will be clobberd on next getFileTemp call
+    /// Only call this from the main thread
     pub fn getFileTemp(self: *Self, extension: []const u8, path: []const u8, name: []const u8) !?[]const u8 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        const res_id = try self.getResourceId(extension, path, name) orelse return null;
         self.filebuf.clearRetainingCapacity();
-        return self.getFile(extension, path, name, &self.filebuf);
+        //the pointer is passed before mutex is locked, if another thread is resizing filebuf the ptr is invalid
+        //In practice this shouldn't be a problem because only the main thread should ever call getFileTemp.
+        return self.getFileFromRes(res_id, &self.filebuf);
     }
 
-    // Thread safe, assuming no dirs are currently being mounted.
+    // Thread safe
     pub fn getResourceId(self: *Self, extension: []const u8, path: []const u8, fname: []const u8) ?VpkResId {
         return encodeResourceId(
-            self.extension_map.get(extension) orelse return null,
-            self.path_map.get(path) orelse return null,
-            self.res_map.get(fname) orelse return null,
+            self.extension_map.getPut(extension) catch return null,
+            self.path_map.getPut(path) catch return null,
+            self.res_map.getPut(fname) catch return null,
         );
     }
 
@@ -360,34 +417,20 @@ pub const Context = struct {
     pub fn getFileFromRes(self: *Self, res_id: VpkResId, buf: *std.ArrayList(u8)) !?[]const u8 {
         self.mutex.lock();
         defer self.mutex.unlock();
-        const entry = self.entries.get(res_id) orelse return null;
-        const dir = self.getDir(entry.dir_index) orelse return null;
-        const res = try dir.fds.getOrPut(entry.archive_index);
-        if (!res.found_existing) {
-            errdefer _ = dir.fds.remove(entry.archive_index); //Prevent closing an unopened file messing with stack trace
+        const entry = self.entries.get(res_id) orelse {
+            const names = self.namesFromId(res_id) orelse return null;
             self.strbuf.clearRetainingCapacity();
-            try self.strbuf.writer().print("{s}_{d:0>3}.vpk", .{ dir.prefix, entry.archive_index });
-
-            res.value_ptr.* = dir.root.openFile(self.strbuf.items, .{}) catch |err| switch (err) {
-                error.FileNotFound => {
-                    log.err("Couldn't open vpk file: {s}", .{self.strbuf.items});
-                    return err;
-                },
-                else => return err,
-            };
-        }
-
-        try buf.resize(entry.length);
-        try res.value_ptr.seekTo(entry.offset);
-        try res.value_ptr.reader().readNoEof(buf.items);
-        return buf.items;
-    }
-
-    ///Clears buf and returns the written string.
-    /// NOT THREAD SAFE
-    fn getFile(self: *Self, extension: []const u8, path: []const u8, name: []const u8, buf: *std.ArrayList(u8)) !?[]const u8 {
-        const res_id = self.getResourceId(extension, path, name) orelse return null;
-        const entry = self.entries.get(res_id) orelse return null;
+            try self.strbuf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
+            std.debug.print("Searching loose dir for {s} \n", .{self.strbuf.items});
+            for (self.loose_dirs.items) |ldir| {
+                const infile = ldir.openFile(self.strbuf.items, .{}) catch continue;
+                defer infile.close();
+                buf.clearRetainingCapacity();
+                try infile.reader().readAllArrayList(buf, std.math.maxInt(usize));
+                return buf.items;
+            }
+            return null;
+        };
         const dir = self.getDir(entry.dir_index) orelse return null;
         const res = try dir.fds.getOrPut(entry.archive_index);
         if (!res.found_existing) {
