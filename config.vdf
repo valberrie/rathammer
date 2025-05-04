@@ -8,7 +8,9 @@ keys {
     cam_strafe_l    scancode:a
     cam_strafe_r    scancode:d
     cam_up          scancode:space
-    cam_down        scancode:left_ctrl
+    cam_down        scancode:c
+
+    cam_slow        scancode:left_ctrl
 
     quit            "left_ctrl+escape"
     focus_search    "left_ctrl+keycode:f"

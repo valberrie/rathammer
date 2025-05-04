@@ -72,6 +72,17 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
 
+    {
+        const ORG = "nmalthouse";
+        const APP = "rathammer";
+        const path = graph.c.SDL_GetPrefPath(ORG, APP);
+        const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
+        const out = try pref.createFile("hello.txt", .{});
+        std.debug.print("MAKING IT {s}\n", .{path});
+        try out.writer().print("Hello\n", .{});
+        out.close();
+    }
+
     const Pane = enum {
         main_3d_view,
         asset_browser,
@@ -174,6 +185,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .bwd = win.bindHigh(config.keys.cam_back.b),
             .mouse_delta = if (editor.draw_state.grab.was) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
+            .speed_perc = if (win.bindHigh(config.keys.cam_slow.b)) 0.1 else 1,
         };
 
         graph.c.glEnable(graph.c.GL_BLEND);

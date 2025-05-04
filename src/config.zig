@@ -15,6 +15,9 @@ pub const Config = struct {
         cam_strafe_r: Keybind,
         cam_down: Keybind,
         cam_up: Keybind,
+
+        cam_slow: Keybind,
+
         quit: Keybind,
         focus_search: Keybind,
         workspace: std.ArrayList(Keybind),

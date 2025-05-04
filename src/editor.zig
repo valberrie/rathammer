@@ -330,7 +330,7 @@ pub const Solid = struct {
                 .shader = DrawCtx.billboard_shader,
                 .texture = editor.getTexture(side.tex_id).id,
                 .camera = ._3d,
-            } }) catch unreachable).billboard;
+            } }) catch return).billboard;
             try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
             try batch.indicies.ensureUnusedCapacity(side.index.items.len);
             const uvs = try editor.csgctx.calcUVCoords(
@@ -1252,6 +1252,17 @@ pub const Context = struct {
                                     dist,
                                     null,
                                 );
+                                for (solid.sides.items) |side| {
+                                    const v = side.verts.items;
+                                    if (side.verts.items.len > 0) {
+                                        var last = side.verts.items[side.verts.items.len - 1].add(dist);
+                                        for (0..side.verts.items.len) |ti| {
+                                            draw_nd.line3D(last, v[ti].add(dist), 0xe8a130ee);
+                                            draw_nd.point3D(v[ti].add(dist), 0xff0000ff);
+                                            last = v[ti].add(dist);
+                                        }
+                                    }
+                                }
                                 if (self.edit_state.rmouse == .rising) {
                                     try solid.translate(id, dist, self);
                                     //Commit the changes

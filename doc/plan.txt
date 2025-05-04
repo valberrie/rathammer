@@ -92,6 +92,11 @@ Utility
         cone
         stairs
 
+    Auto saves
+
+Game support
+    Portal 2's gameinfo txt doesn't specify vpk's
+    Write a game config for every offical source game on steam.
 
 Build
     Windows
