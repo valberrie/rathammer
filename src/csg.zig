@@ -60,7 +60,7 @@ pub const Context = struct {
         self.clip_winding_dists.deinit();
     }
 
-    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage) !editor.Solid {
+    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage, edit: *editor.Context) !editor.Solid {
         const MAPSIZE = std.math.maxInt(i32);
         var timer = try std.time.Timer.start();
         var ret = editor.Solid.init(alloc);
@@ -93,10 +93,12 @@ pub const Context = struct {
             }
             //const ret = map.getPtr(side.material) orelse continue;
 
+            const tex = try edit.loadTextureFromVpk(side.material);
             ret.sides.items[si] = .{
                 .verts = std.ArrayList(graph.za.Vec3).init(alloc),
                 .index = std.ArrayList(u32).init(alloc),
                 .material = try strstore.store(side.material),
+                .tex_id = tex.res_id,
                 .u = .{
                     .axis = side.uaxis.axis,
                     .trans = @floatCast(side.uaxis.translation),

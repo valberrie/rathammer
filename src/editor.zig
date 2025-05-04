@@ -102,7 +102,14 @@ pub const MeshBatch = struct {
         self.mesh.setData();
     }
 };
-pub const MeshMap = std.StringHashMap(*MeshBatch);
+/// Solid mesh storage:
+/// Solids are stored as entities in the ecs.
+/// The actual mesh data is stored in `Meshmap'.
+/// There is one MeshBatch per material. So if there are n materials in use by a map we have n draw calls regardless of the number of solids.
+/// This means that modifying a solids verticies or uvs requires the rebuilding of any mesh batches the solid's materials use.
+///
+/// Every MeshBatch has a hashset 'contains' which stores the ecs ids of all solids it contains
+pub const MeshMap = std.AutoHashMap(vpk.VpkResId, *MeshBatch);
 pub const Side = struct {
     pub const UVaxis = struct {
         axis: Vec3,
@@ -113,10 +120,14 @@ pub const Side = struct {
     index: std.ArrayList(u32),
     u: UVaxis,
     v: UVaxis,
-    tex_id: vpk.VpkResId = 0, //Used for drawing immediate
+    tex_id: vpk.VpkResId = 0,
     tw: i32 = 0,
     th: i32 = 0,
-    material: []const u8, //owned by somebody else
+
+    /// This field is allocated by StringStorage.
+    /// It is only used to keep track of textures that are missing, so they are persisted across save/load.
+    /// the actual material assigned is stored in `tex_id`
+    material: []const u8,
     pub fn deinit(self: @This()) void {
         self.verts.deinit();
         self.index.deinit();
@@ -180,6 +191,17 @@ pub const Solid = struct {
         };
     }
 
+    pub fn dupe(self: *const Self) !Self {
+        const ret_sides = try self.sides.clone();
+        for (ret_sides.items) |*side| {
+            const ind = try side.index.clone();
+            const vert = try side.verts.clone();
+            side.index = ind;
+            side.verts = vert;
+        }
+        return .{ .sides = ret_sides };
+    }
+
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
         var ret = init(alloc);
         //const Va = std.ArrayList(Vec3);
@@ -228,9 +250,9 @@ pub const Solid = struct {
             try ret.sides.append(.{
                 .verts = ver,
                 .index = ind,
-                .u = .{ .axis = Uvs[i][0], .trans = 0, .scale = 0.5 },
-                .v = .{ .axis = Uvs[i][1], .trans = 0, .scale = 0.5 },
-                .material = "CONCRETE/CONCRETEWALL010C",
+                .u = .{ .axis = Uvs[i][0], .trans = 0, .scale = 0.25 },
+                .v = .{ .axis = Uvs[i][1], .trans = 0, .scale = 0.25 },
+                .material = "",
                 .tex_id = tex_id,
             });
         }
@@ -270,7 +292,7 @@ pub const Solid = struct {
                     }
                 }
                 if (is_dirty) {
-                    const batch = editor.meshmap.getPtr(side.material) orelse continue;
+                    const batch = editor.meshmap.getPtr(side.tex_id) orelse continue;
                     batch.*.is_dirty = true;
 
                     //ensure this is in batch
@@ -278,6 +300,32 @@ pub const Solid = struct {
                 }
             }
         }
+    }
+
+    pub fn rebuild(self: *@This(), id: EcsT.Id, editor: *Context) !void {
+        for (self.sides.items) |*side| {
+            const batch = editor.meshmap.getPtr(side.tex_id) orelse blk: {
+                const new_batch = try editor.alloc.create(MeshBatch);
+
+                const tex = editor.getTexture(side.tex_id);
+                new_batch.* = .{
+                    .notify_vt = .{ .notify_fn = &MeshBatch.notify },
+                    .tex = tex,
+                    .tex_res_id = side.tex_id,
+                    .mesh = meshutil.Mesh.init(editor.alloc, tex.id),
+                    .contains = std.AutoHashMap(EcsT.Id, void).init(editor.alloc),
+                };
+                try editor.meshmap.put(side.tex_id, new_batch);
+                try editor.texture_load_ctx.addNotify(side.tex_id, &new_batch.notify_vt);
+                break :blk editor.meshmap.getPtr(side.tex_id) orelse continue;
+            };
+            batch.*.is_dirty = true;
+
+            //ensure this is in batch
+            try batch.*.contains.put(id, {});
+        }
+        const bb = try editor.ecs.getPtr(id, .bounding_box);
+        self.recomputeBounds(bb);
     }
 
     pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Context) !void {
@@ -291,9 +339,20 @@ pub const Solid = struct {
             side.u.trans = side.u.trans - (vec.dot(side.u.axis)) / side.u.scale;
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
 
-            const batch = editor.meshmap.getPtr(side.material) orelse {
-                std.debug.print("Mesh with {s} does not exist\n", .{side.material});
-                continue;
+            const batch = editor.meshmap.getPtr(side.tex_id) orelse blk: {
+                const new_batch = try editor.alloc.create(MeshBatch);
+
+                const tex = editor.getTexture(side.tex_id);
+                new_batch.* = .{
+                    .notify_vt = .{ .notify_fn = &MeshBatch.notify },
+                    .tex = tex,
+                    .tex_res_id = side.tex_id,
+                    .mesh = meshutil.Mesh.init(editor.alloc, tex.id),
+                    .contains = std.AutoHashMap(EcsT.Id, void).init(editor.alloc),
+                };
+                try editor.meshmap.put(side.tex_id, new_batch);
+                try editor.texture_load_ctx.addNotify(side.tex_id, &new_batch.notify_vt);
+                break :blk editor.meshmap.getPtr(side.tex_id) orelse continue;
             };
             batch.*.is_dirty = true;
 
@@ -312,7 +371,7 @@ pub const Solid = struct {
 
     pub fn removeFromMeshMap(self: *Self, id: EcsT.Id, editor: *Context) !void {
         for (self.sides.items) |side| {
-            const batch = editor.meshmap.getPtr(side.material) orelse continue;
+            const batch = editor.meshmap.getPtr(side.tex_id) orelse continue;
             batch.*.is_dirty = true;
             _ = batch.*.contains.remove(id);
         }
@@ -654,7 +713,7 @@ pub const Context = struct {
                 const bb = (try self.ecs.getOptPtr(it.i, .bounding_box)) orelse continue;
                 solid.recomputeBounds(bb);
                 for (solid.sides.items) |*side| {
-                    const batch = self.meshmap.getPtr(side.material) orelse continue;
+                    const batch = self.meshmap.getPtr(side.tex_id) orelse continue;
                     try side.rebuild(batch.*, self);
                 }
             }
@@ -671,14 +730,13 @@ pub const Context = struct {
 
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
-        const StrCtx = std.hash_map.StringContext;
         const new = try self.ecs.createEntity();
         for (solid.side) |*side| {
-            const res = try self.meshmap.getOrPutAdapted(side.material, StrCtx{});
+            const tex = try self.loadTextureFromVpk(side.material);
+            const res = try self.meshmap.getOrPut(tex.res_id);
             if (!res.found_existing) {
                 std.debug.print("putting {s}\n", .{side.material});
-                res.key_ptr.* = try self.storeString(side.material);
-                const tex = try self.loadTextureFromVpk(side.material);
+                //res.key_ptr.* = tex.res_id;
                 res.value_ptr.* = try self.alloc.create(MeshBatch);
                 res.value_ptr.*.* = .{
                     .notify_vt = .{ .notify_fn = &MeshBatch.notify },
@@ -697,6 +755,7 @@ pub const Context = struct {
             solid.side,
             self.alloc,
             &self.string_storage,
+            self,
             //@intCast(self.set.sparse.items.len),
         );
         try self.ecs.attach(new, .solid, newsolid);
@@ -976,8 +1035,8 @@ pub const Context = struct {
 
         var it = self.meshmap.iterator();
         while (it.next()) |mesh| {
-            if (!self.draw_state.draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
-                continue;
+            //if (!self.draw_state.draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
+            //    continue;
             mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
         }
 
@@ -1080,8 +1139,7 @@ pub const Context = struct {
 
                                 //Put it into the
                                 const new = try self.ecs.createEntity();
-                                const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{"CONCRETE/CONCRETEWALL010C"});
-                                const newsolid = try Solid.initFromCube(self.alloc, st.start, st.end, res_id.?);
+                                const newsolid = try Solid.initFromCube(self.alloc, st.start, st.end, self.asset_browser.selected_mat_vpk_id orelse 0);
                                 try self.ecs.attach(new, .solid, newsolid);
                                 try self.ecs.attach(new, .bounding_box, .{});
                                 const solid_ptr = try self.ecs.getPtr(new, .solid);
@@ -1237,6 +1295,7 @@ pub const Context = struct {
                                     }
                                 }
                             }
+                            const dupe = win.isBindState(self.config.keys.duplicate.b, .high);
                             if (giz_active == .rising) {
                                 try solid.removeFromMeshMap(id, self);
                             }
@@ -1245,6 +1304,8 @@ pub const Context = struct {
                             }
 
                             if (giz_active == .high) {
+                                const COLOR_MOVE = 0xe8a130_ee;
+                                const COLOR_DUPE = 0xfc35ac_ee;
                                 const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
                                 try solid.drawImmediate(
                                     draw,
@@ -1252,19 +1313,38 @@ pub const Context = struct {
                                     dist,
                                     null,
                                 );
+                                if (dupe) { //Draw original
+                                    try solid.drawImmediate(
+                                        draw,
+                                        self,
+                                        Vec3.zero(),
+                                        null,
+                                    );
+                                }
                                 for (solid.sides.items) |side| {
+                                    const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
                                     const v = side.verts.items;
                                     if (side.verts.items.len > 0) {
                                         var last = side.verts.items[side.verts.items.len - 1].add(dist);
                                         for (0..side.verts.items.len) |ti| {
-                                            draw_nd.line3D(last, v[ti].add(dist), 0xe8a130ee);
+                                            draw_nd.line3D(last, v[ti].add(dist), color);
                                             draw_nd.point3D(v[ti].add(dist), 0xff0000ff);
                                             last = v[ti].add(dist);
                                         }
                                     }
                                 }
                                 if (self.edit_state.rmouse == .rising) {
-                                    try solid.translate(id, dist, self);
+                                    if (dupe) {
+                                        //Dupe the solid
+                                        const new = try self.ecs.createEntity();
+                                        const duped = try solid.dupe();
+                                        try self.ecs.attach(new, .solid, duped);
+                                        try self.ecs.attach(new, .bounding_box, .{});
+                                        const solid_ptr = try self.ecs.getPtr(new, .solid);
+                                        try solid_ptr.translate(new, dist, self);
+                                    } else {
+                                        try solid.translate(id, dist, self);
+                                    }
                                     //Commit the changes
                                 }
                             }

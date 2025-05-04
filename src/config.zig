@@ -23,6 +23,8 @@ pub const Config = struct {
         workspace: std.ArrayList(Keybind),
         select: Keybind,
 
+        duplicate: Keybind = .{ .b = SC(.Z, 0) },
+
         down_line: Keybind = .{ .b = KC(.j, 0) }, //j
         up_line: Keybind = .{ .b = KC(.k, 0) }, //k
         grab_far: Keybind = .{ .b = SC(.Q, 0) },

@@ -3,6 +3,7 @@ keys {
     // keyboard names can optionally be prefixed with "scancode:" or "keycode:" otherwise the key name is bound as a keycode
 
     // Scancodes map to physical keys on the keyboard. 'w' is always the same physical key regardless of layout.
+    //Key names only need to be in "" if they contain {} or whitespace
     cam_forward     scancode:w 
     cam_back        scancode:s
     cam_strafe_l    scancode:a
@@ -11,6 +12,8 @@ keys {
     cam_down        scancode:c
 
     cam_slow        scancode:left_ctrl
+
+    duplicate       scancode:z
 
     quit            "left_ctrl+escape"
     focus_search    "left_ctrl+keycode:f"
