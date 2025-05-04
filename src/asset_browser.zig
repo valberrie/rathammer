@@ -34,6 +34,7 @@ pub const AssetBrowserGui = struct {
     selected_model_vpk_id: ?vpk.VpkResId = null,
     selected_index_model: usize = 0,
     selected_index_mat: usize = 0,
+    selected_mat_vpk_id: ?vpk.VpkResId = null,
 
     min_column: i32 = 1,
     max_column: i32 = 10,
@@ -299,8 +300,10 @@ pub const AssetBrowserGui = struct {
                         const area = os9gui.gui.getArea() orelse break;
                         const text_h = area.h / 8;
                         const click = os9gui.gui.clickWidget(area);
-                        if (click == .click)
+                        if (click == .click) {
                             self.selected_index_mat = i;
+                            self.selected_mat_vpk_id = model;
+                        }
                         //os9gui.gui.drawRectFilled(area, 0xffff);
                         os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
                         const tr = graph.Rec(area.x, area.y + area.h - text_h, area.w, text_h);
@@ -315,6 +318,9 @@ pub const AssetBrowserGui = struct {
                             .{},
                             os9gui.font,
                         );
+                        if (self.selected_index_mat == i) {
+                            os9gui.gui.drawRectOutline(area, 0x00ff00ff);
+                        }
                         //os9gui.label("{s}/{s}", .{ model[0], model[1] });
                     }
                 },

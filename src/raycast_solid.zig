@@ -12,7 +12,6 @@ const RaycastResult = struct {
 threadlocal var RAYCAST_RESULT_BUFFER: [2]RaycastResult = undefined;
 pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csgctx: *csg.Context) ![]const RaycastResult {
     var count: usize = 0;
-    //TODO check all, this can intersect 0,1,2 times
     for (solid.sides.items, 0..) |side, s_i| {
         if (side.verts.items.len < 3) continue;
         // triangulate using csg

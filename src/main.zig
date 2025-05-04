@@ -129,13 +129,16 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         },
     };
     var tab_index: usize = tabs.len - 2;
-    var show_tab_editor = false;
 
     win.grabMouse(true);
     while (!win.should_exit) {
         if (win.bindHigh(config.keys.quit.b))
             win.should_exit = true;
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
+        graph.c.glPolygonMode(
+            graph.c.GL_FRONT_AND_BACK,
+            if (editor.draw_state.tog.wireframe) graph.c.GL_LINE else graph.c.GL_FILL,
+        );
         win.grabMouse(editor.draw_state.grab.is);
         //TODO add a cool down for wait events?
         win.pumpEvents(.poll);
@@ -143,7 +146,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
 
         if (win.keyRising(._9))
-            show_tab_editor = !show_tab_editor;
+            editor.draw_state.tog.wireframe = !editor.draw_state.tog.wireframe;
 
         editor.edit_state.lmouse = win.mouse.left;
         editor.edit_state.rmouse = win.mouse.right;
@@ -209,7 +212,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .main_3d_view => {
                     editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
                     editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
-                    try editor.draw3Dview(pane_area, &draw, &win);
+                    try editor.draw3Dview(pane_area, &draw, &win, &font.font);
                 },
                 .about => {
                     if (try os9gui.beginTlWindow(pane_area)) {
@@ -261,20 +264,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         //try draw.flush(null, editor.draw_state.cam3d);
 
-        if (show_tab_editor) {
-            const thing = winrect.inset(winrect.h / 5);
-            if (try os9gui.beginTlWindow(thing)) {
-                defer os9gui.endTlWindow();
-                _ = try os9gui.beginV();
-                defer os9gui.endL();
-                for (tabs) |tabl| {
-                    for (tabl.split) |*s| {
-                        os9gui.slider(&s[1], 0, 1);
-                    }
-                    os9gui.hr();
-                }
-            }
-        }
         try loadctx.loadedSplash(win.keys.len > 0);
         try os9gui.endFrame(&draw);
         try draw.end(editor.draw_state.cam3d);

@@ -25,8 +25,25 @@ const Conf = @import("config.zig");
 
 const util3d = @import("util_3d.zig");
 
-fn snapV3(v: Vec3, snap: f32) Vec3 {
+pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
+    const ext = p1.sub(p2);
+    return .{
+        Vec3{ .data = @min(p1.data, p2.data) },
+        Vec3{ .data = @abs(ext.data) },
+    };
+}
+
+fn snapV3old(v: Vec3, snap: f32) Vec3 {
     return Vec3{ .data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)) };
+}
+
+fn snapV3(v: Vec3, snap: f32) Vec3 {
+    // @round(v / snap)  * snap
+    const sn = @as(@Vector(3, f32), @splat(snap));
+    return Vec3{
+        //.data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)),
+        .data = @round(v.data / sn) * sn,
+    };
 }
 
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
@@ -163,6 +180,63 @@ pub const Solid = struct {
         };
     }
 
+    pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
+        var ret = init(alloc);
+        //const Va = std.ArrayList(Vec3);
+        //const Ia = std.ArrayList(u32);
+        const cc = cubeFromBounds(v1, v2);
+        const N = Vec3.new;
+        const o = cc[0];
+        const e = cc[1];
+        const verts = [8]Vec3{
+            o.add(N(0, 0, 0)),
+            o.add(N(e.x(), 0, 0)),
+            o.add(N(e.x(), e.y(), 0)),
+            o.add(N(0, e.y(), 0)),
+
+            o.add(N(0, 0, e.z())),
+            o.add(N(e.x(), 0, e.z())),
+            o.add(N(e.x(), e.y(), e.z())),
+            o.add(N(0, e.y(), e.z())),
+        };
+        //All ccw
+        const vis = [6][4]u8{
+            .{ 3, 2, 1, 0 }, //-z
+            .{ 4, 5, 6, 7 }, //+z
+            .{ 0, 4, 7, 3 }, //-x
+            .{ 0, 1, 5, 4 }, //-y
+            .{ 1, 2, 6, 5 }, //+x
+            .{ 2, 3, 7, 6 }, //+y
+        };
+        const Uvs = [6][2]Vec3{
+            .{ N(1, 0, 0), N(0, 1, 0) },
+            .{ N(1, 0, 0), N(0, 1, 0) },
+            .{ N(0, 1, 0), N(0, 0, 1) },
+
+            .{ N(1, 0, 0), N(0, 0, 1) },
+            .{ N(0, 1, 0), N(0, 0, 1) },
+            .{ N(1, 0, 0), N(0, 0, 1) },
+        };
+        for (vis, 0..) |face, i| {
+            var ver = std.ArrayList(Vec3).init(alloc);
+            var ind = std.ArrayList(u32).init(alloc);
+            for (face) |vi| {
+                try ver.append(verts[vi]);
+            }
+            try ind.appendSlice(&.{ 1, 2, 0, 2, 3, 0 });
+
+            try ret.sides.append(.{
+                .verts = ver,
+                .index = ind,
+                .u = .{ .axis = Uvs[i][0], .trans = 0, .scale = 0.5 },
+                .v = .{ .axis = Uvs[i][1], .trans = 0, .scale = 0.5 },
+                .material = "CONCRETE/CONCRETEWALL010C",
+                .tex_id = tex_id,
+            });
+        }
+        return ret;
+    }
+
     pub fn deinit(self: *Self) void {
         for (self.sides.items) |side|
             side.deinit();
@@ -217,7 +291,10 @@ pub const Solid = struct {
             side.u.trans = side.u.trans - (vec.dot(side.u.axis)) / side.u.scale;
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
 
-            const batch = editor.meshmap.getPtr(side.material) orelse continue;
+            const batch = editor.meshmap.getPtr(side.material) orelse {
+                std.debug.print("Mesh with {s} does not exist\n", .{side.material});
+                continue;
+            };
             batch.*.is_dirty = true;
 
             //ensure this is in batch
@@ -377,6 +454,7 @@ pub const Context = struct {
 
     draw_state: struct {
         tog: struct {
+            wireframe: bool = false,
             tools: bool = true,
             sprite: bool = true,
         } = .{},
@@ -414,17 +492,20 @@ pub const Context = struct {
     },
 
     edit_state: struct {
+        const State = enum {
+            select,
+            face_manip,
+            model_place,
+            cube_draw,
+        };
+        last_frame_state: State = .select,
+        state: State = .select,
         show_gui: bool = false,
         gui_tab: enum {
             model,
             texture,
             fgd,
         } = .model,
-        state: enum {
-            select,
-            face_manip,
-            model_place,
-        } = .select,
 
         id: ?EcsT.Id = null,
         face_id: ?usize = null,
@@ -434,7 +515,7 @@ pub const Context = struct {
 
         gizmo: Gizmo = .{},
 
-        grid_snap: f32 = 1,
+        grid_snap: f32 = 16,
 
         btn_x_trans: ButtonState = .low,
         btn_y_trans: ButtonState = .low,
@@ -442,6 +523,15 @@ pub const Context = struct {
         mpos: graph.Vec2f = undefined,
         trans_begin: graph.Vec2f = undefined,
         trans_end: graph.Vec2f = undefined,
+
+        cube_draw: struct {
+            state: enum { start, planar, cubic } = .start,
+            start: Vec3 = undefined,
+            end: Vec3 = undefined,
+            z: f32 = 0,
+
+            plane_z: f32 = 0,
+        } = .{},
     } = .{},
 
     misc_gui_state: struct {
@@ -586,6 +676,7 @@ pub const Context = struct {
         for (solid.side) |*side| {
             const res = try self.meshmap.getOrPutAdapted(side.material, StrCtx{});
             if (!res.found_existing) {
+                std.debug.print("putting {s}\n", .{side.material});
                 res.key_ptr.* = try self.storeString(side.material);
                 const tex = try self.loadTextureFromVpk(side.material);
                 res.value_ptr.* = try self.alloc.create(MeshBatch);
@@ -806,6 +897,7 @@ pub const Context = struct {
     }
 
     pub fn update(self: *Self) !void {
+        self.edit_state.last_frame_state = self.edit_state.state;
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
@@ -861,7 +953,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window) !void {
+    pub fn draw3Dview(self: *Self, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, font: *graph.FontInterface) !void {
         try self.draw_state.ctx.beginNoClear(screen_area.dim());
         // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
         // "draw" still has depth buffer
@@ -922,8 +1014,131 @@ pub const Context = struct {
             //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
         }
 
+        switch (self.edit_state.state) {
+            else => {},
+            .cube_draw => {
+                const st = &self.edit_state.cube_draw;
+                if (self.edit_state.last_frame_state != .cube_draw) { //First frame, reset state
+                    st.state = .start;
+                }
+                const closure = struct {
+                    fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
+                        //const cpos = inter;
+                        const cpos = snapV3(inter, snap);
+                        const nline: f32 = @floatFromInt(count);
+
+                        const iline2: f32 = @floatFromInt(count / 2);
+
+                        const oth = @trunc(nline * snap / 2);
+                        for (0..count) |n| {
+                            const fnn: f32 = @floatFromInt(n);
+                            {
+                                const start = Vec3.new((fnn - iline2) * snap + cpos.x(), cpos.y() - oth, plane_z);
+                                const end = start.add(Vec3.new(0, 2 * oth, 0));
+                                d.line3D(start, end, 0xffffffff);
+                            }
+                            const start = Vec3.new(cpos.x() - oth, (fnn - iline2) * snap + cpos.y(), plane_z);
+                            const end = start.add(Vec3.new(2 * oth, 0, 0));
+                            d.line3D(start, end, 0xffffffff);
+                        }
+                        //d.point3D(cpos, 0xff0000ee);
+                    }
+                };
+                const snap = self.edit_state.grid_snap;
+                const ray = self.camRay(screen_area, view_3d);
+                switch (st.state) {
+                    .start => {
+                        if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
+                            //user has a xy plane
+                            //can reposition using keys or doing a raycast into world
+                            //const cpos = inter;
+                            //const cpos = snapV3(inter, dist);
+                            //const nline = 11;
+                            //const oth = nline * dist / 2;
+                            closure.drawGrid(inter, st.plane_z, draw, snap, 11);
+
+                            const cc = snapV3(inter, snap);
+                            draw.point3D(cc, 0xff0000ee);
+
+                            if (self.edit_state.lmouse == .rising) {
+                                st.start = cc;
+                                st.state = .planar;
+                            }
+                        }
+                    },
+                    .planar => {
+                        if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
+                            closure.drawGrid(inter, st.plane_z, draw, snap, 11);
+                            const in = snapV3(inter, snap);
+                            const cc = cubeFromBounds(st.start, in.add(Vec3.new(0, 0, snap)));
+                            draw.cube(cc[0], cc[1], 0xffffff88);
+
+                            if (self.edit_state.lmouse == .rising) {
+                                st.state = .cubic;
+                                st.end = in;
+                                st.end.data[2] += snap;
+
+                                //Put it into the
+                                const new = try self.ecs.createEntity();
+                                const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{"CONCRETE/CONCRETEWALL010C"});
+                                const newsolid = try Solid.initFromCube(self.alloc, st.start, st.end, res_id.?);
+                                try self.ecs.attach(new, .solid, newsolid);
+                                try self.ecs.attach(new, .bounding_box, .{});
+                                const solid_ptr = try self.ecs.getPtr(new, .solid);
+                                try solid_ptr.translate(new, Vec3.zero(), self);
+                            }
+                        }
+                    },
+                    .cubic => {
+                        //const cc = cubeFromBounds(st.start, st.end);
+                        //draw.cube(cc[0], cc[1], 0xffffff88);
+                        //draw.cube(st.start, st.end.sub(st.start), 0xffffffee);
+                    },
+                }
+            },
+            .model_place => {
+                // if self.asset_browser.selected_model_vpk_id exists,
+                // do a raycast into the world and draw a model at nearest intersection with solid
+                if (self.asset_browser.selected_model_vpk_id) |res_id| {
+                    const omod = self.models.get(res_id);
+                    if (omod != null and omod.? != null) {
+                        const mod = omod.?.?;
+                        const pot = self.screenRay(screen_area, view_3d);
+                        if (pot.len > 0) {
+                            const p = pot[0];
+                            const point = snapV3(p.point, self.edit_state.grid_snap);
+                            const mat1 = graph.za.Mat4.fromTranslate(point);
+                            //zyx
+                            //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                            mod.drawSimple(view_3d, mat1, self.draw_state.basic_shader);
+                            //Draw the model at
+                            if (self.edit_state.lmouse == .rising) {
+                                const new = try self.ecs.createEntity();
+                                var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+                                bb.origin_offset = mod.hull_min.scale(-1);
+                                bb.a = mod.hull_min;
+                                bb.b = mod.hull_max;
+                                bb.setFromOrigin(point);
+                                try self.ecs.attach(new, .entity, .{
+                                    .origin = point,
+                                    .angle = Vec3.zero(),
+                                    .class = try self.storeString("prop_static"),
+                                    .model = null,
+                                    //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
+                                    .model_id = res_id,
+                                    .sprite = null,
+                                });
+                                try self.ecs.attach(new, .bounding_box, bb);
+                            }
+                        }
+                    }
+                }
+            },
+        }
+
         if (self.edit_state.id) |id| {
             switch (self.edit_state.state) {
+                else => {},
                 .face_manip => {
                     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                         var gizmo_is_active = false;
@@ -933,7 +1148,7 @@ pub const Context = struct {
                                 var last = side.verts.items[side.verts.items.len - 1];
                                 //const vs = side.verts.items;
                                 for (0..side.verts.items.len) |ti| {
-                                    draw_nd.line3D(last, v[ti], 0x00ff00ff);
+                                    draw_nd.line3D(last, v[ti], 0xf7a94a8f);
                                     draw_nd.point3D(v[ti], 0xff0000ff);
                                     last = v[ti];
                                 }
@@ -1072,44 +1287,6 @@ pub const Context = struct {
                         }
                     }
                 },
-                .model_place => {
-                    // if self.asset_browser.selected_model_vpk_id exists,
-                    // do a raycast into the world and draw a model at nearest intersection with solid
-                    if (self.asset_browser.selected_model_vpk_id) |res_id| {
-                        const omod = self.models.get(res_id);
-                        if (omod != null and omod.? != null) {
-                            const mod = omod.?.?;
-                            const pot = self.screenRay(screen_area, view_3d);
-                            if (pot.len > 0) {
-                                const p = pot[0];
-                                const point = snapV3(p.point, self.edit_state.grid_snap);
-                                const mat1 = graph.za.Mat4.fromTranslate(point);
-                                //zyx
-                                //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-                                mod.drawSimple(view_3d, mat1, self.draw_state.basic_shader);
-                                //Draw the model at
-                                if (self.edit_state.lmouse == .rising) {
-                                    const new = try self.ecs.createEntity();
-                                    var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
-                                    bb.origin_offset = mod.hull_min.scale(-1);
-                                    bb.a = mod.hull_min;
-                                    bb.b = mod.hull_max;
-                                    bb.setFromOrigin(point);
-                                    try self.ecs.attach(new, .entity, .{
-                                        .origin = point,
-                                        .angle = Vec3.zero(),
-                                        .class = try self.storeString("prop_static"),
-                                        .model = null,
-                                        //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
-                                        .model_id = res_id,
-                                        .sprite = null,
-                                    });
-                                    try self.ecs.attach(new, .bounding_box, bb);
-                                }
-                            }
-                        }
-                    }
-                },
             }
         }
         try draw.flush(null, self.draw_state.cam3d);
@@ -1123,6 +1300,17 @@ pub const Context = struct {
             cw * 2,
             cw * 2,
         ), 0xffffffff);
+        { // text stuff
+            const fh = 20;
+            const col = 0xff_ff_ffff;
+            var tpos = screen_area.pos();
+            draw.textFmt(tpos, "grid: {d:.2}", .{self.edit_state.grid_snap}, font, fh, col);
+            tpos.y += fh;
+            const p = self.draw_state.cam3d.pos;
+            draw.textFmt(tpos, "pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, font, fh, col);
+            tpos.y += fh;
+            draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
+        }
         //var ent_it = self.ecs.iterator(.entity);
         //while (ent_it.next()) |ent| {
         //    const dist = ent.origin.distance(self.draw_state.cam3d.pos);

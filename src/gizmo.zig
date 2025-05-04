@@ -95,13 +95,14 @@ pub const Gizmo = struct {
             Vec3.new(pz, oz / 2, pz), //xz
             Vec3.new(oz / 2, pz, pz), //xz
         };
+        const al = 0xaa;
         const colors = [cube_orig.len]u32{
-            0xff0000ff,
-            0xff00ff,
-            0xffff,
-            0xffff00ff,
-            0xff00ffff,
-            0xffffff,
+            0xff000000 + al,
+            0xff0000 + al,
+            0xff00 + al,
+            0xffff0000 + al,
+            0xff00ff00 + al,
+            0xffff00 + al,
         };
         const ind = self.selected_axis.index() orelse 100000;
         for (cube_orig, 0..) |co, i| {
