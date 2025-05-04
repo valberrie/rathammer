@@ -73,8 +73,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     graph.c.glCullFace(graph.c.GL_BACK);
 
     {
-        const ORG = "nmalthouse";
-        const APP = "rathammer";
+        const ORG = "rathammer";
+        const APP = "";
         const path = graph.c.SDL_GetPrefPath(ORG, APP);
         const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
         const out = try pref.createFile("hello.txt", .{});

@@ -438,6 +438,10 @@ pub const Entity = struct {
     model_id: ?vpk.VpkResId = null,
     sprite: ?vpk.VpkResId = null,
 
+    pub fn dupe(self: *const @This()) @This() {
+        return self.*;
+    }
+
     pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx) void {
         const ENT_RENDER_DIST = 64 * 10;
         if (ent.model_id) |m| {
@@ -1269,6 +1273,7 @@ pub const Context = struct {
                     }
                 },
                 .select => {
+                    const dupe = win.isBindState(self.config.keys.duplicate.b, .high);
                     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                         if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
                             const mid_i = bb.a.add(bb.b).scale(0.5);
@@ -1295,7 +1300,6 @@ pub const Context = struct {
                                     }
                                 }
                             }
-                            const dupe = win.isBindState(self.config.keys.duplicate.b, .high);
                             if (giz_active == .rising) {
                                 try solid.removeFromMeshMap(id, self);
                             }
@@ -1370,10 +1374,20 @@ pub const Context = struct {
 
                             //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
                             if (self.edit_state.rmouse == .rising) {
-                                //Commit the changes
-                                ent.origin = orr;
                                 const bb = try self.ecs.getPtr(id, .bounding_box);
-                                bb.setFromOrigin(orr);
+                                if (dupe) {
+                                    const new = try self.ecs.createEntity();
+                                    try self.ecs.attach(new, .entity, ent.dupe());
+                                    try self.ecs.attach(new, .bounding_box, bb.*);
+                                    const ent_ptr = try self.ecs.getPtr(new, .entity);
+                                    ent_ptr.origin = orr;
+                                    const bb_ptr = try self.ecs.getPtr(new, .bounding_box);
+                                    bb_ptr.setFromOrigin(orr);
+                                } else {
+                                    //Commit the changes
+                                    ent.origin = orr;
+                                    bb.setFromOrigin(orr);
+                                }
                             }
                         }
                     }
