@@ -12,6 +12,7 @@ const Os9Gui = graph.gui_app.Os9Gui;
 const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const Split = @import("splitter.zig");
+const editor_view = @import("editor_views.zig");
 
 const Conf = @import("config.zig");
 
@@ -91,7 +92,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         model_browser,
         file_browser,
         about,
-        settings,
     };
     var areas_buf: [10]graph.Rect = undefined;
     var fb = try guiutil.FileBrowser.init(alloc, std.fs.cwd());
@@ -134,18 +134,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
             .panes = Tab.newPane(&panes, &PI, &.{.main_3d_view}),
         },
-        .{
-            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
-            .panes = Tab.newPane(&panes, &PI, &.{.settings}),
-        },
     };
-    var tab_index: usize = tabs.len - 2;
+    var tab_index: usize = tabs.len - 1;
     var paused = false;
 
     win.grabMouse(true);
-    while (!win.should_exit) {
-        if (win.bindHigh(config.keys.quit.b))
-            win.should_exit = true;
+    main_loop: while (!win.should_exit) {
+        if (win.isBindState(config.keys.quit.b, .rising))
+            break :main_loop;
         if (win.isBindState(config.keys.pause.b, .rising))
             paused = !paused;
 
@@ -163,7 +159,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 if (os9gui.button("Unpause"))
                     paused = false;
                 if (os9gui.button("Quit"))
-                    win.should_exit = true;
+                    break :main_loop;
                 const ds = &editor.draw_state;
                 _ = os9gui.checkbox("draw tools", &ds.draw_tools);
                 _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
@@ -255,7 +251,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .main_3d_view => {
                     editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
                     editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
-                    try editor.draw3Dview(pane_area, &draw, &win, &font.font);
+                    try editor_view.draw3Dview(&editor, pane_area, &draw, &win, &font.font);
                 },
                 .about => {
                     if (try os9gui.beginTlWindow(pane_area)) {
@@ -274,7 +270,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .asset_browser => {
                     try editor.asset_browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .texture);
                 },
-                .inspector => try editor.drawInspector(pane_area, &os9gui),
+                .inspector => try editor_view.drawInspector(&editor, pane_area, &os9gui),
                 .model_preview => {
                     try editor.asset_browser.drawModelPreview(
                         &win,
@@ -284,18 +280,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         &editor,
                         &draw,
                     );
-                },
-                .settings => {
-                    if (try os9gui.beginTlWindow(pane_area)) {
-                        defer os9gui.endTlWindow();
-                        _ = try os9gui.beginV();
-                        defer os9gui.endL();
-                        const ds = &editor.draw_state;
-                        _ = os9gui.checkbox("draw tools", &ds.draw_tools);
-                        _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
-                        _ = os9gui.checkbox("draw model", &ds.tog.models);
-                        _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
-                    }
                 },
                 .file_browser => {
                     if (try os9gui.beginTlWindow(pane_area)) {
