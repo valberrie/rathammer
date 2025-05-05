@@ -31,6 +31,8 @@ pub const Config = struct {
 
         grid_inc: Keybind = .{ .b = SC(.R, 0) },
         grid_dec: Keybind = .{ .b = SC(.F, 0) },
+
+        pause: Keybind = .{ .b = SC(.ESCAPE, 0) },
     },
     window: struct {
         height_px: i32 = 600,

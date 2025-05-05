@@ -140,12 +140,43 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         },
     };
     var tab_index: usize = tabs.len - 2;
+    var paused = false;
 
     win.grabMouse(true);
     while (!win.should_exit) {
         if (win.bindHigh(config.keys.quit.b))
             win.should_exit = true;
+        if (win.isBindState(config.keys.pause.b, .rising))
+            paused = !paused;
+
+        if (paused) {
+            win.pumpEvents(.wait);
+            win.grabMouse(false);
+            try draw.begin(0x75573cff, win.screen_dimensions.toF());
+            const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
+            try os9gui.beginFrame(is, &win);
+            if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
+                defer os9gui.endTlWindow();
+                _ = try os9gui.beginV();
+                defer os9gui.endL();
+                os9gui.label("You are paused", .{});
+                if (os9gui.button("Unpause"))
+                    paused = false;
+                if (os9gui.button("Quit"))
+                    win.should_exit = true;
+                const ds = &editor.draw_state;
+                _ = os9gui.checkbox("draw tools", &ds.draw_tools);
+                _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
+                _ = os9gui.checkbox("draw model", &ds.tog.models);
+                _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
+            }
+            try os9gui.endFrame(&draw);
+            try draw.end(editor.draw_state.cam3d);
+            win.swap();
+            continue;
+        }
         try draw.begin(0x75573cff, win.screen_dimensions.toF());
+
         graph.c.glPolygonMode(
             graph.c.GL_FRONT_AND_BACK,
             if (editor.draw_state.tog.wireframe) graph.c.GL_LINE else graph.c.GL_FILL,

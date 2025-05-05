@@ -15,7 +15,8 @@ keys {
 
     duplicate       scancode:z
 
-    quit            "left_ctrl+escape"
+    quit            left_ctrl+escape
+    pause           escape
     focus_search    "left_ctrl+keycode:f"
 
     select          scancode:E
