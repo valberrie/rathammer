@@ -225,19 +225,23 @@ pub const Solid = struct {
         const vis = [6][4]u8{
             .{ 3, 2, 1, 0 }, //-z
             .{ 4, 5, 6, 7 }, //+z
+            //
             .{ 0, 4, 7, 3 }, //-x
-            .{ 0, 1, 5, 4 }, //-y
             .{ 1, 2, 6, 5 }, //+x
+            //
+            .{ 0, 1, 5, 4 }, //-y
             .{ 2, 3, 7, 6 }, //+y
         };
+        //+y, -x is broken both ways
+        //-y, +x is broken only y
         const Uvs = [6][2]Vec3{
             .{ N(1, 0, 0), N(0, 1, 0) },
-            .{ N(1, 0, 0), N(0, 1, 0) },
-            .{ N(0, 1, 0), N(0, 0, 1) },
+            .{ N(1, 0, 0), N(0, -1, 0) },
+            .{ N(0, -1, 0), N(0, 0, -1) },
 
-            .{ N(1, 0, 0), N(0, 0, 1) },
-            .{ N(0, 1, 0), N(0, 0, 1) },
-            .{ N(1, 0, 0), N(0, 0, 1) },
+            .{ N(0, 1, 0), N(0, 0, -1) },
+            .{ N(1, 0, 0), N(0, 0, -1) },
+            .{ N(-1, 0, 0), N(0, 0, -1) },
         };
         for (vis, 0..) |face, i| {
             var ver = std.ArrayList(Vec3).init(alloc);
@@ -454,6 +458,7 @@ pub const Entity = struct {
                         //y:left
                         //z: up
 
+                        //TODO, these are slightly incorrect
                         const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
                         const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
                         const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
@@ -565,6 +570,7 @@ pub const Context = struct {
             face_manip,
             model_place,
             cube_draw,
+            texture_apply,
         };
         last_frame_state: State = .select,
         state: State = .select,
@@ -816,6 +822,7 @@ pub const Context = struct {
                             log.err("Load model failed with {}", .{err});
                         }
                         //TODO update the bb when the models has loaded
+                        //we need to keep a list of vtables
                     }
                     var sprite_tex: ?vpk.VpkResId = null;
                     { //Fgd stuff

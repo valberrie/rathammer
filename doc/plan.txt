@@ -24,7 +24,7 @@ Dependencies:
         Having sdl and libepoxy as our only dependencies makes building easy.
 
 Features
-    Add loose file capability to vpk.Context
+    Add loose file capability to vpk.Context // Partially done
     Save vmf file.
         This requires first loading all fields in existing vmfs
         Then serializing any state we have built up.
@@ -96,6 +96,7 @@ Utility
 
 Game support
     Portal 2's gameinfo txt doesn't specify vpk's
+    Portal 2's fgd crashes parser
     Write a game config for every offical source game on steam.
 
 Build
