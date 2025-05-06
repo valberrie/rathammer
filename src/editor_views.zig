@@ -76,12 +76,31 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
 
     switch (self.edit_state.state) {
         else => {},
+        .texture_apply => {
+            //BUG: we need to remove the side from its current batch
+            blk: {
+                const tid = self.asset_browser.selected_mat_vpk_id orelse break :blk;
+                //Raycast into world and apply texture to the face we hit
+                if (self.edit_state.rmouse == .high) {
+                    const pot = self.screenRay(screen_area, view_3d);
+                    if (pot.len == 0) break :blk;
+                    if (try self.ecs.getOptPtr(pot[0].id, .solid)) |solid| {
+                        if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
+                        const si = pot[0].side_id.?;
+                        solid.sides.items[si].tex_id = tid;
+                        //TODO this is slow, only rebuild the face
+                        try solid.rebuild(pot[0].id, self);
+                        try self.rebuildMeshesIfDirty();
+                    }
+                }
+            }
+        },
         .cube_draw => {
             const st = &self.edit_state.cube_draw;
             if (self.edit_state.last_frame_state != .cube_draw) { //First frame, reset state
                 st.state = .start;
             }
-            const closure = struct {
+            const helper = struct {
                 fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
                     //const cpos = inter;
                     const cpos = snapV3(inter, snap);
@@ -117,7 +136,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                         if (pot.len > 0) {
                             const inter = pot[0].point;
                             const cc = snapV3(inter, snap);
-                            closure.drawGrid(inter, cc.z(), draw, snap, 11);
+                            helper.drawGrid(inter, cc.z(), draw, snap, 11);
                             if (self.edit_state.lmouse == .rising) {
                                 st.plane_z = cc.z();
                             }
@@ -125,7 +144,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                     } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
                         //user has a xy plane
                         //can reposition using keys or doing a raycast into world
-                        closure.drawGrid(inter, st.plane_z, draw, snap, 11);
+                        helper.drawGrid(inter, st.plane_z, draw, snap, 11);
 
                         const cc = snapV3(inter, snap);
                         draw.point3D(cc, 0xff0000ee);
@@ -138,7 +157,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                 },
                 .planar => {
                     if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                        closure.drawGrid(inter, st.plane_z, draw, snap, 11);
+                        helper.drawGrid(inter, st.plane_z, draw, snap, 11);
                         const in = snapV3(inter, snap);
                         const cc = cubeFromBounds(st.start, in.add(Vec3.new(0, 0, snap)));
                         draw.cube(cc[0], cc[1], 0xffffff88);
@@ -510,6 +529,25 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         os9gui.label("Solid with {d} sides", .{solid.sides.items.len});
                         for (solid.sides.items) |side| {
                             os9gui.label("Texture: {s}", .{side.material});
+                        }
+                        blk: {
+                            if (self.edit_state.state == .face_manip) {
+                                const fid = self.edit_state.face_id orelse break :blk;
+                                if (fid >= solid.sides.items.len) break :blk;
+                                const side = &solid.sides.items[fid];
+                                const old_scale = side.u.scale;
+                                const old_scalev = side.v.scale;
+                                os9gui.sliderEx(&side.u.scale, 0.1, 10, "Scale u", .{});
+                                os9gui.sliderEx(&side.v.scale, 0.1, 10, "Scale v", .{});
+                                os9gui.sliderEx(side.v.axis.xMut(), 0, 1, "axis v", .{});
+                                os9gui.sliderEx(side.v.axis.yMut(), 0, 1, "axis v", .{});
+                                os9gui.sliderEx(side.v.axis.zMut(), 0, 1, "axis v", .{});
+                                if (side.u.scale != old_scale or side.v.scale != old_scalev) {
+                                    //rebuild
+                                    try solid.rebuild(id, self);
+                                    try self.rebuildMeshesIfDirty();
+                                }
+                            }
                         }
                     }
                     //scr.layout.padding.top = 0;

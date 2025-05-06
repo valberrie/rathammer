@@ -47,6 +47,7 @@ pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csg
 
 pub const RcastItem = struct {
     id: edit.EcsT.Id,
+    side_id: ?u32 = null,
     dist: f32,
     point: graph.za.Vec3 = undefined,
 
@@ -80,7 +81,7 @@ pub const Ctx = struct {
         while (bbit.next()) |bb| {
             if (util3d.doesRayIntersectBBZ(ray_o, ray_d, bb.a, bb.b)) |inter| {
                 const len = inter.distance(ray_o);
-                try self.pot.append(.{ .id = bbit.i, .dist = len });
+                try self.pot.append(.{ .id = bbit.i, .dist = len, .side_id = null });
             }
         }
         if (!bb_only) {
@@ -89,7 +90,7 @@ pub const Ctx = struct {
                 if (try ecs.getOptPtr(bp_rc.id, .solid)) |solid| {
                     for (try doesRayIntersectSolid(ray_o, ray_d, solid, csgctx)) |in| {
                         const len = in.point.distance(ray_o);
-                        try self.pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = in.point });
+                        try self.pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = in.point, .side_id = @intCast(in.side_index) });
                     }
                 } else {
                     try self.pot_fine.append(bp_rc);
