@@ -55,6 +55,8 @@ Interface
     vmf loading and saving.
         Could use gui.FileBrowser
 
+    Add texture manipulation
+
     How to manage all the different window panes?
         filebrowser
         inspector

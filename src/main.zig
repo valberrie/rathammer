@@ -53,6 +53,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     loadctx.cb("Loading");
 
+    var my_var: i32 = 0;
+    my_var = my_var + 1;
+
     try editor.postInit(args);
 
     loadctx.cb("Vpk's mounted");

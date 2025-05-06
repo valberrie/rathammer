@@ -305,6 +305,7 @@ pub const Solid = struct {
                 }
             }
         }
+        try editor.rebuildMeshesIfDirty();
     }
 
     pub fn rebuild(self: *@This(), id: EcsT.Id, editor: *Context) !void {
@@ -328,21 +329,9 @@ pub const Solid = struct {
             }
             side.u.trans = side.u.trans - (vec.dot(side.u.axis)) / side.u.scale;
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
-
-            const batch = try editor.getOrPutMeshBatch(side.tex_id);
-            batch.*.is_dirty = true;
-
-            //ensure this is in batch
-            try batch.*.contains.put(id, {});
         }
-        const bb = try editor.ecs.getPtr(id, .bounding_box);
-        self.recomputeBounds(bb);
-
-        //TODO move this somewhere else and do it proper
-        var it = editor.meshmap.iterator();
-        while (it.next()) |mesh| {
-            try mesh.value_ptr.*.rebuildIfDirty(editor);
-        }
+        try self.rebuild(id, editor);
+        try editor.rebuildMeshesIfDirty();
     }
 
     pub fn removeFromMeshMap(self: *Self, id: EcsT.Id, editor: *Context) !void {
@@ -351,10 +340,7 @@ pub const Solid = struct {
             batch.*.is_dirty = true;
             _ = batch.*.contains.remove(id);
         }
-        var it = editor.meshmap.iterator();
-        while (it.next()) |mesh| {
-            try mesh.value_ptr.*.rebuildIfDirty(editor);
-        }
+        try editor.rebuildMeshesIfDirty();
     }
 
     //messy but if side_i is not null, offset only applies to that face
@@ -683,6 +669,13 @@ pub const Context = struct {
         self.name_arena.deinit();
         self.draw_state.ctx.deinit();
         self.texture_load_ctx.deinit();
+    }
+
+    pub fn rebuildMeshesIfDirty(self: *Self) !void {
+        var it = self.meshmap.iterator();
+        while (it.next()) |mesh| {
+            try mesh.value_ptr.*.rebuildIfDirty(self);
+        }
     }
 
     pub fn rebuildAllMeshes(self: *Self) !void {

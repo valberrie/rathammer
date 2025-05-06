@@ -19,6 +19,10 @@ keys {
     pause           escape
     focus_search    "left_ctrl+keycode:f"
 
+    down_line       keycode:j
+    up_line         keycode:k
+    grab_far        scancode:q
+
     select          scancode:E
 
     workspace      left_alt+1
@@ -26,6 +30,9 @@ keys {
     workspace      left_alt+scancode:m //Model browser
     workspace      left_alt+4
     workspace      left_alt+5
+
+    cube_draw_plane_up      scancode:x
+    cube_draw_plane_down    scancode:z
 }
 
 window {

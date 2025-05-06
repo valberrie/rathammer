@@ -40,6 +40,8 @@ pub const AssetBrowserGui = struct {
     max_column: i32 = 10,
     name_buf: std.ArrayList(u8),
 
+    hide_missing: bool = false,
+
     model_cam: graph.Camera3D = .{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z },
 
     pub fn init(alloc: std.mem.Allocator) Self {
@@ -70,11 +72,6 @@ pub const AssetBrowserGui = struct {
         exclude_prefix: []const u8,
         material_exclude_list: []const []const u8,
     ) !void {
-        //const ep = "materials/";
-        //TODO make these configurable
-        //const exclude_list = [_][]const u8{
-        //    "models", "gamepadui", "skybox", "vgui", "particle", "console", "sprites", "backpack",
-        //};
         vpkctx.mutex.lock();
         defer vpkctx.mutex.unlock();
         const vmt = vpkctx.extension_map.get("vmt") orelse return;
@@ -242,14 +239,16 @@ pub const AssetBrowserGui = struct {
                     const vl = try os9gui.beginV();
                     defer os9gui.endL();
                     self.start_index_mat = @min(self.start_index_mat, self.mat_list_sub.items.len);
-                    os9gui.sliderEx(&self.start_index_mat, 0, @divFloor(self.mat_list_sub.items.len, self.num_texture_column), "", .{});
+                    const max_scroll = @divFloor(self.mat_list_sub.items.len, self.num_texture_column);
+                    os9gui.sliderEx(&self.start_index_mat, 0, max_scroll, "", .{});
                     os9gui.sliderEx(&self.num_texture_column, 1, 10, "num column", .{});
                     const len = self.mat_search.arraylist.items.len;
                     {
-                        _ = try os9gui.beginH(2);
+                        _ = try os9gui.beginH(3);
                         defer os9gui.endL();
                         try os9gui.textbox2(&self.mat_search, .{ .make_active = should_focus_tb });
                         os9gui.label("Results {d}", .{self.mat_list_sub.items.len});
+                        _ = os9gui.checkbox("Hide missing", &self.hide_missing);
                     }
 
                     if (len != self.mat_search.arraylist.items.len)
@@ -277,10 +276,9 @@ pub const AssetBrowserGui = struct {
                     self.start_index_mat = @intCast(std.math.clamp(
                         index,
                         0,
-                        @as(i32, @intCast(self.model_list_sub.items.len)),
+                        @as(i32, @intCast(max_scroll)),
                     ));
 
-                    //self.start_index_mat = @min(self.start_index_mat, self.model_list_sub.items.len);
                     _ = try os9gui.gui.beginLayout(Gui.SubRectLayout, .{ .rect = ins }, .{ .scissor = ins });
                     defer os9gui.gui.endLayout();
 
@@ -290,13 +288,13 @@ pub const AssetBrowserGui = struct {
                     });
                     defer os9gui.endL();
                     const acc_ind = @min(self.start_index_mat * self.num_texture_column, self.mat_list_sub.items.len);
-                    //const missing = edit.missingTexture();
+                    const missing = edit.missingTexture();
                     for (self.mat_list_sub.items[acc_ind..], acc_ind..) |model, i| {
                         const tex = editor.getTexture(model);
-                        //if (tex.id == missing.id) {
                         try editor.loadTexture(model);
-                        //continue;
-                        //}
+                        if (self.hide_missing and tex.id == missing.id) {
+                            continue;
+                        }
                         const area = os9gui.gui.getArea() orelse break;
                         const text_h = area.h / 8;
                         const click = os9gui.gui.clickWidget(area);

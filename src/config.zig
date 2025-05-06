@@ -33,6 +33,10 @@ pub const Config = struct {
         grid_dec: Keybind = .{ .b = SC(.F, 0) },
 
         pause: Keybind = .{ .b = SC(.ESCAPE, 0) },
+
+        cube_draw_plane_up: Keybind = .{ .b = SC(.X, 0) },
+        cube_draw_plane_down: Keybind = .{ .b = SC(.Z, 0) },
+        cube_draw_plane_raycast: Keybind = .{ .b = SC(.Q, 0) },
     },
     window: struct {
         height_px: i32 = 600,

@@ -108,13 +108,23 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             const ray = self.camRay(screen_area, view_3d);
             switch (st.state) {
                 .start => {
-                    if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
+                    if (win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising))
+                        st.plane_z += snap;
+                    if (win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising))
+                        st.plane_z -= snap;
+                    if (win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high)) {
+                        const pot = self.screenRay(screen_area, view_3d);
+                        if (pot.len > 0) {
+                            const inter = pot[0].point;
+                            const cc = snapV3(inter, snap);
+                            closure.drawGrid(inter, cc.z(), draw, snap, 11);
+                            if (self.edit_state.lmouse == .rising) {
+                                st.plane_z = cc.z();
+                            }
+                        }
+                    } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
                         //user has a xy plane
                         //can reposition using keys or doing a raycast into world
-                        //const cpos = inter;
-                        //const cpos = snapV3(inter, dist);
-                        //const nline = 11;
-                        //const oth = nline * dist / 2;
                         closure.drawGrid(inter, st.plane_z, draw, snap, 11);
 
                         const cc = snapV3(inter, snap);
@@ -236,7 +246,6 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
 
                             if (giz_active == .high) {
                                 const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
-                                //try solid.translateSide(id, dist, self, s_i);
                                 try solid.drawImmediate(
                                     draw,
                                     self,
@@ -302,6 +311,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                         }
                         if (giz_active == .falling) {
                             try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+
                         }
 
                         if (giz_active == .high) {
