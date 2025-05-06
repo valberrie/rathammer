@@ -98,6 +98,9 @@ pub const MeshBatch = struct {
                     }
                 }
             }
+            if (try editor.ecs.getOptPtr(id.key_ptr.*, .displacement)) |disp| {
+                try disp.rebuild(self, editor);
+            }
         }
         self.mesh.setData();
     }
@@ -116,6 +119,8 @@ pub const Side = struct {
         trans: f32,
         scale: f32,
     };
+    //Used to disable when a displacment is created on a side
+    omit_from_batch: bool = false,
     verts: std.ArrayList(Vec3), // all verts must lie in the same plane
     index: std.ArrayList(u32),
     u: UVaxis,
@@ -134,6 +139,8 @@ pub const Side = struct {
     }
 
     pub fn rebuild(side: *@This(), batch: *MeshBatch, editor: *Context) !void {
+        if (side.omit_from_batch)
+            return;
         side.tex_id = batch.tex_res_id;
         side.tw = batch.tex.w;
         side.th = batch.tex.h;
@@ -152,8 +159,8 @@ pub const Side = struct {
                 .x = v.x(),
                 .y = v.y(),
                 .z = v.z(),
-                .u = uvs[i].x,
-                .v = uvs[i].y,
+                .u = uvs[i].x(),
+                .v = uvs[i].y(),
                 .nx = 0,
                 .ny = 0,
                 .nz = 0,
@@ -176,6 +183,80 @@ pub const AABB = struct {
         const delta = new_origin.sub(self.a.add(self.origin_offset));
         self.a = self.a.add(delta);
         self.b = self.b.add(delta);
+    }
+};
+
+pub const Displacement = struct {
+    const Self = @This();
+    verts: std.ArrayList(Vec3),
+    index: std.ArrayList(u32),
+    tex_id: vpk.VpkResId,
+    parent_id: EcsT.Id,
+    parent_side_i: usize,
+    power: u32,
+
+    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_: EcsT.Id, parent_s: usize, dispinfo: *const vmf.DispInfo) Self {
+        return .{
+            .verts = std.ArrayList(Vec3).init(alloc),
+            .index = std.ArrayList(u32).init(alloc),
+            .tex_id = tex_id,
+            .parent_id = parent_,
+            .parent_side_i = parent_s,
+            .power = @intCast(dispinfo.power),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.verts.deinit();
+        self.index.deinit();
+    }
+
+    pub fn rebuild(self: *Self, batch: *MeshBatch, editor: *Context) !void {
+        self.tex_id = batch.tex_res_id;
+        const solid = try editor.ecs.getOptPtr(self.parent_id, .solid) orelse return;
+        if (self.parent_side_i >= solid.sides.items.len) return;
+        const side = &solid.sides.items[self.parent_side_i];
+        const mesh = &batch.mesh;
+        try mesh.vertices.ensureUnusedCapacity(self.verts.items.len);
+        try mesh.indicies.ensureUnusedCapacity(self.index.items.len);
+        const uvs = try editor.csgctx.calcUVCoords(
+            side.verts.items,
+            side.*,
+            @intCast(batch.tex.w),
+            @intCast(batch.tex.h),
+        );
+        const vper_row = std.math.pow(u32, 2, self.power) + 1;
+        const t = 1.0 / (@as(f32, @floatFromInt(vper_row)) - 1);
+        const offset = mesh.vertices.items.len;
+        if (self.verts.items.len != vper_row * vper_row) return;
+        const uv0 = uvs[1];
+        const uv1 = uvs[2];
+        const uv2 = uvs[0];
+        const uv3 = uvs[3];
+
+        for (self.verts.items, 0..) |v, i| {
+            const ri: f32 = @floatFromInt(i / vper_row);
+            const ci: f32 = @floatFromInt(i % vper_row);
+
+            const inter0 = uv0.lerp(uv1, ri * t);
+            const inter1 = uv2.lerp(uv3, ri * t);
+            const uv = inter0.lerp(inter1, ci * t);
+
+            try mesh.vertices.append(.{
+                .x = v.x(),
+                .y = v.y(),
+                .z = v.z(),
+                .u = uv.x(),
+                .v = uv.y(),
+                .nx = 0,
+                .ny = 0,
+                .nz = 0,
+                .color = 0xffffffff,
+            });
+        }
+        for (self.index.items) |ind| {
+            try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
+        }
     }
 };
 
@@ -379,8 +460,8 @@ pub const Solid = struct {
                         .z = v.z() + off.z(),
                     },
                     .uv = .{
-                        .x = uvs[i].x,
-                        .y = uvs[i].y,
+                        .x = uvs[i].x(),
+                        .y = uvs[i].y(),
                     },
                     .color = 0xffffffff,
                 });
@@ -448,6 +529,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("bounding_box", AABB),
     Comp("solid", Solid),
     Comp("entity", Entity),
+    Comp("displacement", Displacement),
 });
 
 const log = std.log.scoped(.rathammer);
@@ -479,6 +561,7 @@ pub const Context = struct {
     temp_line_array: std.ArrayList([2]Vec3),
 
     texture_load_ctx: texture_load_thread.Context,
+    tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
 
     draw_state: struct {
         tog: struct {
@@ -605,6 +688,7 @@ pub const Context = struct {
             .skybox = try Skybox.init(alloc),
             .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
+            .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
@@ -639,6 +723,7 @@ pub const Context = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.tool_res_map.deinit();
         self.ecs.deinit();
         self.fgd_ctx.deinit();
         self.icon_map.deinit();
@@ -678,6 +763,12 @@ pub const Context = struct {
         }
     }
 
+    pub fn writeToJson(self: *Self, path: std.fs.Dir, name: []const u8) !void {
+        const outfile = try path.createFile(name, .{});
+        defer outfile.close();
+        _ = self;
+    }
+
     pub fn rebuildAllMeshes(self: *Self) !void {
         mesh_build_time.start();
         { //First clear
@@ -696,6 +787,13 @@ pub const Context = struct {
                     const batch = self.meshmap.getPtr(side.tex_id) orelse continue;
                     try side.rebuild(batch.*, self);
                 }
+            }
+        }
+        {
+            var it = self.ecs.iterator(.displacement);
+            while (it.next()) |disp| {
+                const batch = self.meshmap.getPtr(disp.tex_id) orelse continue;
+                try disp.rebuild(batch.*, self);
             }
         }
         { //Set all the gl data
@@ -729,18 +827,45 @@ pub const Context = struct {
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
         const new = try self.ecs.createEntity();
-        for (solid.side) |*side| {
-            const tex = try self.loadTextureFromVpk(side.material);
-            const res = try self.getOrPutMeshBatch(tex.res_id);
-            try res.contains.put(new, {});
-        }
-        const newsolid = try self.csgctx.genMesh(
+        var newsolid = try self.csgctx.genMesh(
             solid.side,
             self.alloc,
             &self.string_storage,
             self,
             //@intCast(self.set.sparse.items.len),
         );
+        for (solid.side, 0..) |*side, s_i| {
+            const tex = try self.loadTextureFromVpk(side.material);
+            const res = try self.getOrPutMeshBatch(tex.res_id);
+            try res.contains.put(new, {});
+
+            if (side.dispinfo.power != -1) {
+                newsolid.sides.items[s_i].omit_from_batch = true;
+                const disp_id = try self.ecs.createEntity();
+                var disp_gen = Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
+                try self.csgctx.genMeshDisplacement(
+                    newsolid.sides.items[s_i].verts.items,
+                    &side.dispinfo,
+                    &disp_gen,
+                );
+                try res.contains.put(disp_id, {});
+                if (false) { //dump to obj
+                    std.debug.print("o disp\n", .{});
+                    for (disp_gen.verts.items) |vert| {
+                        std.debug.print("v {d} {d} {d}\n", .{ vert.x(), vert.y(), vert.z() });
+                    }
+                    for (0..@divExact(disp_gen.index.items.len, 3)) |i| {
+                        std.debug.print("f {d} {d} {d}\n", .{
+                            disp_gen.index.items[(i * 3) + 0] + 1,
+                            disp_gen.index.items[(i * 3) + 1] + 1,
+                            disp_gen.index.items[(i * 3) + 2] + 1,
+                        });
+                    }
+                }
+
+                try self.ecs.attach(disp_id, .displacement, disp_gen);
+            }
+        }
         try self.ecs.attach(new, .solid, newsolid);
         try self.ecs.attach(new, .bounding_box, .{});
         //try self.set.insert(newsolid.id, newsolid);
@@ -769,6 +894,8 @@ pub const Context = struct {
         loadctx.cb("vmf parsed");
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
         try self.skybox.loadSky(vmf_.world.skyname, &self.vpkctx);
+        const count = vdf.countUnvisited(&obj.value);
+        std.debug.print("num {d}\n", .{count});
         {
             var gen_timer = try std.time.Timer.start();
             for (vmf_.world.solid, 0..) |solid, si| {
@@ -876,6 +1003,15 @@ pub const Context = struct {
 
     pub fn loadTexture(self: *Self, res_id: vpk.VpkResId) !void {
         if (self.textures.get(res_id)) |_| return;
+
+        { //track tools
+            if (self.vpkctx.namesFromId(res_id)) |name| {
+                if (std.mem.startsWith(u8, name.path, "materials/tools")) {
+                    try self.tool_res_map.put(res_id, {});
+                }
+            }
+        }
+
         try self.textures.put(res_id, missingTexture());
         try self.texture_load_ctx.loadTexture(res_id, &self.vpkctx);
     }
@@ -884,8 +1020,7 @@ pub const Context = struct {
         const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{material}) orelse return .{ .tex = missingTexture(), .res_id = 0 };
         if (self.textures.get(res_id)) |tex| return .{ .tex = tex, .res_id = res_id };
 
-        try self.textures.put(res_id, missingTexture());
-        try self.texture_load_ctx.loadTexture(res_id, &self.vpkctx);
+        try self.loadTexture(res_id);
 
         return .{ .tex = missingTexture(), .res_id = res_id };
     }

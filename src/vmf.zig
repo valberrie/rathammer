@@ -29,6 +29,15 @@ pub const ViewSettings = struct {
     bShow3DGrid: i32,
 };
 
+pub const EditorInfo = struct {
+    color: StringVec,
+    visgroupid: i32 = -1,
+    groupid: i32 = -1,
+    visgroupshown: i8 = 1,
+    visgroupautoshown: i8 = 1,
+    comments: []const u8 = "",
+};
+
 pub const World = struct {
     id: u32,
     mapversion: u32,
@@ -51,18 +60,101 @@ pub const World = struct {
     light: []const u8,
     ResponseContext: []const u8,
     maxpropscreenwidth: []const u8,
+
+    editor: EditorInfo,
 };
 
 pub const Solid = struct {
     id: u32,
     side: []const Side,
+
+    editor: EditorInfo,
 };
 
 pub const DispInfo = struct {
-    power: i32 = 4,
-    elevation: f32,
-    subdiv: i32,
-    startposition: StringVecBracket,
+    power: i32 = -1, //Hack, this is used to see if vdf has initilized dispinfo
+    elevation: f32 = undefined,
+    subdiv: i32 = undefined,
+    startposition: StringVecBracket = undefined,
+
+    normals: DispVectorRow = undefined,
+    offsets: DispVectorRow = undefined,
+    offset_normals: DispVectorRow = undefined,
+    distances: DispRow = undefined,
+    alphas: DispRow = undefined,
+    triangle_tags: DispRow = undefined,
+};
+
+pub const DispRow = struct {
+    rows: std.ArrayList(std.ArrayList(f32)),
+
+    pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
+        if (val.* == .literal)
+            return error.notgood;
+        var ret = try std.ArrayList(std.ArrayList(f32)).initCapacity(alloc, val.obj.list.items.len);
+        try ret.resize(val.obj.list.items.len);
+        for (val.obj.list.items) |row| {
+            if (row.val != .literal)
+                return error.invalidDispNormal;
+            const num_norm = val.obj.list.items.len;
+            var it = std.mem.splitScalar(u8, row.val.literal, ' ');
+
+            if (!std.mem.startsWith(u8, row.key, "row"))
+                return error.invalidNormalKey;
+            const row_index = try std.fmt.parseInt(u32, row.key["row".len..], 10);
+            var new_row = try std.ArrayList(f32).initCapacity(alloc, num_norm);
+
+            for (0..num_norm) |_| {
+                const x = it.next() orelse return error.notEnoughNormals;
+
+                try new_row.append(try std.fmt.parseFloat(f32, x));
+            }
+            //TODO check all have been visited
+            if (row_index >= ret.items.len)
+                return error.invalidRowIndex;
+            ret.items[row_index] = new_row;
+        }
+        return .{ .rows = ret };
+    }
+};
+
+pub const DispVectorRow = struct {
+    rows: std.ArrayList(std.ArrayList(graph.za.Vec3)),
+
+    pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
+        if (val.* == .literal)
+            return error.notgood;
+        var ret = try std.ArrayList(std.ArrayList(graph.za.Vec3)).initCapacity(alloc, val.obj.list.items.len);
+        try ret.resize(val.obj.list.items.len);
+        for (val.obj.list.items) |row| {
+            if (row.val != .literal)
+                return error.invalidDispNormal;
+            const num_norm = val.obj.list.items.len;
+            var it = std.mem.splitScalar(u8, row.val.literal, ' ');
+
+            if (!std.mem.startsWith(u8, row.key, "row"))
+                return error.invalidNormalKey;
+            const row_index = try std.fmt.parseInt(u32, row.key["row".len..], 10);
+            var new_row = try std.ArrayList(graph.za.Vec3).initCapacity(alloc, num_norm);
+
+            for (0..num_norm) |_| {
+                const x = it.next() orelse return error.notEnoughNormals;
+                const y = it.next() orelse return error.notEnoughNormals;
+                const z = it.next() orelse return error.notEnoughNormals;
+
+                try new_row.append(graph.za.Vec3.new(
+                    try std.fmt.parseFloat(f32, x),
+                    try std.fmt.parseFloat(f32, y),
+                    try std.fmt.parseFloat(f32, z),
+                ));
+            }
+            //TODO check all have been visited
+            if (row_index >= ret.items.len)
+                return error.invalidRowIndex;
+            ret.items[row_index] = new_row;
+        }
+        return .{ .rows = ret };
+    }
 };
 
 pub const Entity = struct {
@@ -72,6 +164,7 @@ pub const Entity = struct {
     solid: []const Solid,
     origin: StringVec,
     angles: StringVec,
+    editor: EditorInfo,
 };
 pub const Side = struct {
     pub const UvCoord = struct {
@@ -120,7 +213,7 @@ pub const Side = struct {
     lightmapscale: i32,
     rotation: f32,
     smoothing_groups: i32,
-    dispinfo: DispInfo,
+    dispinfo: DispInfo = .{},
 };
 
 fn parseVec(
@@ -178,6 +271,7 @@ fn parseVec(
     return ret;
 }
 
+/// Parse a vector "0.0 1.0 2"
 const StringVec = struct {
     v: graph.za.Vec3,
 
@@ -193,6 +287,7 @@ const StringVec = struct {
     }
 };
 
+/// Parse a vector "[0.0 2.0 3.0]"
 const StringVecBracket = struct {
     v: graph.za.Vec3,
 

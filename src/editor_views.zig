@@ -36,9 +36,19 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
 
     var it = self.meshmap.iterator();
     while (it.next()) |mesh| {
-        //if (!self.draw_state.draw_tools and std.mem.startsWith(u8, mesh.key_ptr.*, "TOOLS"))
-        //    continue;
+        if (!self.draw_state.draw_tools) {
+            if (self.tool_res_map.contains(mesh.key_ptr.*))
+                continue;
+        }
         mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
+    }
+
+    if (false) { //draw displacment vert
+        var d_it = self.ecs.iterator(.displacement);
+        while (d_it.next()) |disp| {
+            for (disp.verts.items) |v|
+                draw.point3D(v, 0xffffffff);
+        }
     }
 
     {

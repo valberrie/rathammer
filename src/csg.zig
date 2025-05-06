@@ -2,8 +2,11 @@ const std = @import("std");
 const graph = @import("graph");
 const meshutil = graph.meshutil;
 const Mesh = meshutil.Mesh;
-const Vec3 = graph.za.Vec3_f64;
-const Vec2 = graph.Vec2f;
+// The csg algorithm requires the precison of 64 bit floats
+// Once the meshes are generated we can convert to f32
+const Vec3_64 = graph.za.Vec3_f64;
+const Vec3_32 = graph.za.Vec3;
+const Vec2 = graph.za.Vec2;
 const vmf = @import("vmf.zig");
 const Side = vmf.Side;
 const editor = @import("editor.zig");
@@ -17,6 +20,7 @@ pub var gen_time: u64 = 0;
 
 /// This context exists as the csg generation requires lots of shortlived allocations.
 /// Most of the functions will clobber whatever is in their corresponding array list and return the slice.
+/// Thus, most functions are not thread safe
 pub const Context = struct {
     const Self = @This();
     const INIT_CAPACITY = 20;
@@ -27,9 +31,11 @@ pub const Context = struct {
         on,
     };
     alloc: std.mem.Allocator,
-    base_winding: [4]Vec3,
-    winding_a: std.ArrayList(Vec3),
-    winding_b: std.ArrayList(Vec3),
+    base_winding: [4]Vec3_64,
+    winding_a: std.ArrayList(Vec3_64),
+    winding_b: std.ArrayList(Vec3_64),
+
+    disp_winding: std.ArrayList(Vec3_32),
 
     triangulate_index: std.ArrayList(u32),
     uvs: std.ArrayList(Vec2),
@@ -41,17 +47,19 @@ pub const Context = struct {
         return .{
             .alloc = alloc,
             .base_winding = undefined,
-            .winding_a = try std.ArrayList(Vec3).initCapacity(alloc, INIT_CAPACITY),
-            .winding_b = try std.ArrayList(Vec3).initCapacity(alloc, INIT_CAPACITY),
+            .winding_a = try std.ArrayList(Vec3_64).initCapacity(alloc, INIT_CAPACITY),
+            .winding_b = try std.ArrayList(Vec3_64).initCapacity(alloc, INIT_CAPACITY),
 
             .triangulate_index = try std.ArrayList(u32).initCapacity(alloc, INIT_CAPACITY),
             .uvs = try std.ArrayList(Vec2).initCapacity(alloc, INIT_CAPACITY),
             .clip_winding_sides = try std.ArrayList(SideClass).initCapacity(alloc, INIT_CAPACITY),
             .clip_winding_dists = try std.ArrayList(f64).initCapacity(alloc, INIT_CAPACITY),
+            .disp_winding = try std.ArrayList(Vec3_32).initCapacity(alloc, INIT_CAPACITY),
         };
     }
 
     pub fn deinit(self: *Self) void {
+        self.disp_winding.deinit();
         self.winding_a.deinit();
         self.winding_b.deinit();
         self.triangulate_index.deinit();
@@ -95,7 +103,7 @@ pub const Context = struct {
 
             const tex = try edit.loadTextureFromVpk(side.material);
             ret.sides.items[si] = .{
-                .verts = std.ArrayList(graph.za.Vec3).init(alloc),
+                .verts = std.ArrayList(Vec3_32).init(alloc),
                 .index = std.ArrayList(u32).init(alloc),
                 .material = try strstore.store(side.material),
                 .tex_id = tex.res_id,
@@ -129,7 +137,7 @@ pub const Context = struct {
         return ret;
     }
 
-    pub fn triangulate(self: *Self, winding: []const Vec3, offset: u32) ![]const u32 {
+    pub fn triangulate(self: *Self, winding: []const Vec3_64, offset: u32) ![]const u32 {
         return self.triangulateAny(winding, offset);
     }
     //Generate indicies into trianglnes that can be drawin with the uknow, opengl draw indexed
@@ -148,7 +156,7 @@ pub const Context = struct {
         return ret.items;
     }
 
-    pub fn clipWinding(self: *Self, winding_in: std.ArrayList(Vec3), winding_out: *std.ArrayList(Vec3), plane: Plane) !void {
+    pub fn clipWinding(self: *Self, winding_in: std.ArrayList(Vec3_64), winding_out: *std.ArrayList(Vec3_64), plane: Plane) !void {
         self.clip_winding_sides.clearRetainingCapacity();
         self.clip_winding_dists.clearRetainingCapacity();
         var sides = &self.clip_winding_sides;
@@ -189,7 +197,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn calcUVCoords(self: *Self, winding: []const graph.za.Vec3, side: editor.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+    pub fn calcUVCoords(self: *Self, winding: []const Vec3_32, side: editor.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
         self.uvs.clearRetainingCapacity();
         const uvs = &self.uvs;
         var umin: f32 = std.math.floatMax(f32);
@@ -197,25 +205,25 @@ pub const Context = struct {
         const tw: f64 = @floatFromInt(tex_w);
         const th: f64 = @floatFromInt(tex_h);
         for (winding) |item| {
-            const uv = .{
-                .x = @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
-                .y = @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
-            };
+            const uv = Vec2.new(
+                @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
+            );
             try uvs.append(uv);
-            umin = @min(umin, uv.x);
-            vmin = @min(vmin, uv.y);
+            umin = @min(umin, uv.x());
+            vmin = @min(vmin, uv.y());
         }
         const uoff = @floor(umin);
         const voff = @floor(vmin);
         for (uvs.items) |*uv| {
-            uv.x -= uoff;
-            uv.y -= voff;
+            uv.xMut().* -= uoff;
+            uv.yMut().* -= voff;
         }
 
         return uvs.items;
     }
 
-    pub fn baseWinding(self: *Self, plane: Plane, size: f64) ![]const Vec3 {
+    pub fn baseWinding(self: *Self, plane: Plane, size: f64) ![]const Vec3_64 {
         const global_up = try getGlobalUp(plane.norm);
         const right = plane.norm.cross(global_up).norm().scale(size / 2);
 
@@ -227,9 +235,85 @@ pub const Context = struct {
         self.base_winding[3] = offset.add(right).add(up);
         return &self.base_winding;
     }
+
+    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, dispinfo: *const vmf.DispInfo, disp: *editor.Displacement) !void {
+        _ = self;
+        if (side_winding.len != 4)
+            return error.invalidSideWinding;
+        var nearest: f32 = std.math.floatMax(f32);
+        var start_i: usize = 0;
+        for (side_winding, 0..) |vert, i| {
+            const dist = vert.distance(dispinfo.startposition.v);
+            if (dist < nearest) {
+                start_i = i;
+                nearest = dist;
+            }
+        }
+
+        const v0 = side_winding[start_i];
+        const v1 = side_winding[(start_i + 1) % side_winding.len];
+        const v2 = side_winding[(start_i + 2) % side_winding.len];
+        const v3 = side_winding[(start_i + 3) % side_winding.len];
+
+        const vper_row: u32 = @intCast(std.math.pow(i32, 2, dispinfo.power) + 1);
+        var verts = &disp.verts;
+        try verts.resize(vper_row * vper_row);
+        const t = 1.0 / (@as(f32, @floatFromInt(vper_row)) - 1); //In the paper, they don't subtract one, this would lead to incorrect lerp?
+        const elev = dispinfo.elevation;
+
+        for (0..vper_row) |v_i| {
+            const fi: f32 = @floatFromInt(v_i);
+            const v_inter0 = v0.lerp(v1, t * fi);
+            const v_inter1 = v3.lerp(v2, t * fi);
+            for (0..vper_row) |c_i| {
+                const ji: f32 = @floatFromInt(c_i);
+                const v_orig = v_inter0.lerp(v_inter1, t * ji);
+
+                const dist = dispinfo.distances.rows.items[v_i].items[c_i];
+                const norm = (dispinfo.normals.rows.items[v_i].items[c_i]);
+                const offset_norm = (dispinfo.offset_normals.rows.items[v_i].items[c_i]);
+                const offset = (dispinfo.offsets.rows.items[v_i].items[c_i]);
+
+                //const vert = v_orig;
+                var vert = v_orig.add(norm.scale(dist));
+
+                vert = vert.add(offset_norm.scale(elev));
+                vert = vert.add(offset);
+                verts.items[(v_i * vper_row) + c_i] = vert;
+            }
+        }
+
+        var ind = &disp.index;
+        ind.clearRetainingCapacity();
+        // triangulate
+        const quad_per_row = vper_row - 1;
+        var left: bool = false;
+        for (0..quad_per_row) |q_i| {
+            for (0..quad_per_row) |q_j| {
+                const in0: u32 = @intCast((q_i * vper_row) + q_j);
+                const in1: u32 = @intCast((q_i * vper_row) + q_j + 1);
+                const in2: u32 = @intCast(((q_i + 1) * vper_row) + q_j);
+                const in3: u32 = @intCast(((q_i + 1) * vper_row) + q_j + 1);
+
+                //if (left) {
+                try ind.appendSlice(&.{
+                    in1, in2, in0, in3, in2, in1,
+                });
+                //} else {
+                //    try ind.appendSlice(&.{ in0, in2, in1, in0, in3, in2 });
+                //}
+                left = !left;
+            }
+            left = !left;
+        }
+    }
 };
 
-pub fn getGlobalUp(norm: Vec3) !Vec3 {
+pub fn conVec(v: anytype) @TypeOf(v) {
+    return @TypeOf(v).new(v.x(), v.z(), -v.y());
+}
+
+pub fn getGlobalUp(norm: Vec3_64) !Vec3_64 {
     var axis: ?usize = null;
     var max = -std.math.floatMax(f64);
     const dat: [3]f64 = norm.data;
@@ -243,11 +327,11 @@ pub fn getGlobalUp(norm: Vec3) !Vec3 {
     if (axis == null)
         return error.invalidVector;
     if (axis == 1)
-        return Vec3.new(1, 0, 0);
-    return Vec3.new(0, 1, 0);
+        return Vec3_64.new(1, 0, 0);
+    return Vec3_64.new(0, 1, 0);
 }
 
-pub fn roundVec(v: Vec3) Vec3 {
+pub fn roundVec(v: Vec3_64) Vec3_64 {
     var a = v;
     const R: f64 = 128;
     const rr = @Vector(3, f64){ R, R, R };
@@ -256,9 +340,9 @@ pub fn roundVec(v: Vec3) Vec3 {
 }
 
 const Plane = struct {
-    norm: Vec3,
+    norm: Vec3_64,
     dist: f64,
-    pub fn fromTri(tri: [3]Vec3) @This() {
+    pub fn fromTri(tri: [3]Vec3_64) @This() {
         const v1 = tri[1].sub(tri[0]);
         const v2 = tri[2].sub(tri[0]);
         const norm = v1.cross(v2).norm();

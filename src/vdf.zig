@@ -1,15 +1,20 @@
 const std = @import("std");
 const graph = @import("graph");
 const StringStorage = @import("string.zig").StringStorage;
+const track_visited = true;
 pub const Vec3 = graph.za.Vec3_f64;
 pub const KV = struct {
     pub const Value = union(enum) { literal: []const u8, obj: *Object };
     key: []const u8,
     val: Value,
+
+    debug_visited: if (track_visited) bool else void = if (track_visited) false else {},
 };
 pub const Object = struct {
     const Self = @This();
     list: std.ArrayList(KV),
+
+    debug_visited: if (track_visited) bool else void = if (track_visited) false else {},
 
     pub fn init(alloc: std.mem.Allocator) @This() {
         return .{ .list = std.ArrayList(KV).init(alloc) };
@@ -72,11 +77,29 @@ test "is array list" {
     try std.testing.expect(getArrayListChild([]u8) == null);
 }
 
+pub fn countUnvisited(v: *const Object) usize {
+    var count: usize = 0;
+    if (!v.debug_visited) {
+        count += 1;
+        for (v.list.items) |*item| {
+            if (!item.debug_visited) {
+                count += 1;
+                std.debug.print("Not visit {s}\n", .{item.key});
+            }
+            if (item.val == .obj)
+                count += countUnvisited(item.val.obj);
+        }
+    }
+    return count;
+}
+
 pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Allocator, strings: ?*StringStorage) !T {
     const info = @typeInfo(T);
     switch (info) {
         .Struct => |s| {
             if (std.meta.hasFn(T, "parseVdf")) {
+                if (track_visited and value.* == .obj)
+                    value.obj.debug_visited = true;
                 return try T.parseVdf(value, alloc, strings);
             }
             //IF hasField vdf_generic then
@@ -97,6 +120,9 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                 for (value.obj.list.items) |*item| {
                     if (std.mem.eql(u8, item.key, f.name)) {
                         if (do_many) {
+                            if (track_visited)
+                                item.debug_visited = true;
+
                             const val = fromValue(ar_c, &item.val, alloc, strings) catch blk: {
                                 //std.debug.print("parse FAILED {any}\n", .{item.val});
                                 break :blk null;
@@ -104,6 +130,8 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                             if (val) |v|
                                 try vec.append(v);
                         } else {
+                            if (track_visited)
+                                item.debug_visited = true;
                             //A regular struct field
                             @field(ret, f.name) = try fromValue(f.type, &item.val, alloc, strings);
                             break;

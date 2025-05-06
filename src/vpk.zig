@@ -44,6 +44,11 @@ pub const Context = struct {
     const log = std.log.scoped(.vpk);
     const Self = @This();
     const StrCtx = std.hash_map.StringContext;
+    pub const Names = struct {
+        ext: []const u8,
+        path: []const u8,
+        name: []const u8,
+    };
 
     /// Map a resource string to numeric id
     const IdMap = struct {
@@ -208,17 +213,19 @@ pub const Context = struct {
     }
 
     //Not thread safe
-    fn namesFromId(self: *Self, id: VpkResId) ?struct {
-        ext: []const u8,
-        path: []const u8,
-        name: []const u8,
-    } {
+    fn namesFromId_(self: *Self, id: VpkResId) ?Names {
         const ids = decodeResourceId(id);
         return .{
             .name = self.res_map.getName(@intCast(ids.name)) orelse return null,
             .ext = self.extension_map.getName(@intCast(ids.ext)) orelse return null,
             .path = self.path_map.getName(@intCast(ids.path)) orelse return null,
         };
+    }
+
+    pub fn namesFromId(self: *Self, id: VpkResId) ?Names {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        return self.namesFromId_(id);
     }
 
     fn writeDump(self: *Self, comptime fmt: []const u8, args: anytype) void {
@@ -418,7 +425,7 @@ pub const Context = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
         const entry = self.entries.get(res_id) orelse {
-            const names = self.namesFromId(res_id) orelse return null;
+            const names = self.namesFromId_(res_id) orelse return null;
             self.strbuf.clearRetainingCapacity();
             try self.strbuf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
             std.debug.print("Searching loose dir for {s} \n", .{self.strbuf.items});
