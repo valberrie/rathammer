@@ -176,6 +176,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                     paused = false;
                 if (os9gui.button("Quit"))
                     break :main_loop;
+                if (os9gui.button("Write json"))
+                    try editor.writeToJson(std.fs.cwd(), "serial.json");
                 const ds = &editor.draw_state;
                 _ = os9gui.checkbox("draw tools", &ds.draw_tools);
                 _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);

@@ -399,10 +399,13 @@ pub const Context = struct {
 
     // Thread safe
     pub fn getResourceId(self: *Self, extension: []const u8, path: []const u8, fname: []const u8) ?VpkResId {
+        const ex = self.string_storage.store(extension) catch return null;
+        const p = self.string_storage.store(path) catch return null;
+        const fnam = self.string_storage.store(fname) catch return null;
         return encodeResourceId(
-            self.extension_map.getPut(extension) catch return null,
-            self.path_map.getPut(path) catch return null,
-            self.res_map.getPut(fname) catch return null,
+            self.extension_map.getPut(ex) catch return null,
+            self.path_map.getPut(p) catch return null,
+            self.res_map.getPut(fnam) catch return null,
         );
     }
 
