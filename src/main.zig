@@ -70,6 +70,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     editor.draw_state.cam3d.fov = config.window.cam_fov;
 
     try editor.loadVmf(std.fs.cwd(), args.vmf orelse "sdk_materials.vmf", &loadctx);
+    //TODO with assets loaded dynamically, names might not be correct
+    try editor.writeToJson(std.fs.cwd(), "serial.json");
 
     loadctx.time = loadctx.gtimer.read();
 

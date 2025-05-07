@@ -56,7 +56,7 @@ pub const ValueCtx = struct {
     alloc: std.mem.Allocator,
 };
 
-fn getArrayListChild(comptime T: type) ?type {
+pub fn getArrayListChild(comptime T: type) ?type {
     const in = @typeInfo(T);
     if (in != .Struct)
         return null;

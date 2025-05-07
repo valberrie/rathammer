@@ -25,6 +25,10 @@ const Conf = @import("config.zig");
 
 const util3d = @import("util_3d.zig");
 
+pub const ResourceId = struct {
+    vpk_id: vpk.VpkResId,
+};
+
 pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
     const ext = p1.sub(p2);
     return .{
@@ -170,6 +174,21 @@ pub const Side = struct {
         for (side.index.items) |ind| {
             try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
         }
+    }
+
+    pub fn serial(self: @This(), editor: *Context, jw: anytype) !void {
+        try jw.beginObject();
+        {
+            try jw.objectField("verts");
+            try editor.writeComponentToJson(jw, self.verts);
+            try jw.objectField("u");
+            try editor.writeComponentToJson(jw, self.u);
+            try jw.objectField("v");
+            try editor.writeComponentToJson(jw, self.v);
+            try jw.objectField("tex");
+            try editor.writeComponentToJson(jw, self.tex_id);
+        }
+        try jw.endObject();
     }
 };
 
@@ -764,9 +783,87 @@ pub const Context = struct {
     }
 
     pub fn writeToJson(self: *Self, path: std.fs.Dir, name: []const u8) !void {
+        const to_omit = [_]usize{@intFromEnum(EcsT.Components.bounding_box)};
         const outfile = try path.createFile(name, .{});
         defer outfile.close();
-        _ = self;
+        const wr = outfile.writer();
+        var bwr = std.io.bufferedWriter(wr);
+        const bb = bwr.writer();
+        var jwr = std.json.writeStream(bb, .{ .whitespace = .indent_4 });
+        try jwr.beginObject();
+        {
+            try jwr.objectField("objects");
+            try jwr.beginArray();
+            {
+                for (self.ecs.entities.items, 0..) |ent, id| {
+                    if (ent.isSet(EcsT.Types.tombstone_bit))
+                        continue;
+                    try jwr.beginObject();
+                    {
+                        try jwr.objectField("id");
+                        try jwr.write(id);
+                        inline for (EcsT.Fields, 0..) |field, f_i| {
+                            if (std.mem.indexOfScalar(usize, &to_omit, f_i) == null) {
+                                if (ent.isSet(f_i)) {
+                                    try jwr.objectField(field.name);
+                                    const ptr = try self.ecs.getPtr(@intCast(id), @enumFromInt(f_i));
+                                    try self.writeComponentToJson(&jwr, ptr.*);
+                                }
+                            }
+                        }
+                    }
+                    try jwr.endObject();
+                }
+            }
+            try jwr.endArray();
+        }
+        //Men I trust, men that rust
+        try jwr.endObject();
+    }
+
+    fn writeComponentToJson(self: *Self, jw: anytype, comp: anytype) !void {
+        const T = @TypeOf(comp);
+        const info = @typeInfo(T);
+        switch (T) {
+            []const u8 => return jw.write(comp),
+            vpk.VpkResId => {
+                if (self.vpkctx.namesFromId(comp)) |name| {
+                    return try jw.print("\"{s}/{s}.{s}\"", .{ name.path, name.name, name.ext });
+                }
+                return try jw.write(null);
+            },
+            Vec3 => return jw.print("\"{} {} {}\"", .{ comp.x(), comp.y(), comp.z() }),
+            Side.UVaxis => return jw.print("\"{} {} {} {} {}\"", .{ comp.axis.x(), comp.axis.y(), comp.axis.z(), comp.trans, comp.scale }),
+            else => {},
+        }
+        switch (info) {
+            .Int, .Float, .Bool => try jw.write(comp),
+            .Optional => {
+                if (comp) |p|
+                    return try self.writeComponentToJson(jw, p);
+                return try jw.write(null);
+            },
+            .Struct => |s| {
+                if (std.meta.hasFn(T, "serial")) {
+                    return try comp.serial(self, jw);
+                }
+                if (vdf.getArrayListChild(@TypeOf(comp))) |_| {
+                    try jw.beginArray();
+                    for (comp.items) |item| {
+                        try self.writeComponentToJson(jw, item);
+                    }
+                    try jw.endArray();
+                    return;
+                }
+                try jw.beginObject();
+                inline for (s.fields) |field| {
+                    try jw.objectField(field.name);
+                    try self.writeComponentToJson(jw, @field(comp, field.name));
+                }
+                try jw.endObject();
+            },
+            else => @compileError("no work for : " ++ @typeName(T)),
+        }
     }
 
     pub fn rebuildAllMeshes(self: *Self) !void {
@@ -827,7 +924,7 @@ pub const Context = struct {
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
         const new = try self.ecs.createEntity();
-        var newsolid = try self.csgctx.genMesh(
+        const newsolid = try self.csgctx.genMesh(
             solid.side,
             self.alloc,
             &self.string_storage,
@@ -840,7 +937,8 @@ pub const Context = struct {
             try res.contains.put(new, {});
 
             if (side.dispinfo.power != -1) {
-                newsolid.sides.items[s_i].omit_from_batch = true;
+                for (newsolid.sides.items) |*sp|
+                    sp.omit_from_batch = true;
                 const disp_id = try self.ecs.createEntity();
                 var disp_gen = Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
                 try self.csgctx.genMeshDisplacement(

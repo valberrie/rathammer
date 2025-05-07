@@ -77,16 +77,17 @@ pub const DispInfo = struct {
     subdiv: i32 = undefined,
     startposition: StringVecBracket = undefined,
 
-    normals: DispVectorRow = undefined,
-    offsets: DispVectorRow = undefined,
-    offset_normals: DispVectorRow = undefined,
-    distances: DispRow = undefined,
-    alphas: DispRow = undefined,
-    triangle_tags: DispRow = undefined,
+    normals: DispVectorRow = .{},
+    offsets: DispVectorRow = .{},
+    offset_normals: DispVectorRow = .{},
+    distances: DispRow = .{},
+    alphas: DispRow = .{},
+    triangle_tags: DispRow = .{},
 };
 
 pub const DispRow = struct {
-    rows: std.ArrayList(std.ArrayList(f32)),
+    rows: std.ArrayList(std.ArrayList(f32)) = undefined,
+    was_init: bool = false,
 
     pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
         if (val.* == .literal)
@@ -114,12 +115,13 @@ pub const DispRow = struct {
                 return error.invalidRowIndex;
             ret.items[row_index] = new_row;
         }
-        return .{ .rows = ret };
+        return .{ .rows = ret, .was_init = true };
     }
 };
 
 pub const DispVectorRow = struct {
-    rows: std.ArrayList(std.ArrayList(graph.za.Vec3)),
+    was_init: bool = false,
+    rows: std.ArrayList(std.ArrayList(graph.za.Vec3)) = undefined,
 
     pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
         if (val.* == .literal)
@@ -153,7 +155,7 @@ pub const DispVectorRow = struct {
                 return error.invalidRowIndex;
             ret.items[row_index] = new_row;
         }
-        return .{ .rows = ret };
+        return .{ .rows = ret, .was_init = true };
     }
 };
 

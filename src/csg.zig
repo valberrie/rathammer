@@ -260,6 +260,28 @@ pub const Context = struct {
         try verts.resize(vper_row * vper_row);
         const t = 1.0 / (@as(f32, @floatFromInt(vper_row)) - 1); //In the paper, they don't subtract one, this would lead to incorrect lerp?
         const elev = dispinfo.elevation;
+        const helper = struct {
+            pub fn checkArray(a: anytype, vp: usize) ?@TypeOf(a) {
+                if (!a.was_init)
+                    return null;
+                if (a.rows.items.len < vp) {
+                    std.debug.print("Invalid displacement\n", .{});
+                    return null;
+                }
+                for (a.rows.items) |item| {
+                    if (item.items.len < vp) {
+                        std.debug.print("Invalid displacement\n", .{});
+                        return null;
+                    }
+                }
+                return a;
+            }
+        };
+
+        const offsets: ?vmf.DispVectorRow = helper.checkArray(dispinfo.offsets, vper_row);
+        const offset_normal: ?vmf.DispVectorRow = helper.checkArray(dispinfo.offset_normals, vper_row);
+        const dists: ?vmf.DispRow = helper.checkArray(dispinfo.distances, vper_row);
+        const norms: ?vmf.DispVectorRow = helper.checkArray(dispinfo.normals, vper_row);
 
         for (0..vper_row) |v_i| {
             const fi: f32 = @floatFromInt(v_i);
@@ -269,16 +291,19 @@ pub const Context = struct {
                 const ji: f32 = @floatFromInt(c_i);
                 const v_orig = v_inter0.lerp(v_inter1, t * ji);
 
-                const dist = dispinfo.distances.rows.items[v_i].items[c_i];
-                const norm = (dispinfo.normals.rows.items[v_i].items[c_i]);
-                const offset_norm = (dispinfo.offset_normals.rows.items[v_i].items[c_i]);
-                const offset = (dispinfo.offsets.rows.items[v_i].items[c_i]);
+                const dist = if (dists) |d| d.rows.items[v_i].items[c_i] else 0;
 
                 //const vert = v_orig;
-                var vert = v_orig.add(norm.scale(dist));
+                var vert = v_orig;
+                if (norms) |n|
+                    vert = vert.add(n.rows.items[v_i].items[c_i].scale(dist));
 
-                vert = vert.add(offset_norm.scale(elev));
-                vert = vert.add(offset);
+                if (offset_normal) |ofn|
+                    vert = vert.add(ofn.rows.items[v_i].items[c_i].scale(elev));
+
+                if (offsets) |off|
+                    vert = vert.add(off.rows.items[v_i].items[c_i]);
+
                 verts.items[(v_i * vper_row) + c_i] = vert;
             }
         }
