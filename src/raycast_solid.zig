@@ -13,19 +13,21 @@ threadlocal var RAYCAST_RESULT_BUFFER: [2]RaycastResult = undefined;
 pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csgctx: *csg.Context) ![]const RaycastResult {
     var count: usize = 0;
     for (solid.sides.items, 0..) |side, s_i| {
-        if (side.verts.items.len < 3) continue;
+        if (side.index.items.len < 3) continue;
         // triangulate using csg
-        const ind = try csgctx.triangulateAny(side.verts.items, 0);
-        const ts = side.verts.items;
+        //Indexs into side.index
+        const ind = try csgctx.triangulateIndex(@intCast(side.index.items.len), 0);
+        const ts = solid.verts.items;
+        const sindex = side.index.items;
         for (0..@divExact(ind.len, 3)) |i_i| {
             const i = i_i * 3;
 
             if (util3d.mollerTrumboreIntersection(
                 r_o,
                 r_d,
-                ts[ind[i]],
-                ts[ind[i + 1]],
-                ts[ind[i + 2]],
+                ts[sindex[ind[i]]],
+                ts[sindex[ind[i + 1]]],
+                ts[sindex[ind[i + 2]]],
             )) |inter| {
                 count += 1;
                 if (count > 2)

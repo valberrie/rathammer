@@ -98,7 +98,7 @@ pub const MeshBatch = struct {
             if (try editor.ecs.getOptPtr(id.key_ptr.*, .solid)) |solid| {
                 for (solid.sides.items) |*side| {
                     if (side.tex_id == self.tex_res_id) {
-                        try side.rebuild(self, editor);
+                        try side.rebuild(solid, self, editor);
                     }
                 }
             }
@@ -125,7 +125,6 @@ pub const Side = struct {
     };
     //Used to disable when a displacment is created on a side
     omit_from_batch: bool = false,
-    verts: std.ArrayList(Vec3), // all verts must lie in the same plane
     index: std.ArrayList(u32),
     u: UVaxis,
     v: UVaxis,
@@ -138,27 +137,29 @@ pub const Side = struct {
     /// the actual material assigned is stored in `tex_id`
     material: []const u8,
     pub fn deinit(self: @This()) void {
-        self.verts.deinit();
         self.index.deinit();
     }
 
-    pub fn rebuild(side: *@This(), batch: *MeshBatch, editor: *Context) !void {
+    pub fn rebuild(side: *@This(), solid: *Solid, batch: *MeshBatch, editor: *Context) !void {
         if (side.omit_from_batch)
             return;
         side.tex_id = batch.tex_res_id;
         side.tw = batch.tex.w;
         side.th = batch.tex.h;
         const mesh = &batch.mesh;
-        try mesh.vertices.ensureUnusedCapacity(side.verts.items.len);
-        try mesh.indicies.ensureUnusedCapacity(side.index.items.len);
-        const uvs = try editor.csgctx.calcUVCoords(
-            side.verts.items,
+
+        try mesh.vertices.ensureUnusedCapacity(side.index.items.len);
+
+        const uvs = try editor.csgctx.calcUVCoordsIndexed(
+            solid.verts.items,
+            side.index.items,
             side.*,
             @intCast(batch.tex.w),
             @intCast(batch.tex.h),
         );
         const offset = mesh.vertices.items.len;
-        for (side.verts.items, 0..) |v, i| {
+        for (side.index.items, 0..) |v_i, i| {
+            const v = solid.verts.items[v_i];
             try mesh.vertices.append(.{
                 .x = v.x(),
                 .y = v.y(),
@@ -171,16 +172,15 @@ pub const Side = struct {
                 .color = 0xffffffff,
             });
         }
-        for (side.index.items) |ind| {
-            try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
-        }
+        const indexs = try editor.csgctx.triangulateIndex(@intCast(side.index.items.len), @intCast(offset));
+        try mesh.indicies.appendSlice(indexs);
     }
 
     pub fn serial(self: @This(), editor: *Context, jw: anytype) !void {
         try jw.beginObject();
         {
-            try jw.objectField("verts");
-            try editor.writeComponentToJson(jw, self.verts);
+            //try jw.objectField("verts");
+            //try editor.writeComponentToJson(jw, self.verts);
             try jw.objectField("u");
             try editor.writeComponentToJson(jw, self.u);
             try jw.objectField("v");
@@ -239,7 +239,7 @@ pub const Displacement = struct {
         try mesh.vertices.ensureUnusedCapacity(self.verts.items.len);
         try mesh.indicies.ensureUnusedCapacity(self.index.items.len);
         const uvs = try editor.csgctx.calcUVCoords(
-            side.verts.items,
+            solid.verts.items,
             side.*,
             @intCast(batch.tex.w),
             @intCast(batch.tex.h),
@@ -282,24 +282,21 @@ pub const Displacement = struct {
 pub const Solid = struct {
     const Self = @This();
     sides: std.ArrayList(Side),
+    verts: std.ArrayList(Vec3),
 
     /// Bounding box is used during broad phase ray tracing
     /// they are recomputed along with vertex arrays
     pub fn init(alloc: std.mem.Allocator) Solid {
-        return .{
-            .sides = std.ArrayList(Side).init(alloc),
-        };
+        return .{ .sides = std.ArrayList(Side).init(alloc), .verts = std.ArrayList(Vec3).init(alloc) };
     }
 
     pub fn dupe(self: *const Self) !Self {
         const ret_sides = try self.sides.clone();
         for (ret_sides.items) |*side| {
             const ind = try side.index.clone();
-            const vert = try side.verts.clone();
             side.index = ind;
-            side.verts = vert;
         }
-        return .{ .sides = ret_sides };
+        return .{ .sides = ret_sides, .verts = try self.verts.clone() };
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
@@ -322,7 +319,7 @@ pub const Solid = struct {
             o.add(N(0, e.y(), e.z())),
         };
         //All ccw
-        const vis = [6][4]u8{
+        const vis = [6][4]u32{
             .{ 3, 2, 1, 0 }, //-z
             .{ 4, 5, 6, 7 }, //+z
             //
@@ -343,16 +340,13 @@ pub const Solid = struct {
             .{ N(1, 0, 0), N(0, 0, -1) },
             .{ N(-1, 0, 0), N(0, 0, -1) },
         };
+        try ret.verts.appendSlice(&verts);
         for (vis, 0..) |face, i| {
-            var ver = std.ArrayList(Vec3).init(alloc);
             var ind = std.ArrayList(u32).init(alloc);
-            for (face) |vi| {
-                try ver.append(verts[vi]);
-            }
-            try ind.appendSlice(&.{ 1, 2, 0, 2, 3, 0 });
+            //try ind.appendSlice(&.{ 1, 2, 0, 2, 3, 0 });
 
+            try ind.appendSlice(&face);
             try ret.sides.append(.{
-                .verts = ver,
                 .index = ind,
                 .u = .{ .axis = Uvs[i][0], .trans = 0, .scale = 0.25 },
                 .v = .{ .axis = Uvs[i][1], .trans = 0, .scale = 0.25 },
@@ -367,43 +361,32 @@ pub const Solid = struct {
         for (self.sides.items) |side|
             side.deinit();
         self.sides.deinit();
+        self.verts.deinit();
     }
 
     pub fn recomputeBounds(self: *Self, aabb: *AABB) void {
         var min = Vec3.set(std.math.floatMax(f32));
         var max = Vec3.set(-std.math.floatMax(f32));
-        for (self.sides.items) |side| {
-            for (side.verts.items) |s| {
-                min = min.min(s);
-                max = max.max(s);
-            }
+        for (self.verts.items) |s| {
+            min = min.min(s);
+            max = max.max(s);
         }
         aabb.a = min;
         aabb.b = max;
     }
 
-    //BUG: if the translation of the face causes
     pub fn translateSide(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Context, side_i: usize) !void {
-        const EPS = 0.01; //TODO decide how epsilon is handled;
         if (side_i >= self.sides.items.len) return;
-        //Determine all verticies that are coincident with this one
-        for (self.sides.items[side_i].verts.items) |ver| { //This is n**2
-            for (self.sides.items) |*side| {
-                var is_dirty = false;
-                for (side.verts.items) |*v| {
-                    if (v.distance(ver) < EPS) {
-                        v.* = v.add(vec);
-                        is_dirty = true;
-                    }
-                }
-                if (is_dirty) {
-                    const batch = editor.meshmap.getPtr(side.tex_id) orelse continue;
-                    batch.*.is_dirty = true;
+        for (self.sides.items[side_i].index.items) |ind| {
+            self.verts.items[ind] = self.verts.items[ind].add(vec);
+        }
 
-                    //ensure this is in batch
-                    try batch.*.contains.put(id, {});
-                }
-            }
+        for (self.sides.items) |*side| {
+            const batch = editor.meshmap.getPtr(side.tex_id) orelse continue;
+            batch.*.is_dirty = true;
+
+            //ensure this is in batch
+            try batch.*.contains.put(id, {});
         }
         try editor.rebuildMeshesIfDirty();
     }
@@ -423,10 +406,10 @@ pub const Solid = struct {
         //move all verts, recompute bounds
         //for each batchid, call rebuild
 
+        for (self.verts.items) |*vert| {
+            vert.* = vert.add(vec);
+        }
         for (self.sides.items) |*side| {
-            for (side.verts.items) |*vert| {
-                vert.* = vert.add(vec);
-            }
             side.u.trans = side.u.trans - (vec.dot(side.u.axis)) / side.u.scale;
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
         }
@@ -443,6 +426,24 @@ pub const Solid = struct {
         try editor.rebuildMeshesIfDirty();
     }
 
+    pub fn drawEdgeOutline(self: *Self, draw: *DrawCtx, edge_color: u32, point_color: u32, vec: Vec3) void {
+        const v = self.verts.items;
+        for (self.sides.items) |side| {
+            if (side.index.items.len < 3) continue;
+            const ind = side.index.items;
+
+            var last = v[ind[ind.len - 1]].add(vec);
+            for (0..ind.len) |ti| {
+                const p = v[ind[ti]].add(vec);
+                if (edge_color > 0)
+                    draw.line3D(last, p, edge_color);
+                if (point_color > 0)
+                    draw.point3D(p, point_color);
+                last = p;
+            }
+        }
+    }
+
     //messy but if side_i is not null, offset only applies to that face
     pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Context, offset: Vec3, side_i: ?usize) !void {
         if (side_i orelse 0 >= self.sides.items.len) return;
@@ -452,24 +453,22 @@ pub const Solid = struct {
                 .texture = editor.getTexture(side.tex_id).id,
                 .camera = ._3d,
             } }) catch return).billboard;
-            try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
-            try batch.indicies.ensureUnusedCapacity(side.index.items.len);
-            const uvs = try editor.csgctx.calcUVCoords(
-                side.verts.items,
+            //try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
+            //try batch.indicies.ensureUnusedCapacity(side.index.items.len);
+            const uvs = try editor.csgctx.calcUVCoordsIndexed(
+                self.verts.items,
+                side.index.items,
                 side,
                 @intCast(side.tw),
                 @intCast(side.th),
             );
             const ioffset = batch.vertices.items.len;
-            for (side.verts.items, 0..) |v, i| {
+            for (side.index.items, 0..) |vi, i| {
+                const v = self.verts.items[vi];
+
                 var off = offset;
                 if (side_i) |s| {
-                    var is_coinc = false;
-                    for (self.sides.items[s].verts.items) |*other| {
-                        if (other.distance(v) < 0.01)
-                            is_coinc = true;
-                    }
-                    if (!is_coinc)
+                    if (std.mem.indexOfScalar(u32, self.sides.items[s].index.items, vi) == null)
                         off = Vec3.zero();
                 }
                 try batch.vertices.append(.{
@@ -485,9 +484,8 @@ pub const Solid = struct {
                     .color = 0xffffffff,
                 });
             }
-            for (side.index.items) |ind| {
-                try batch.indicies.append(ind + @as(u32, @intCast(ioffset)));
-            }
+            const indexs = try editor.csgctx.triangulateIndex(@intCast(side.index.items.len), @intCast(ioffset));
+            try batch.indicies.appendSlice(indexs);
         }
     }
 };
@@ -828,7 +826,10 @@ pub const Context = struct {
             []const u8 => return jw.write(comp),
             vpk.VpkResId => {
                 if (self.vpkctx.namesFromId(comp)) |name| {
-                    return try jw.print("\"{s}/{s}.{s}\"", .{ name.path, name.name, name.ext });
+                    var path = name.path;
+                    if (std.mem.startsWith(u8, path, "materials/"))
+                        path = path["materials/".len..];
+                    return try jw.print("\"{s}/{s}.{s}\"", .{ path, name.name, name.ext });
                 }
                 return try jw.write(null);
             },
@@ -882,7 +883,7 @@ pub const Context = struct {
                 solid.recomputeBounds(bb);
                 for (solid.sides.items) |*side| {
                     const batch = self.meshmap.getPtr(side.tex_id) orelse continue;
-                    try side.rebuild(batch.*, self);
+                    try side.rebuild(solid, batch.*, self);
                 }
             }
         }
@@ -924,7 +925,7 @@ pub const Context = struct {
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
         const new = try self.ecs.createEntity();
-        const newsolid = try self.csgctx.genMesh(
+        const newsolid = try self.csgctx.genMesh2(
             solid.side,
             self.alloc,
             &self.string_storage,
@@ -941,8 +942,16 @@ pub const Context = struct {
                     sp.omit_from_batch = true;
                 const disp_id = try self.ecs.createEntity();
                 var disp_gen = Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
+                const ss = newsolid.sides.items[s_i].index.items;
+                const corners = [4]Vec3{
+                    newsolid.verts.items[ss[0]],
+                    newsolid.verts.items[ss[1]],
+                    newsolid.verts.items[ss[2]],
+                    newsolid.verts.items[ss[3]],
+                };
                 try self.csgctx.genMeshDisplacement(
-                    newsolid.sides.items[s_i].verts.items,
+                    &corners,
+                    //newsolid.sides.items[s_i].verts.items,
                     &side.dispinfo,
                     &disp_gen,
                 );

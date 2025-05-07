@@ -43,12 +43,15 @@ pub const Context = struct {
     clip_winding_sides: std.ArrayList(SideClass),
     clip_winding_dists: std.ArrayList(f64),
 
+    vecmap: VecMap,
+
     pub fn init(alloc: std.mem.Allocator) !@This() {
         return .{
             .alloc = alloc,
             .base_winding = undefined,
             .winding_a = try std.ArrayList(Vec3_64).initCapacity(alloc, INIT_CAPACITY),
             .winding_b = try std.ArrayList(Vec3_64).initCapacity(alloc, INIT_CAPACITY),
+            .vecmap = VecMap.init(alloc),
 
             .triangulate_index = try std.ArrayList(u32).initCapacity(alloc, INIT_CAPACITY),
             .uvs = try std.ArrayList(Vec2).initCapacity(alloc, INIT_CAPACITY),
@@ -61,6 +64,7 @@ pub const Context = struct {
     pub fn deinit(self: *Self) void {
         self.disp_winding.deinit();
         self.winding_a.deinit();
+        self.vecmap.deinit();
         self.winding_b.deinit();
         self.triangulate_index.deinit();
         self.uvs.deinit();
@@ -137,6 +141,72 @@ pub const Context = struct {
         return ret;
     }
 
+    pub fn genMesh2(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage, edit: *editor.Context) !editor.Solid {
+        const MAPSIZE = std.math.maxInt(i32);
+        var timer = try std.time.Timer.start();
+        var ret = editor.Solid.init(alloc);
+        try ret.sides.resize(sides.len);
+
+        self.vecmap.clear();
+
+        for (sides, 0..) |side, si| {
+            const plane = Plane.fromTri(side.plane.tri);
+
+            self.winding_a.clearRetainingCapacity();
+            var wind_a = &self.winding_a;
+            try wind_a.appendSlice(try self.baseWinding(plane, @floatFromInt(MAPSIZE / 2)));
+
+            var wind_b = &self.winding_b;
+
+            for (sides) |subside| {
+                const pl2 = Plane.fromTri(subside.plane.tri);
+                if (plane.norm.dot(pl2.norm) > 1 - EPSILON)
+                    continue;
+
+                try self.clipWinding(wind_a.*, wind_b, pl2);
+                const temp = wind_a;
+                wind_a = wind_b;
+                wind_b = temp;
+            }
+
+            if (wind_a.items.len < 3)
+                continue;
+
+            for (wind_a.items) |*item| {
+                item.* = roundVec(item.*);
+            }
+            //const ret = map.getPtr(side.material) orelse continue;
+
+            const tex = try edit.loadTextureFromVpk(side.material);
+            ret.sides.items[si] = .{
+                .index = std.ArrayList(u32).init(alloc),
+                .material = try strstore.store(side.material),
+                .tex_id = tex.res_id,
+                .u = .{
+                    .axis = side.uaxis.axis,
+                    .trans = @floatCast(side.uaxis.translation),
+                    .scale = @floatCast(side.uaxis.scale),
+                },
+                .v = .{
+                    .axis = side.vaxis.axis,
+                    .trans = @floatCast(side.vaxis.translation),
+                    .scale = @floatCast(side.vaxis.scale),
+                },
+            };
+            //const indexs = try self.triangulate(wind_a.items, 0);
+            //const uvs = try self.calcUVCoords(wind_a.items, side, @intCast(ret.tex.w), @intCast(ret.tex.h));
+            _ = timer.reset();
+            //try ret.sides.items[si].index.appendSlice(indexs);
+            for (wind_a.items) |vert| {
+                const ind = try self.vecmap.put(vert.cast(f32));
+                try ret.sides.items[si].index.append(ind);
+            }
+            gen_time += timer.read();
+        }
+        try ret.verts.appendSlice(self.vecmap.verts.items);
+        return ret;
+    }
+
     pub fn triangulate(self: *Self, winding: []const Vec3_64, offset: u32) ![]const u32 {
         return self.triangulateAny(winding, offset);
     }
@@ -153,6 +223,20 @@ pub const Context = struct {
             try ret.append(ii + offset);
         }
 
+        return ret.items;
+    }
+
+    /// for each vertex defined by index into all_verts, Triangulate
+    pub fn triangulateIndex(self: *Self, count: u32, offset: u32) ![]const u32 {
+        self.triangulate_index.clearRetainingCapacity();
+        const ret = &self.triangulate_index;
+        if (count < 3) return ret.items;
+        for (1..count - 1) |i| {
+            const ii: u32 = @intCast(i);
+            try ret.append(0 + offset);
+            try ret.append(ii + 1 + offset);
+            try ret.append(ii + offset);
+        }
         return ret.items;
     }
 
@@ -205,6 +289,33 @@ pub const Context = struct {
         const tw: f64 = @floatFromInt(tex_w);
         const th: f64 = @floatFromInt(tex_h);
         for (winding) |item| {
+            const uv = Vec2.new(
+                @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
+            );
+            try uvs.append(uv);
+            umin = @min(umin, uv.x());
+            vmin = @min(vmin, uv.y());
+        }
+        const uoff = @floor(umin);
+        const voff = @floor(vmin);
+        for (uvs.items) |*uv| {
+            uv.xMut().* -= uoff;
+            uv.yMut().* -= voff;
+        }
+
+        return uvs.items;
+    }
+
+    pub fn calcUVCoordsIndexed(self: *Self, winding: []const Vec3_32, index: []const u32, side: editor.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+        self.uvs.clearRetainingCapacity();
+        const uvs = &self.uvs;
+        var umin: f32 = std.math.floatMax(f32);
+        var vmin: f32 = std.math.floatMax(f32);
+        const tw: f64 = @floatFromInt(tex_w);
+        const th: f64 = @floatFromInt(tex_h);
+        for (index) |i| {
+            const item = winding[i];
             const uv = Vec2.new(
                 @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
                 @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
@@ -337,6 +448,62 @@ pub const Context = struct {
 pub fn conVec(v: anytype) @TypeOf(v) {
     return @TypeOf(v).new(v.x(), v.z(), -v.y());
 }
+
+const VecMap = struct {
+    const HashCtx = struct {
+        const off = 100;
+        pub fn hash(self: HashCtx, k: Vec3_32) u64 {
+            _ = self;
+            var hasher = std.hash.Wyhash.init(0);
+            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(k.x() * off)));
+            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(k.y() * off)));
+            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(k.z() * off)));
+            return hasher.final();
+        }
+
+        pub fn eql(_: HashCtx, a: Vec3_32, b: Vec3_32) bool {
+            const x: i64 = @intFromFloat(a.x() * off);
+            const y: i64 = @intFromFloat(a.y() * off);
+            const z: i64 = @intFromFloat(a.z() * off);
+
+            const x1: i64 = @intFromFloat(b.x() * off);
+            const y1: i64 = @intFromFloat(b.y() * off);
+            const z1: i64 = @intFromFloat(b.z() * off);
+            return x == x1 and y == y1 and z == z1;
+        }
+    };
+
+    const MapT = std.HashMap(Vec3_32, u32, HashCtx, 80);
+    verts: std.ArrayList(Vec3_32),
+    map: MapT,
+
+    pub fn init(alloc: std.mem.Allocator) @This() {
+        return .{
+            .verts = std.ArrayList(Vec3_32).init(alloc),
+            .map = MapT.init(alloc),
+        };
+    }
+
+    pub fn clear(self: *@This()) void {
+        self.map.clearRetainingCapacity();
+        self.verts.clearRetainingCapacity();
+    }
+
+    pub fn put(self: *@This(), v: Vec3_32) !u32 {
+        const res = try self.map.getOrPut(v);
+        if (!res.found_existing) {
+            const index = self.verts.items.len;
+            try self.verts.append(v);
+            res.value_ptr.* = @intCast(index);
+        }
+        return res.value_ptr.*;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.verts.deinit();
+        self.map.deinit();
+    }
+};
 
 pub fn getGlobalUp(norm: Vec3_64) !Vec3_64 {
     var axis: ?usize = null;

@@ -240,17 +240,17 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             .face_manip => {
                 if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                     var gizmo_is_active = false;
-                    for (solid.sides.items, 0..) |side, s_i| {
-                        const v = side.verts.items;
-                        if (side.verts.items.len > 0) {
-                            var last = side.verts.items[side.verts.items.len - 1];
-                            //const vs = side.verts.items;
-                            for (0..side.verts.items.len) |ti| {
-                                draw_nd.line3D(last, v[ti], 0xf7a94a8f);
-                                draw_nd.point3D(v[ti], 0xff0000ff);
-                                last = v[ti];
-                            }
+                    const v = solid.verts.items;
+                    if (solid.verts.items.len > 0) {
+                        var last = solid.verts.items[solid.verts.items.len - 1];
+                        //const vs = side.verts.items;
+                        for (0..solid.verts.items.len) |ti| {
+                            draw_nd.line3D(last, v[ti], 0xf7a94a8f);
+                            draw_nd.point3D(v[ti], 0xff0000ff);
+                            last = v[ti];
                         }
+                    }
+                    for (solid.sides.items, 0..) |_, s_i| {
                         if (self.edit_state.face_id == s_i) {
                             const origin_i = self.edit_state.face_origin;
                             var origin = origin_i;
@@ -324,17 +324,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                             self.edit_state.trans_begin,
                         );
 
-                        for (solid.sides.items) |side| {
-                            const v = side.verts.items;
-                            if (side.verts.items.len > 0) {
-                                var last = side.verts.items[side.verts.items.len - 1];
-                                for (0..side.verts.items.len) |ti| {
-                                    draw_nd.line3D(last, v[ti], 0xff00ff);
-                                    draw_nd.point3D(v[ti], 0xff0000ff);
-                                    last = v[ti];
-                                }
-                            }
-                        }
+                        solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
                         if (giz_active == .rising) {
                             try solid.removeFromMeshMap(id, self);
                         }
@@ -361,18 +351,15 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                                     null,
                                 );
                             }
-                            for (solid.sides.items) |side| {
-                                const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
-                                const v = side.verts.items;
-                                if (side.verts.items.len > 0) {
-                                    var last = side.verts.items[side.verts.items.len - 1].add(dist);
-                                    for (0..side.verts.items.len) |ti| {
-                                        draw_nd.line3D(last, v[ti].add(dist), color);
-                                        draw_nd.point3D(v[ti].add(dist), 0xff0000ff);
-                                        last = v[ti].add(dist);
-                                    }
-                                }
-                            }
+                            const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
+                            solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
+                            //const v = solid.verts.items;
+                            //var last = v[v.len - 1].add(dist);
+                            //for (0..v.len) |ti| {
+                            //    draw_nd.line3D(last, v[ti].add(dist), color);
+                            //    draw_nd.point3D(v[ti].add(dist), 0xff0000ff);
+                            //    last = v[ti].add(dist);
+                            //}
                             if (self.edit_state.rmouse == .rising) {
                                 if (dupe) {
                                     //Dupe the solid
