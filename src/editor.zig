@@ -517,7 +517,7 @@ pub const Entity = struct {
         if (editor.draw_state.tog.models and dist < editor.draw_state.tog.model_render_dist) {
             if (ent.model_id) |m| {
                 if (editor.models.getPtr(m)) |o_mod| {
-                    if (o_mod.*) |mod| {
+                    if (o_mod.mesh) |mod| {
                         const M4 = graph.za.Mat4;
                         //x: fwd
                         //y:left
@@ -556,7 +556,24 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("solid", Solid),
     Comp("entity", Entity),
     Comp("displacement", Displacement),
+    //Comp("model"),
 });
+
+const Model = struct {
+    mesh: ?*vvd.MultiMesh = null,
+
+    pub fn initEmpty(_: std.mem.Allocator) @This() {
+        return .{ .mesh = null };
+    }
+
+    //Alloc  allocated meshptr
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        if (self.mesh) |mm| {
+            mm.deinit();
+            alloc.destroy(mm);
+        }
+    }
+};
 
 const log = std.log.scoped(.rathammer);
 pub const Context = struct {
@@ -577,7 +594,7 @@ pub const Context = struct {
     icon_map: std.StringHashMap(graph.Texture),
 
     textures: std.AutoHashMap(vpk.VpkResId, graph.Texture),
-    models: std.AutoHashMap(vpk.VpkResId, ?*vvd.MultiMesh),
+    models: std.AutoHashMap(vpk.VpkResId, Model),
     skybox: Skybox,
 
     asset_browser: assetbrowse.AssetBrowserGui,
@@ -708,7 +725,7 @@ pub const Context = struct {
             .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
-            .models = std.AutoHashMap(vpk.VpkResId, ?*vvd.MultiMesh).init(alloc),
+            .models = std.AutoHashMap(vpk.VpkResId, Model).init(alloc),
             .texture_load_ctx = try texture_load_thread.Context.init(alloc, num_threads),
             .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
@@ -763,10 +780,7 @@ pub const Context = struct {
         self.skybox.deinit();
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {
-            if (m.*) |mm| {
-                mm.deinit();
-                self.alloc.destroy(mm);
-            }
+            m.deinit(self.alloc);
         }
         self.models.deinit();
         self.textures.deinit();
@@ -1208,21 +1222,9 @@ pub const Context = struct {
         const mod = try self.storeString(model_name);
         const res_id = try self.modelIdFromName(mod) orelse return error.noMdl;
         if (self.models.get(res_id)) |_| return res_id; //Don't load model twice!
-        try self.models.put(res_id, null);
+        try self.models.put(res_id, Model.initEmpty(self.alloc));
         try self.texture_load_ctx.loadModel(res_id, mod, &self.vpkctx);
         return res_id;
-    }
-
-    pub fn loadModelOld(self: *Self, model_name: []const u8) !*vvd.MultiMesh {
-        const res_id = try self.modelIdFromName(model_name) orelse return error.noMdl;
-        if (self.models.getPtr(res_id)) |ptr| return ptr;
-
-        const mod = try self.storeString(model_name);
-
-        const mesh = try vvd.loadModelCrappy(self.alloc, mod, self);
-        try self.models.put(res_id, mesh);
-        if (self.models.getPtr(res_id)) |ptr| return ptr;
-        unreachable;
     }
 
     pub fn storeString(self: *Self, string: []const u8) ![]const u8 {
@@ -1298,7 +1300,7 @@ pub const Context = struct {
             for (self.texture_load_ctx.completed_models.items) |*completed| {
                 var model = completed.mesh;
                 model.initGl();
-                try self.models.put(completed.res_id, model);
+                try self.models.put(completed.res_id, .{ .mesh = model });
                 for (completed.texture_ids.items) |tid| {
                     try self.texture_load_ctx.addNotify(tid, &completed.mesh.notify_vt);
                 }

@@ -199,8 +199,8 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             // do a raycast into the world and draw a model at nearest intersection with solid
             if (self.asset_browser.selected_model_vpk_id) |res_id| {
                 const omod = self.models.get(res_id);
-                if (omod != null and omod.? != null) {
-                    const mod = omod.?.?;
+                if (omod != null and omod.?.mesh != null) {
+                    const mod = omod.?.mesh.?;
                     const pot = self.screenRay(screen_area, view_3d);
                     if (pot.len > 0) {
                         const p = pot[0];

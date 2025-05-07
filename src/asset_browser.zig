@@ -134,7 +134,7 @@ pub const AssetBrowserGui = struct {
             //try name_buf.writer().print("models/{s}/{s}.mdl", .{ modname[0], modname[1] });
             //draw.cube(Vec3.new(0, 0, 0), Vec3.new(10, 10, 10), 0xffffffff);
             if (editor.models.get(modid)) |mod| {
-                if (mod) |mm| {
+                if (mod.mesh) |mm| {
                     const view = self.model_cam.getMatrix(sp.w / sp.h, 1, 64 * 512);
                     const mat = graph.za.Mat4.identity();
                     mm.drawSimple(view, mat, editor.draw_state.basic_shader);
