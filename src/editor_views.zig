@@ -240,16 +240,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             .face_manip => {
                 if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                     var gizmo_is_active = false;
-                    const v = solid.verts.items;
-                    if (solid.verts.items.len > 0) {
-                        var last = solid.verts.items[solid.verts.items.len - 1];
-                        //const vs = side.verts.items;
-                        for (0..solid.verts.items.len) |ti| {
-                            draw_nd.line3D(last, v[ti], 0xf7a94a8f);
-                            draw_nd.point3D(v[ti], 0xff0000ff);
-                            last = v[ti];
-                        }
-                    }
+                    solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
                     for (solid.sides.items, 0..) |_, s_i| {
                         if (self.edit_state.face_id == s_i) {
                             const origin_i = self.edit_state.face_origin;
@@ -353,13 +344,6 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
                             }
                             const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
                             solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
-                            //const v = solid.verts.items;
-                            //var last = v[v.len - 1].add(dist);
-                            //for (0..v.len) |ti| {
-                            //    draw_nd.line3D(last, v[ti].add(dist), color);
-                            //    draw_nd.point3D(v[ti].add(dist), 0xff0000ff);
-                            //    last = v[ti].add(dist);
-                            //}
                             if (self.edit_state.rmouse == .rising) {
                                 if (dupe) {
                                     //Dupe the solid

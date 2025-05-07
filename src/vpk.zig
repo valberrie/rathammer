@@ -420,6 +420,25 @@ pub const Context = struct {
         return self.getResourceId(ext, sl[0..slash], sl[slash + 1 ..]);
     }
 
+    pub fn getResourceIdString(self: *Self, name: []const u8) !?VpkResId {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.split_buf.clearRetainingCapacity();
+        _ = try self.split_buf.writer().write(name);
+        sanatizeVpkString(self.split_buf.items);
+        //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
+        const sl = self.split_buf.items;
+        const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;
+        const dot = std.mem.lastIndexOfScalar(u8, sl, '.') orelse return error.noExt;
+
+        const path = sl[0..slash];
+        const ext = sl[dot + 1 ..]; //Eat the dot
+        const name_ = sl[slash + 1 .. dot];
+
+        std.debug.print("{s} {s} {s}\n", .{ ext, path, name_ });
+        return self.getResourceId(ext, path, name_);
+    }
+
     /// Thread safe
     pub fn getFileFromRes(self: *Self, res_id: VpkResId, buf: *std.ArrayList(u8)) !?[]const u8 {
         self.mutex.lock();

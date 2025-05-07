@@ -119,15 +119,15 @@ pub const MeshBatch = struct {
 pub const MeshMap = std.AutoHashMap(vpk.VpkResId, *MeshBatch);
 pub const Side = struct {
     pub const UVaxis = struct {
-        axis: Vec3,
-        trans: f32,
-        scale: f32,
+        axis: Vec3 = Vec3.zero(),
+        trans: f32 = 0,
+        scale: f32 = 0.25,
     };
     //Used to disable when a displacment is created on a side
     omit_from_batch: bool = false,
-    index: std.ArrayList(u32),
-    u: UVaxis,
-    v: UVaxis,
+    index: std.ArrayList(u32) = undefined,
+    u: UVaxis = .{},
+    v: UVaxis = .{},
     tex_id: vpk.VpkResId = 0,
     tw: i32 = 0,
     th: i32 = 0,
@@ -135,7 +135,7 @@ pub const Side = struct {
     /// This field is allocated by StringStorage.
     /// It is only used to keep track of textures that are missing, so they are persisted across save/load.
     /// the actual material assigned is stored in `tex_id`
-    material: []const u8,
+    material: []const u8 = "",
     pub fn deinit(self: @This()) void {
         self.index.deinit();
     }
@@ -179,13 +179,13 @@ pub const Side = struct {
     pub fn serial(self: @This(), editor: *Context, jw: anytype) !void {
         try jw.beginObject();
         {
-            //try jw.objectField("verts");
-            //try editor.writeComponentToJson(jw, self.verts);
+            try jw.objectField("index");
+            try editor.writeComponentToJson(jw, self.index);
             try jw.objectField("u");
             try editor.writeComponentToJson(jw, self.u);
             try jw.objectField("v");
             try editor.writeComponentToJson(jw, self.v);
-            try jw.objectField("tex");
+            try jw.objectField("tex_id");
             try editor.writeComponentToJson(jw, self.tex_id);
         }
         try jw.endObject();
@@ -203,16 +203,20 @@ pub const AABB = struct {
         self.a = self.a.add(delta);
         self.b = self.b.add(delta);
     }
+
+    pub fn initFromJson(_: std.json.Value, _: anytype) !@This() {
+        return error.notAllowed;
+    }
 };
 
 pub const Displacement = struct {
     const Self = @This();
-    verts: std.ArrayList(Vec3),
-    index: std.ArrayList(u32),
-    tex_id: vpk.VpkResId,
-    parent_id: EcsT.Id,
-    parent_side_i: usize,
-    power: u32,
+    verts: std.ArrayList(Vec3) = undefined,
+    index: std.ArrayList(u32) = undefined,
+    tex_id: vpk.VpkResId = 0,
+    parent_id: EcsT.Id = 0,
+    parent_side_i: usize = 0,
+    power: u32 = 0,
 
     pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_: EcsT.Id, parent_s: usize, dispinfo: *const vmf.DispInfo) Self {
         return .{
@@ -281,14 +285,19 @@ pub const Displacement = struct {
 
 pub const Solid = struct {
     const Self = @This();
-    sides: std.ArrayList(Side),
-    verts: std.ArrayList(Vec3),
+    sides: std.ArrayList(Side) = undefined,
+    verts: std.ArrayList(Vec3) = undefined,
 
     /// Bounding box is used during broad phase ray tracing
     /// they are recomputed along with vertex arrays
     pub fn init(alloc: std.mem.Allocator) Solid {
         return .{ .sides = std.ArrayList(Side).init(alloc), .verts = std.ArrayList(Vec3).init(alloc) };
     }
+
+    //pub fn initFromJson(v: std.json.Value, editor: *Context) !@This() {
+    //    //var ret = init(editor.alloc);
+    //    return editor.readComponentFromJson(v, Self);
+    //}
 
     pub fn dupe(self: *const Self) !Self {
         const ret_sides = try self.sides.clone();
@@ -320,14 +329,14 @@ pub const Solid = struct {
         };
         //All ccw
         const vis = [6][4]u32{
-            .{ 3, 2, 1, 0 }, //-z
-            .{ 4, 5, 6, 7 }, //+z
+            .{ 0, 1, 2, 3 }, //-z
+            .{ 7, 6, 5, 4 }, //+z
             //
-            .{ 0, 4, 7, 3 }, //-x
-            .{ 1, 2, 6, 5 }, //+x
+            .{ 3, 7, 4, 0 }, //-x
+            .{ 5, 6, 2, 1 }, //+x
             //
-            .{ 0, 1, 5, 4 }, //-y
-            .{ 2, 3, 7, 6 }, //+y
+            .{ 4, 5, 1, 0 }, //-y
+            .{ 6, 7, 3, 2 }, //+y
         };
         //+y, -x is broken both ways
         //-y, +x is broken only y
@@ -491,9 +500,9 @@ pub const Solid = struct {
 };
 
 pub const Entity = struct {
-    origin: Vec3,
-    angle: Vec3,
-    class: []const u8,
+    origin: Vec3 = Vec3.zero(),
+    angle: Vec3 = Vec3.zero(),
+    class: []const u8 = "",
     model: ?[]const u8 = null,
     model_id: ?vpk.VpkResId = null,
     sprite: ?vpk.VpkResId = null,
@@ -787,7 +796,7 @@ pub const Context = struct {
         const wr = outfile.writer();
         var bwr = std.io.bufferedWriter(wr);
         const bb = bwr.writer();
-        var jwr = std.json.writeStream(bb, .{ .whitespace = .indent_4 });
+        var jwr = std.json.writeStream(bb, .{});
         try jwr.beginObject();
         {
             try jwr.objectField("objects");
@@ -817,6 +826,76 @@ pub const Context = struct {
         }
         //Men I trust, men that rust
         try jwr.endObject();
+        try bwr.flush();
+    }
+
+    fn readComponentFromJson(self: *Self, v: std.json.Value, T: type) !T {
+        const info = @typeInfo(T);
+        switch (T) {
+            []const u8 => {
+                if (v != .string) return error.value;
+                return try self.string_storage.store(v.string);
+            },
+            Vec3 => {
+                if (v != .string) return error.value;
+                var it = std.mem.splitScalar(u8, v.string, ' ');
+                const x = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                const y = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                const z = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                return Vec3.new(x, y, z);
+            },
+            Side.UVaxis => {
+                if (v != .string) return error.value;
+                var it = std.mem.splitScalar(u8, v.string, ' ');
+                const x = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                const y = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                const z = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                const tr = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                const sc = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
+                return .{
+                    .axis = Vec3.new(x, y, z),
+                    .trans = tr,
+                    .scale = sc,
+                };
+            },
+            vpk.VpkResId => {
+                if (v != .string) return error.value;
+                const id = try self.vpkctx.getResourceIdString(v.string);
+                return id orelse return error.broken;
+            },
+            else => {},
+        }
+        switch (info) {
+            .Bool, .Float, .Int => return try std.json.innerParseFromValue(T, self.alloc, v, .{}),
+            .Struct => |s| {
+                if (std.meta.hasFn(T, "initFromJson")) {
+                    return try T.initFromJson(v, self);
+                }
+                if (vdf.getArrayListChild(T)) |child| {
+                    var ret = std.ArrayList(child).init(self.alloc);
+                    if (v != .array) return error.value;
+                    for (v.array.items) |item|
+                        try ret.append(try self.readComponentFromJson(item, child));
+
+                    return ret;
+                }
+                if (v != .object) return error.value;
+                var ret: T = .{};
+                inline for (s.fields) |field| {
+                    if (v.object.get(field.name)) |val| {
+                        @field(ret, field.name) = try self.readComponentFromJson(val, field.type);
+                    }
+                }
+                return ret;
+            },
+            .Optional => |o| {
+                if (v == .null)
+                    return null;
+                return try self.readComponentFromJson(v, o.child);
+            },
+            else => {},
+        }
+        @compileError("not sup " ++ @typeName(T));
     }
 
     fn writeComponentToJson(self: *Self, jw: anytype, comp: anytype) !void {
@@ -826,10 +905,7 @@ pub const Context = struct {
             []const u8 => return jw.write(comp),
             vpk.VpkResId => {
                 if (self.vpkctx.namesFromId(comp)) |name| {
-                    var path = name.path;
-                    if (std.mem.startsWith(u8, path, "materials/"))
-                        path = path["materials/".len..];
-                    return try jw.print("\"{s}/{s}.{s}\"", .{ path, name.name, name.ext });
+                    return try jw.print("\"{s}/{s}.{s}\"", .{ name.path, name.name, name.ext });
                 }
                 return try jw.write(null);
             },
@@ -881,10 +957,7 @@ pub const Context = struct {
             while (it.next()) |solid| {
                 const bb = (try self.ecs.getOptPtr(it.i, .bounding_box)) orelse continue;
                 solid.recomputeBounds(bb);
-                for (solid.sides.items) |*side| {
-                    const batch = self.meshmap.getPtr(side.tex_id) orelse continue;
-                    try side.rebuild(solid, batch.*, self);
-                }
+                try solid.rebuild(it.i, self);
             }
         }
         {
@@ -907,15 +980,18 @@ pub const Context = struct {
     pub fn getOrPutMeshBatch(self: *Self, res_id: vpk.VpkResId) !*MeshBatch {
         const res = try self.meshmap.getOrPut(res_id);
         if (!res.found_existing) {
+            const tex = self.getTexture(res_id);
             res.value_ptr.* = try self.alloc.create(MeshBatch);
             res.value_ptr.*.* = .{
                 .notify_vt = .{ .notify_fn = &MeshBatch.notify },
-                .tex = self.getTexture(res_id),
+                .tex = tex,
                 .tex_res_id = res_id,
                 .mesh = undefined,
                 .contains = std.AutoHashMap(EcsT.Id, void).init(self.alloc),
             };
             res.value_ptr.*.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.*.tex.id);
+            if (tex.id == missingTexture().id)
+                try self.loadTexture(res_id);
 
             try self.texture_load_ctx.addNotify(res_id, &res.value_ptr.*.notify_vt);
         }
@@ -987,6 +1063,56 @@ pub const Context = struct {
         return self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false) catch &.{};
     }
 
+    pub fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        var timer = try std.time.Timer.start();
+        defer log.info("Loaded json in {d}ms", .{timer.read() / std.time.ns_per_ms});
+        const infile = try path.openFile(filename, .{});
+        defer infile.close();
+
+        const slice = try infile.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
+        defer self.alloc.free(slice);
+        var aa = std.heap.ArenaAllocator.init(self.alloc);
+        defer aa.deinit();
+        var parsed = try std.json.parseFromSlice(std.json.Value, self.alloc, slice, .{});
+        defer parsed.deinit();
+        loadctx.cb("json parsed");
+        if (parsed.value != .object)
+            return error.invalidMap;
+
+        const obj_o = parsed.value.object.get("objects") orelse return error.invalidMap;
+        if (obj_o != .array) return error.invalidMap;
+
+        loadctx.expected_cb = obj_o.array.items.len + 10;
+        for (obj_o.array.items, 0..) |val, i| {
+            if (val != .object) return error.invalidMap;
+            const id = (val.object.get("id") orelse return error.invalidMap).integer;
+            var it = val.object.iterator();
+            outer: while (it.next()) |data| {
+                if (std.mem.eql(u8, "id", data.key_ptr.*)) continue;
+                inline for (EcsT.Fields, 0..) |field, f_i| {
+                    if (std.mem.eql(u8, field.name, data.key_ptr.*)) {
+                        const comp = try self.readComponentFromJson(data.value_ptr.*, field.ftype);
+                        try self.ecs.attachComponentAndCreate(@intCast(id), @enumFromInt(f_i), comp);
+
+                        continue :outer;
+                    }
+                }
+
+                return error.invalidKey;
+            }
+            loadctx.printCb("Ent parsed {d} / {d}", .{ i, obj_o.array.items.len });
+        }
+        loadctx.cb("Building meshes}");
+        {
+            var it = self.ecs.iterator(.solid);
+            while (it.next()) |item| {
+                _ = item;
+                try self.ecs.attach(it.i, .bounding_box, .{});
+            }
+        }
+        try self.rebuildAllMeshes();
+    }
+
     pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         var timer = try std.time.Timer.start();
         defer log.info("Loaded vmf in {d}ms", .{timer.read() / std.time.ns_per_ms});
@@ -1004,6 +1130,7 @@ pub const Context = struct {
         const count = vdf.countUnvisited(&obj.value);
         std.debug.print("num {d}\n", .{count});
         {
+            loadctx.expected_cb = vmf_.world.solid.len + vmf_.entity.len + 10;
             var gen_timer = try std.time.Timer.start();
             for (vmf_.world.solid, 0..) |solid, si| {
                 try self.putSolidFromVmf(solid);
@@ -1215,10 +1342,12 @@ pub const LoadCtx = struct {
     cb_count: usize = 0,
 
     pub fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
+        self.cb_count += 1;
         //No need for high fps when loading, this is 15fps
         if (self.timer.read() / std.time.ns_per_ms < 66) {
             return;
         }
+        self.cb_count -= 1;
         var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
         fbs.writer().print(fmt, args) catch return;
         self.cb(fbs.getWritten());
@@ -1261,7 +1390,8 @@ pub const LoadCtx = struct {
             .{},
             self.os9gui.font,
         );
-        self.os9gui.gui.drawRectFilled(pbar.split(.vertical, pbar.w * perc)[0], 0xf7a41dff);
+        const p = @min(1, perc);
+        self.os9gui.gui.drawRectFilled(pbar.split(.vertical, pbar.w * p)[0], 0xf7a41dff);
         //self.draw.rectTex(sr, self.splash.rect(), self.splash);
         //self.draw.text(
         //    tbox.pos(),

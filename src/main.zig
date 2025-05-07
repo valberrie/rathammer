@@ -69,9 +69,20 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     editor.draw_state.cam3d.fov = config.window.cam_fov;
 
-    try editor.loadVmf(std.fs.cwd(), args.vmf orelse "sdk_materials.vmf", &loadctx);
+    if (args.vmf) |mapname| {
+        if (std.mem.endsWith(u8, mapname, ".json")) {
+            try editor.loadJson(std.fs.cwd(), mapname, &loadctx);
+            try editor.writeToJson(std.fs.cwd(), "serial2.json");
+        } else {
+            try editor.loadVmf(std.fs.cwd(), mapname, &loadctx);
+            try editor.writeToJson(std.fs.cwd(), "serial.json");
+        }
+    } else {
+        try editor.loadVmf(std.fs.cwd(), "sdk_materials.vmf", &loadctx);
+        try editor.writeToJson(std.fs.cwd(), "serial.json");
+    }
+
     //TODO with assets loaded dynamically, names might not be correct
-    try editor.writeToJson(std.fs.cwd(), "serial.json");
 
     loadctx.time = loadctx.gtimer.read();
 
@@ -306,7 +317,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 0 }){};
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 4 }){};
     const alloc = gpa.allocator();
     var arg_it = try std.process.argsWithAllocator(alloc);
     defer arg_it.deinit();
