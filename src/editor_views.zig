@@ -121,93 +121,11 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             }
         },
         .cube_draw => {
-            const st = &self.edit_state.cube_draw;
-            if (self.edit_state.last_frame_state != .cube_draw) { //First frame, reset state
-                st.state = .start;
-            }
-            const helper = struct {
-                fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
-                    //const cpos = inter;
-                    const cpos = snapV3(inter, snap);
-                    const nline: f32 = @floatFromInt(count);
-
-                    const iline2: f32 = @floatFromInt(count / 2);
-
-                    const oth = @trunc(nline * snap / 2);
-                    for (0..count) |n| {
-                        const fnn: f32 = @floatFromInt(n);
-                        {
-                            const start = Vec3.new((fnn - iline2) * snap + cpos.x(), cpos.y() - oth, plane_z);
-                            const end = start.add(Vec3.new(0, 2 * oth, 0));
-                            d.line3D(start, end, 0xffffffff);
-                        }
-                        const start = Vec3.new(cpos.x() - oth, (fnn - iline2) * snap + cpos.y(), plane_z);
-                        const end = start.add(Vec3.new(2 * oth, 0, 0));
-                        d.line3D(start, end, 0xffffffff);
-                    }
-                    //d.point3D(cpos, 0xff0000ee);
-                }
-            };
-            const snap = self.edit_state.grid_snap;
-            const ray = self.camRay(screen_area, view_3d);
-            switch (st.state) {
-                .start => {
-                    if (win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising))
-                        st.plane_z += snap;
-                    if (win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising))
-                        st.plane_z -= snap;
-                    if (win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high)) {
-                        const pot = self.screenRay(screen_area, view_3d);
-                        if (pot.len > 0) {
-                            const inter = pot[0].point;
-                            const cc = snapV3(inter, snap);
-                            helper.drawGrid(inter, cc.z(), draw, snap, 11);
-                            if (self.edit_state.lmouse == .rising) {
-                                st.plane_z = cc.z();
-                            }
-                        }
-                    } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                        //user has a xy plane
-                        //can reposition using keys or doing a raycast into world
-                        helper.drawGrid(inter, st.plane_z, draw, snap, 11);
-
-                        const cc = snapV3(inter, snap);
-                        draw.point3D(cc, 0xff0000ee);
-
-                        if (self.edit_state.lmouse == .rising) {
-                            st.start = cc;
-                            st.state = .planar;
-                        }
-                    }
-                },
-                .planar => {
-                    if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                        helper.drawGrid(inter, st.plane_z, draw, snap, 11);
-                        const in = snapV3(inter, snap);
-                        const cc = cubeFromBounds(st.start, in.add(Vec3.new(0, 0, snap)));
-                        draw.cube(cc[0], cc[1], 0xffffff88);
-
-                        if (self.edit_state.lmouse == .rising) {
-                            st.state = .cubic;
-                            st.end = in;
-                            st.end.data[2] += snap;
-
-                            //Put it into the
-                            const new = try self.ecs.createEntity();
-                            const newsolid = try Solid.initFromCube(self.alloc, st.start, st.end, self.asset_browser.selected_mat_vpk_id orelse 0);
-                            try self.ecs.attach(new, .solid, newsolid);
-                            try self.ecs.attach(new, .bounding_box, .{});
-                            const solid_ptr = try self.ecs.getPtr(new, .solid);
-                            try solid_ptr.translate(new, Vec3.zero(), self);
-                        }
-                    }
-                },
-                .cubic => {
-                    //const cc = cubeFromBounds(st.start, st.end);
-                    //draw.cube(cc[0], cc[1], 0xffffff88);
-                    //draw.cube(st.start, st.end.sub(st.start), 0xffffffee);
-                },
-            }
+            try tools.cubeDraw(self, .{ .screen_area = screen_area, .view_3d = &view_3d, .draw = draw }, .{
+                .plane_up = win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising),
+                .plane_down = win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising),
+                .send_raycast = win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high),
+            });
         },
         .model_place => {
             // if self.asset_browser.selected_model_vpk_id exists,

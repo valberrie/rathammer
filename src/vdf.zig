@@ -1,7 +1,7 @@
 const std = @import("std");
 const graph = @import("graph");
 const StringStorage = @import("string.zig").StringStorage;
-const track_visited = true;
+const track_visited = false;
 pub const Vec3 = graph.za.Vec3_f64;
 pub const KV = struct {
     pub const Value = union(enum) { literal: []const u8, obj: *Object };

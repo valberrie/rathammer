@@ -413,6 +413,7 @@ pub const Solid = struct {
         }
         const bb = try editor.ecs.getPtr(id, .bounding_box);
         self.recomputeBounds(bb);
+        editor.draw_state.meshes_dirty = true;
     }
 
     pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Context) !void {
@@ -1156,8 +1157,6 @@ pub const Context = struct {
         loadctx.cb("vmf parsed");
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
         try self.skybox.loadSky(vmf_.world.skyname, &self.vpkctx);
-        const count = vdf.countUnvisited(&obj.value);
-        std.debug.print("num {d}\n", .{count});
         {
             loadctx.expected_cb = vmf_.world.solid.len + vmf_.entity.len + 10;
             var gen_timer = try std.time.Timer.start();

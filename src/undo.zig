@@ -11,6 +11,7 @@ const Vec3 = graph.za.Vec3;
 //redo calls redo on stack poniter and decrements
 //push clear anything after the stack pointer
 
+/// See "UndoTemplate" for an example of implementation
 pub const iUndo = struct {
     const Vt = @This();
     undo_fn: *const fn (*Vt, *Editor) void,
@@ -46,6 +47,9 @@ pub const UndoContext = struct {
         };
     }
 
+    /// The returned array list should be treated as a stack.
+    /// Each call to UndoContext.undo/redo will apply all the items in the arraylist at index stack_pointer.
+    /// That is, the last item appended is the first item undone and the last redone.
     pub fn pushNew(self: *Self) !*std.ArrayList(*iUndo) {
         if (self.stack_pointer > self.stack.items.len)
             self.stack_pointer = self.stack.items.len; // Sanity
@@ -246,6 +250,45 @@ pub const UndoSolidFaceTranslate = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
             solid.translateSide(self.id, self.offset, editor, self.side_id) catch return;
+        }
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
+
+/// Rather than actually creating/deleting entities, this just unsleeps/sleeps them
+/// On map serial, slept entities are omitted
+/// Sleep/unsleep is idempotent so no need to sleep before calling applyAll
+pub const UndoCreate = struct {
+    vt: iUndo,
+
+    id: Id,
+
+    pub fn create(alloc: std.mem.Allocator, id: Id) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .id = id,
+        };
+        return &obj.vt;
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.removeFromMeshMap(self.id, editor) catch return;
+        }
+        editor.ecs.sleepEntity(self.id) catch return;
+    }
+
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        editor.ecs.wakeEntity(self.id) catch return;
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.rebuild(self.id, editor) catch return;
         }
     }
 
