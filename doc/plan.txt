@@ -31,6 +31,12 @@ Features
         This should probably wait until after we have decided how all entities are stored.
         Check if real Hammer will read vmf's with unix line endings
 
+        Okay, we will use our json format to store serialized maps.
+            Write a map.json -> vmf converter (harder)
+            Write a map.json -> obj converter (easy)
+
+            Decide if we store floats as base64
+
         Support loading arbitrary kvs from vmf. 
         create a vdf_map component and associate it with entities.
 

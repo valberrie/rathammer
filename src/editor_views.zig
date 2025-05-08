@@ -12,6 +12,7 @@ const AABB = Editor.AABB;
 const raycast = @import("raycast_solid.zig");
 const Gui = graph.Gui;
 const fgd = @import("fgd.zig");
+const undo = @import("undo.zig");
 
 pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, font: *graph.FontInterface) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
@@ -74,11 +75,25 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     if (self.edit_state.btn_x_trans == .rising or self.edit_state.btn_y_trans == .rising)
         self.edit_state.state = .face_manip;
 
+    if (win.isBindState(self.config.keys.undo.b, .rising)) {
+        if (win.keyHigh(.LSHIFT)) {
+            self.undoctx.redo(self);
+        } else {
+            self.undoctx.undo(self);
+        }
+    }
+
     if (win.isBindState(self.config.keys.select.b, .rising)) {
         self.edit_state.state = .select;
         const pot = self.screenRay(screen_area, view_3d);
         if (pot.len > 0) {
+            const ustack = try self.undoctx.pushNew();
+            if (self.edit_state.id) |last_id| {
+                try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .deselect, last_id));
+            }
             self.edit_state.id = pot[0].id;
+            try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .select, pot[0].id));
+            //try self.undoctx.push(try undo.SelectionUndo.create(self.undoctx.alloc, .select, pot[0].id));
         }
         //var rcast_timer = try std.time.Timer.start();
         //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});

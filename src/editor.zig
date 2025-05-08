@@ -22,6 +22,7 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const texture_load_thread = @import("texture_load_thread.zig");
 const assetbrowse = @import("asset_browser.zig");
 const Conf = @import("config.zig");
+const undo = @import("undo.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -589,6 +590,7 @@ pub const Context = struct {
     alloc: std.mem.Allocator,
     name_arena: std.heap.ArenaAllocator,
     string_storage: StringStorage,
+    undoctx: undo.UndoContext,
 
     fgd_ctx: fgd.EntCtx,
     icon_map: std.StringHashMap(graph.Texture),
@@ -716,6 +718,7 @@ pub const Context = struct {
             .config = config,
             .alloc = alloc,
             .fgd_ctx = fgd.EntCtx.init(alloc),
+            .undoctx = undo.UndoContext.init(alloc),
             .string_storage = StringStorage.init(alloc),
             .asset_browser = assetbrowse.AssetBrowserGui.init(alloc),
             .name_arena = std.heap.ArenaAllocator.init(alloc),
@@ -767,6 +770,7 @@ pub const Context = struct {
 
     pub fn deinit(self: *Self) void {
         self.tool_res_map.deinit();
+        self.undoctx.deinit();
         self.ecs.deinit();
         self.fgd_ctx.deinit();
         self.icon_map.deinit();
@@ -923,7 +927,7 @@ pub const Context = struct {
                 }
                 return try jw.write(null);
             },
-            Vec3 => return jw.print("\"{} {} {}\"", .{ comp.x(), comp.y(), comp.z() }),
+            Vec3 => return jw.print("\"{e} {e} {e}\"", .{ comp.x(), comp.y(), comp.z() }),
             Side.UVaxis => return jw.print("\"{} {} {} {} {}\"", .{ comp.axis.x(), comp.axis.y(), comp.axis.z(), comp.trans, comp.scale }),
             else => {},
         }
