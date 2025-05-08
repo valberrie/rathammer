@@ -13,6 +13,7 @@ const raycast = @import("raycast_solid.zig");
 const Gui = graph.Gui;
 const fgd = @import("fgd.zig");
 const undo = @import("undo.zig");
+const tools = @import("tools.zig");
 
 pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, font: *graph.FontInterface) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
@@ -55,7 +56,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     {
         var ent_it = self.ecs.iterator(.entity);
         while (ent_it.next()) |ent| {
-            ent.drawEnt(self, view_3d, draw, draw_nd);
+            ent.drawEnt(self, view_3d, draw, draw_nd, .{});
         }
     }
     { //sky stuff
@@ -76,11 +77,10 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         self.edit_state.state = .face_manip;
 
     if (win.isBindState(self.config.keys.undo.b, .rising)) {
-        if (win.keyHigh(.LSHIFT)) {
-            self.undoctx.redo(self);
-        } else {
-            self.undoctx.undo(self);
-        }
+        self.undoctx.undo(self);
+    }
+    if (win.isBindState(self.config.keys.redo.b, .rising)) {
+        self.undoctx.redo(self);
     }
 
     if (win.isBindState(self.config.keys.select.b, .rising)) {
@@ -213,38 +213,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             // if self.asset_browser.selected_model_vpk_id exists,
             // do a raycast into the world and draw a model at nearest intersection with solid
             if (self.asset_browser.selected_model_vpk_id) |res_id| {
-                const omod = self.models.get(res_id);
-                if (omod != null and omod.?.mesh != null) {
-                    const mod = omod.?.mesh.?;
-                    const pot = self.screenRay(screen_area, view_3d);
-                    if (pot.len > 0) {
-                        const p = pot[0];
-                        const point = snapV3(p.point, self.edit_state.grid_snap);
-                        const mat1 = graph.za.Mat4.fromTranslate(point);
-                        //zyx
-                        //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-                        mod.drawSimple(view_3d, mat1, self.draw_state.basic_shader);
-                        //Draw the model at
-                        if (self.edit_state.lmouse == .rising) {
-                            const new = try self.ecs.createEntity();
-                            var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
-                            bb.origin_offset = mod.hull_min.scale(-1);
-                            bb.a = mod.hull_min;
-                            bb.b = mod.hull_max;
-                            bb.setFromOrigin(point);
-                            try self.ecs.attach(new, .entity, .{
-                                .origin = point,
-                                .angle = Vec3.zero(),
-                                .class = try self.storeString("prop_static"),
-                                .model = null,
-                                //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
-                                .model_id = res_id,
-                                .sprite = null,
-                            });
-                            try self.ecs.attach(new, .bounding_box, bb);
-                        }
-                    }
-                }
+                try tools.modelPlace(self, res_id, screen_area, view_3d);
             }
         },
     }
@@ -253,166 +222,14 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         switch (self.edit_state.state) {
             else => {},
             .face_manip => {
-                if (try self.ecs.getOptPtr(id, .solid)) |solid| {
-                    var gizmo_is_active = false;
-                    solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
-                    for (solid.sides.items, 0..) |_, s_i| {
-                        if (self.edit_state.face_id == s_i) {
-                            const origin_i = self.edit_state.face_origin;
-                            var origin = origin_i;
-                            const giz_active = self.edit_state.gizmo.handle(
-                                origin,
-                                &origin,
-                                self.draw_state.cam3d.pos,
-                                self.edit_state.lmouse,
-                                draw_nd,
-                                screen_area.dim(),
-                                view_3d,
-                                self.edit_state.trans_begin,
-                            );
-                            gizmo_is_active = giz_active != .low;
-                            if (giz_active == .rising) {
-                                try solid.removeFromMeshMap(id, self);
-                            }
-                            if (giz_active == .falling) {
-                                try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
-                                self.edit_state.face_origin = origin;
-                            }
-
-                            if (giz_active == .high) {
-                                const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
-                                try solid.drawImmediate(
-                                    draw,
-                                    self,
-                                    dist,
-                                    s_i,
-                                );
-                                if (self.edit_state.rmouse == .rising) {
-                                    try solid.translateSide(id, dist, self, s_i);
-                                    self.edit_state.face_origin = origin;
-                                    self.edit_state.gizmo.start = origin;
-                                    //Commit the changes
-                                }
-                            }
-                        }
-                    }
-                    if (!gizmo_is_active and self.edit_state.lmouse == .rising) {
-                        const r = self.camRay(screen_area, view_3d);
-                        //Find the face it intersects with
-                        const rc = (try raycast.doesRayIntersectSolid(
-                            r[0],
-                            r[1],
-                            solid,
-                            &self.csgctx,
-                        ));
-                        if (rc.len > 0) {
-                            const rci = if (win.isBindState(self.config.keys.grab_far.b, .high)) @min(1, rc.len) else 0;
-                            self.edit_state.face_id = rc[rci].side_index;
-                            self.edit_state.face_origin = rc[rci].point;
-                        }
-                    }
-                }
+                try tools.faceTranslate(self, id, screen_area, view_3d, draw, .{
+                    .grab_far = win.isBindState(self.config.keys.grab_far.b, .high),
+                });
             },
             .select => {
-                const dupe = win.isBindState(self.config.keys.duplicate.b, .high);
-                if (try self.ecs.getOptPtr(id, .solid)) |solid| {
-                    if (try self.ecs.getOpt(id, .bounding_box)) |bb| {
-                        const mid_i = bb.a.add(bb.b).scale(0.5);
-                        var mid = mid_i;
-                        const giz_active = self.edit_state.gizmo.handle(
-                            mid,
-                            &mid,
-                            self.draw_state.cam3d.pos,
-                            self.edit_state.lmouse,
-                            draw_nd,
-                            screen_area.dim(),
-                            view_3d,
-                            self.edit_state.trans_begin,
-                        );
-
-                        solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
-                        if (giz_active == .rising) {
-                            try solid.removeFromMeshMap(id, self);
-                        }
-                        if (giz_active == .falling) {
-                            try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
-
-                        }
-
-                        if (giz_active == .high) {
-                            const COLOR_MOVE = 0xe8a130_ee;
-                            const COLOR_DUPE = 0xfc35ac_ee;
-                            const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
-                            try solid.drawImmediate(
-                                draw,
-                                self,
-                                dist,
-                                null,
-                            );
-                            if (dupe) { //Draw original
-                                try solid.drawImmediate(
-                                    draw,
-                                    self,
-                                    Vec3.zero(),
-                                    null,
-                                );
-                            }
-                            const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
-                            solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
-                            if (self.edit_state.rmouse == .rising) {
-                                if (dupe) {
-                                    //Dupe the solid
-                                    const new = try self.ecs.createEntity();
-                                    const duped = try solid.dupe();
-                                    try self.ecs.attach(new, .solid, duped);
-                                    try self.ecs.attach(new, .bounding_box, .{});
-                                    const solid_ptr = try self.ecs.getPtr(new, .solid);
-                                    try solid_ptr.translate(new, dist, self);
-                                } else {
-                                    try solid.translate(id, dist, self);
-                                }
-                                //Commit the changes
-                            }
-                        }
-                    }
-                }
-                if (try self.ecs.getOptPtr(id, .entity)) |ent| {
-                    var orig = ent.origin;
-                    const giz_active = self.edit_state.gizmo.handle(
-                        orig,
-                        &orig,
-                        self.draw_state.cam3d.pos,
-                        self.edit_state.lmouse,
-                        draw_nd,
-                        screen_area.dim(),
-                        view_3d,
-                        self.edit_state.trans_begin,
-                    );
-                    if (giz_active == .high) {
-                        const orr = snapV3(orig, self.edit_state.grid_snap);
-                        var copy_ent = ent.*;
-                        copy_ent.origin = orr;
-                        copy_ent.drawEnt(self, view_3d, draw, draw_nd);
-
-                        //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
-                        if (self.edit_state.rmouse == .rising) {
-                            const bb = try self.ecs.getPtr(id, .bounding_box);
-                            if (dupe) {
-                                const new = try self.ecs.createEntity();
-                                try self.ecs.attach(new, .entity, ent.dupe());
-                                try self.ecs.attach(new, .bounding_box, bb.*);
-                                const ent_ptr = try self.ecs.getPtr(new, .entity);
-                                ent_ptr.origin = orr;
-                                const bb_ptr = try self.ecs.getPtr(new, .bounding_box);
-                                bb_ptr.setFromOrigin(orr);
-                            } else {
-                                //Commit the changes
-                                ent.origin = orr;
-                                bb.setFromOrigin(orr);
-                            }
-                        }
-                    }
-                }
+                try tools.translate(self, .{
+                    .dupe = win.isBindState(self.config.keys.duplicate.b, .high),
+                }, id, screen_area, view_3d, draw);
             },
         }
     }
@@ -438,27 +255,6 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         tpos.y += fh;
         draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
     }
-    //var ent_it = self.ecs.iterator(.entity);
-    //while (ent_it.next()) |ent| {
-    //    const dist = ent.origin.distance(self.draw_state.cam3d.pos);
-    //    if (dist > ENT_RENDER_DIST)
-    //        continue;
-    //    if (self.fgd_ctx.base.get(ent.class)) |base| {
-    //        if (self.icon_map.get(base.iconsprite)) |isp| {
-    //            draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
-    //            draw.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, self.draw_state.cam3d);
-    //        }
-    //    }
-    //}
-    //if (self.edit_state.lmouse == .rising) {
-    //    const rc = util3d.screenSpaceRay(screen_area.dim(), self.edit_state.trans_begin, view_3d);
-
-    //    //std.debug.print("Putting {} {}\n", .{ ray_world, ray_endw });
-    //    try self.temp_line_array.append([2]Vec3{ rc[0], rc[0].add(rc[1].scale(1000)) });
-    //}
-    //for (self.temp_line_array.items) |tl| {
-    //    draw.line3D(tl[0], tl[1], 0xff00ffff);
-    //}
     try draw_nd.flush(null, self.draw_state.cam3d);
 }
 

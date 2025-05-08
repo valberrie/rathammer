@@ -4,12 +4,18 @@ keys {
 
     // Scancodes map to physical keys on the keyboard. 'w' is always the same physical key regardless of layout.
     //Key names only need to be in "" if they contain {} or whitespace
-    cam_forward     scancode:w 
-    cam_back        scancode:s
-    cam_strafe_l    scancode:a
-    cam_strafe_r    scancode:d
+    cam_forward     scancode:E 
+    cam_back        scancode:D
+    cam_strafe_l    scancode:S
+    cam_strafe_r    scancode:F
     cam_up          scancode:space
     cam_down        scancode:c
+
+    select          scancode:R
+    grid_inc        scancode:T
+    grid_dec        scancode:G
+    undo            left_ctrl+scancode:z
+    redo            left_ctrl+left_shift+scancode:z
 
     cam_slow        scancode:left_ctrl
 
@@ -23,7 +29,6 @@ keys {
     up_line         keycode:k
     grab_far        scancode:q
 
-    select          scancode:E
 
     workspace      left_alt+1
     workspace      left_alt+scancode:t //texture browser

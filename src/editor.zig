@@ -512,7 +512,10 @@ pub const Entity = struct {
         return self.*;
     }
 
-    pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx) void {
+    pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx, param: struct {
+        frame_color: u32 = 0x00ff00ff,
+        draw_model_bb: bool = false,
+    }) void {
         const ENT_RENDER_DIST = 64 * 10;
         const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (editor.draw_state.tog.models and dist < editor.draw_state.tog.model_render_dist) {
@@ -533,17 +536,21 @@ pub const Entity = struct {
                         const mat3 = mat1.mul(z.mul(y1.mul(x1)));
                         //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+                        if (param.draw_model_bb) {
+                            const cc = cubeFromBounds(mod.hull_min, mod.hull_max);
+                            //TODO rotate it
+                            draw.cubeFrame(ent.origin.add(cc[0]), cc[1], param.frame_color);
+                        }
                     }
                 }
             }
         }
-        _ = draw;
         if (dist > ENT_RENDER_DIST)
             return;
         //TODO set the model size of entities hitbox thingy
         if (editor.draw_state.tog.sprite) {
             if (ent.sprite) |spr| {
-                draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), 0x00ff00ff);
+                draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
                 const isp = editor.getTexture(spr);
                 draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
             }

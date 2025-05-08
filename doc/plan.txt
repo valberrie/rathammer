@@ -42,6 +42,8 @@ Features
 
     Undo/Redo stack
 
+    Multi select, multi op
+
     Displacements
         Loading
         Editing

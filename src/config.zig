@@ -9,19 +9,21 @@ pub const Config = struct {
     keys: struct {
         const SC = graph.SDL.NewBind.Scancode;
         const KC = graph.SDL.NewBind.Keycode;
-        cam_forward: Keybind,
-        cam_back: Keybind,
-        cam_strafe_l: Keybind,
-        cam_strafe_r: Keybind,
-        cam_down: Keybind,
-        cam_up: Keybind,
+        cam_forward: Keybind = .{ .b = SC(.W, 0) },
+        cam_back: Keybind = .{ .b = SC(.S, 0) },
+        cam_strafe_l: Keybind = .{ .b = SC(.A, 0) },
+        cam_strafe_r: Keybind = .{ .b = SC(.D, 0) },
+        cam_down: Keybind = .{ .b = SC(.C, 0) },
+        cam_up: Keybind = .{ .b = SC(.SPACE, 0) },
 
-        cam_slow: Keybind,
+        cam_slow: Keybind = .{ .b = SC(.LCTRL, 0) },
 
         quit: Keybind,
         focus_search: Keybind,
+
         workspace: std.ArrayList(Keybind),
-        select: Keybind,
+
+        select: Keybind = .{ .b = SC(.E, 0) },
 
         duplicate: Keybind = .{ .b = SC(.Z, 0) },
 
@@ -39,6 +41,7 @@ pub const Config = struct {
         cube_draw_plane_raycast: Keybind = .{ .b = SC(.Q, 0) },
 
         undo: Keybind = .{ .b = KC(.z, 0) },
+        redo: Keybind = .{ .b = KC(.s, 0) },
     },
     window: struct {
         height_px: i32 = 600,
