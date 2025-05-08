@@ -63,13 +63,24 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
             solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
             if (self.edit_state.rmouse == .rising) {
                 if (dupe) {
-                    //Dupe the solid
                     const new = try self.ecs.createEntity();
-                    const duped = try solid.dupe();
-                    try self.ecs.attach(new, .solid, duped);
-                    try self.ecs.attach(new, .bounding_box, .{});
-                    const solid_ptr = try self.ecs.getPtr(new, .solid);
-                    try solid_ptr.translate(new, dist, self);
+                    try self.ecs.destroyEntity(new);
+
+                    const ustack = try self.undoctx.pushNew();
+                    try ustack.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
+                    try ustack.append(try undo.UndoTranslate.create(
+                        self.undoctx.alloc,
+                        dist,
+                        new,
+                    ));
+                    undo.applyRedo(ustack.items, self);
+
+                    //Dupe the solid
+                    //const duped = try solid.dupe();
+                    //try self.ecs.attach(new, .solid, duped);
+                    //try self.ecs.attach(new, .bounding_box, .{});
+                    //const solid_ptr = try self.ecs.getPtr(new, .solid);
+                    //try solid_ptr.translate(new, dist, self);
                 } else {
                     const ustack = try self.undoctx.pushNew();
                     try ustack.append(try undo.UndoTranslate.create(

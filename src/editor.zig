@@ -96,14 +96,14 @@ pub const MeshBatch = struct {
         self.mesh.clearRetainingCapacity();
         var it = self.contains.iterator();
         while (it.next()) |id| {
-            if (try editor.ecs.getOptPtr(id.key_ptr.*, .solid)) |solid| {
+            if (editor.ecs.getOptPtr(id.key_ptr.*, .solid) catch null) |solid| {
                 for (solid.sides.items) |*side| {
                     if (side.tex_id == self.tex_res_id) {
                         try side.rebuild(solid, self, editor);
                     }
                 }
             }
-            if (try editor.ecs.getOptPtr(id.key_ptr.*, .displacement)) |disp| {
+            if (editor.ecs.getOptPtr(id.key_ptr.*, .displacement) catch null) |disp| {
                 try disp.rebuild(self, editor);
             }
         }
@@ -306,7 +306,10 @@ pub const Solid = struct {
             const ind = try side.index.clone();
             side.index = ind;
         }
-        return .{ .sides = ret_sides, .verts = try self.verts.clone() };
+        return .{
+            .sides = ret_sides,
+            .verts = try self.verts.clone(),
+        };
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {

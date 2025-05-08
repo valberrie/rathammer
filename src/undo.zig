@@ -176,6 +176,48 @@ pub const UndoTranslate = struct {
     }
 };
 
+pub const UndoDupe = struct {
+    vt: iUndo,
+
+    parent_id: Id,
+    own_id: Id,
+
+    pub fn create(alloc: std.mem.Allocator, parent_id: Id, own_id: Id) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .parent_id = parent_id,
+            .own_id = own_id,
+        };
+        return &obj.vt;
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        editor.ecs.destroyEntity(self.own_id) catch return;
+    }
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.parent_id, .solid) catch return) |solid| {
+            const duped = solid.dupe() catch return;
+            editor.ecs.attachComponentAndCreate(self.own_id, .solid, duped) catch return;
+        }
+        if (editor.ecs.getOptPtr(self.parent_id, .entity) catch return) |ent| {
+            const duped = ent.dupe();
+            editor.ecs.attachComponentAndCreate(self.own_id, .entity, duped) catch return;
+        }
+        if (editor.ecs.getOptPtr(self.parent_id, .bounding_box) catch return) |bb| {
+            editor.ecs.attachComponentAndCreate(self.own_id, .bounding_box, bb.*) catch return;
+        }
+        //TODO displacament
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
+
 /// This is a noop
 pub const UndoTemplate = struct {
     vt: iUndo,
@@ -189,18 +231,18 @@ pub const UndoTemplate = struct {
     }
 
     pub fn undo(vt: *iUndo, editor: *Editor) void {
-        const self: *@This() = @fieldParentPtr("vt", vt);
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         _ = self;
         _ = editor;
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
-        const self: *@This() = @fieldParentPtr("vt", vt);
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         _ = self;
         _ = editor;
     }
 
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
-        const self: *@This() = @fieldParentPtr("vt", vt);
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         alloc.destroy(self);
     }
 };

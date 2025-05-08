@@ -89,6 +89,10 @@ FeatureCreep
     Actual csg?
 
 Utility
+    Switch to the new ecs, vtable for each component
+        deinit
+        dupe
+
     Configuring keybindings, 
         Just use a vdf file
     Export to obj
