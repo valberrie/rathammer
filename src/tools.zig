@@ -6,6 +6,7 @@ const ButtonState = graph.SDL.ButtonState;
 const snapV3 = edit.snapV3;
 const vpk = @import("vpk.zig");
 const raycast = @import("raycast_solid.zig");
+const undo = @import("undo.zig");
 // Anything with a bounding box can be translated
 
 pub const TranslateInput = struct {
@@ -70,7 +71,14 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
                     const solid_ptr = try self.ecs.getPtr(new, .solid);
                     try solid_ptr.translate(new, dist, self);
                 } else {
-                    try solid.translate(id, dist, self);
+                    const ustack = try self.undoctx.pushNew();
+                    try ustack.append(try undo.UndoTranslate.create(
+                        self.undoctx.alloc,
+                        dist,
+                        id,
+                    ));
+                    undo.applyRedo(ustack.items, self);
+                    //try solid.translate(id, dist, self);
                 }
                 //Commit the changes
             }
@@ -90,6 +98,7 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
         );
         if (giz_active == .high) {
             const orr = snapV3(orig, self.edit_state.grid_snap);
+            const dist = snapV3(orig.sub(ent.origin), self.edit_state.grid_snap);
             var copy_ent = ent.*;
             copy_ent.origin = orr;
             copy_ent.drawEnt(self, view_3d, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
@@ -105,9 +114,16 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
                     const bb_ptr = try self.ecs.getPtr(new, .bounding_box);
                     bb_ptr.setFromOrigin(orr);
                 } else {
+                    const ustack = try self.undoctx.pushNew();
+                    try ustack.append(try undo.UndoTranslate.create(
+                        self.undoctx.alloc,
+                        dist,
+                        id,
+                    ));
+                    undo.applyRedo(ustack.items, self);
                     //Commit the changes
-                    ent.origin = orr;
-                    bb.setFromOrigin(orr);
+                    //ent.origin = orr;
+                    //bb.setFromOrigin(orr);
                 }
             }
         }

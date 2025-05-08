@@ -398,7 +398,7 @@ pub const Solid = struct {
             //ensure this is in batch
             try batch.*.contains.put(id, {});
         }
-        try editor.rebuildMeshesIfDirty();
+        editor.draw_state.meshes_dirty = true;
     }
 
     pub fn rebuild(self: *@This(), id: EcsT.Id, editor: *Context) !void {
@@ -424,7 +424,7 @@ pub const Solid = struct {
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
         }
         try self.rebuild(id, editor);
-        try editor.rebuildMeshesIfDirty();
+        editor.draw_state.meshes_dirty = true;
     }
 
     pub fn removeFromMeshMap(self: *Self, id: EcsT.Id, editor: *Context) !void {
@@ -433,7 +433,7 @@ pub const Solid = struct {
             batch.*.is_dirty = true;
             _ = batch.*.contains.remove(id);
         }
-        try editor.rebuildMeshesIfDirty();
+        editor.draw_state.meshes_dirty = true;
     }
 
     pub fn drawEdgeOutline(self: *Self, draw: *DrawCtx, edge_color: u32, point_color: u32, vec: Vec3) void {
@@ -616,6 +616,7 @@ pub const Context = struct {
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
 
     draw_state: struct {
+        meshes_dirty: bool = false,
         tog: struct {
             wireframe: bool = false,
             tools: bool = true,
@@ -1330,10 +1331,12 @@ pub const Context = struct {
                 _ = self.texture_load_ctx.completed_models.orderedRemove(0);
         }
         if (tcount > 0) {
-            var it = self.meshmap.iterator();
-            while (it.next()) |mesh| {
-                try mesh.value_ptr.*.rebuildIfDirty(self);
-            }
+            self.draw_state.meshes_dirty = true;
+        }
+
+        if (self.draw_state.meshes_dirty) {
+            self.draw_state.meshes_dirty = false;
+            try self.rebuildMeshesIfDirty();
         }
     }
 };

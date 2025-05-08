@@ -77,9 +77,7 @@ pub const UndoContext = struct {
         if (self.stack_pointer >= self.stack.items.len) return; //What to do?
         defer self.stack_pointer += 1;
 
-        const ar = self.stack.items[self.stack_pointer].items;
-        for (ar) |item|
-            item.redo(editor);
+        applyRedo(self.stack.items[self.stack_pointer].items, editor);
     }
 
     pub fn deinit(self: *Self) void {
@@ -91,6 +89,12 @@ pub const UndoContext = struct {
         self.stack.deinit();
     }
 };
+///Rather than manually applying the operations when pushing a undo item,
+///just call applyRedo on the stack you created.
+pub fn applyRedo(list: []const *iUndo, editor: *Editor) void {
+    for (list) |item|
+        item.redo(editor);
+}
 
 pub const SelectionUndo = struct {
     pub const Kind = enum { select, deselect };
@@ -133,29 +137,41 @@ pub const UndoTranslate = struct {
     vt: iUndo,
 
     vec: Vec3,
+    id: Id,
 
-    pub fn create(alloc: std.mem.Allocator, vec: Vec3) !*iUndo {
+    pub fn create(alloc: std.mem.Allocator, vec: Vec3, id: Id) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{
-            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
             .vec = vec,
+            .id = id,
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
         };
         return &obj.vt;
     }
 
     pub fn undo(vt: *iUndo, editor: *Editor) void {
-        const self: *@This() = @fieldParentPtr("vt", vt);
-        _ = self;
-        _ = editor;
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid|
+            solid.translate(self.id, self.vec.scale(-1), editor) catch return;
+        if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
+            const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
+            ent.origin = ent.origin.add(self.vec.scale(-1));
+            bb.setFromOrigin(ent.origin);
+        }
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
-        const self: *@This() = @fieldParentPtr("vt", vt);
-        _ = self;
-        _ = editor;
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid|
+            solid.translate(self.id, self.vec, editor) catch return;
+        if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
+            const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
+            ent.origin = ent.origin.add(self.vec);
+            bb.setFromOrigin(ent.origin);
+        }
     }
 
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
-        const self: *@This() = @fieldParentPtr("vt", vt);
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         alloc.destroy(self);
     }
 };
