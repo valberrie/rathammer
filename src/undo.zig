@@ -218,6 +218,43 @@ pub const UndoDupe = struct {
     }
 };
 
+pub const UndoSolidFaceTranslate = struct {
+    vt: iUndo,
+
+    id: Id,
+    side_id: usize,
+    offset: Vec3,
+
+    pub fn create(alloc: std.mem.Allocator, id: Id, side_id: usize, offset: Vec3) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .id = id,
+            .side_id = side_id,
+            .offset = offset,
+        };
+        return &obj.vt;
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.translateSide(self.id, self.offset.scale(-1), editor, self.side_id) catch return;
+        }
+    }
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.translateSide(self.id, self.offset, editor, self.side_id) catch return;
+        }
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
+
 /// This is a noop
 pub const UndoTemplate = struct {
     vt: iUndo,
