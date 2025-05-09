@@ -1,3 +1,4 @@
+const std = @import("std");
 const edit = @import("editor.zig");
 const graph = @import("graph");
 const Editor = edit.Context;
@@ -12,6 +13,10 @@ const raycast = @import("raycast_solid.zig");
 const undo = @import("undo.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
 // Anything with a bounding box can be translated
+
+pub const i3DTool = struct {
+    deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
+};
 
 pub const ToolData = struct {
     view_3d: *const graph.za.Mat4,

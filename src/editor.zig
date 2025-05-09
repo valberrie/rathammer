@@ -401,6 +401,8 @@ pub const Solid = struct {
             //ensure this is in batch
             try batch.*.contains.put(id, {});
         }
+        const bb = (try editor.ecs.getPtr(id, .bounding_box));
+        self.recomputeBounds(bb);
         editor.draw_state.meshes_dirty = true;
     }
 

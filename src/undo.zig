@@ -11,6 +11,7 @@ const Vec3 = graph.za.Vec3;
 //redo calls redo on stack poniter and decrements
 //push clear anything after the stack pointer
 
+/// Any operation which changes state of game world should implement iUndo.
 /// See "UndoTemplate" for an example of implementation
 pub const iUndo = struct {
     const Vt = @This();
