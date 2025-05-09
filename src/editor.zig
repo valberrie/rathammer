@@ -651,6 +651,7 @@ pub const Context = struct {
             cube_draw,
             texture_apply,
         };
+        tool_index: usize = 0,
         last_frame_state: State = .select,
         state: State = .select,
         show_gui: bool = false,
@@ -781,6 +782,7 @@ pub const Context = struct {
         try self.tools.append(try tool_def.Translate.create(self.alloc));
         try self.tools.append(try tool_def.TranslateFace.create(self.alloc));
         try self.tools.append(try tool_def.PlaceModel.create(self.alloc));
+        try self.tools.append(try tool_def.CubeDraw.create(self.alloc));
     }
 
     pub fn deinit(self: *Self) void {
@@ -1233,10 +1235,14 @@ pub const Context = struct {
     pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx) void {
         const start = area.pos();
         const w = 100;
+        const tool_index = self.edit_state.tool_index;
         for (self.tools.items, 0..) |tool, i| {
             const fi: f32 = @floatFromInt(i);
             const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
             tool.tool_icon_fn(tool, draw, self, rec);
+            if (tool_index == i) {
+                draw.rectBorder(rec, 3, 0x00ff00ff);
+            }
         }
     }
 

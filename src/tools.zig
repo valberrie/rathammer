@@ -35,6 +35,38 @@ pub const TranslateInput = struct {
     dupe: bool,
 };
 
+pub const CubeDraw = struct {
+    vt: i3DTool,
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var obj = try alloc.create(@This());
+        obj.* = .{ .vt = .{
+            .deinit_fn = &@This().deinit,
+            .runTool_fn = &@This().runTool,
+            .tool_icon_fn = &@This().drawIcon,
+        } };
+        return &obj.vt;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("cube_draw.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        cubeDraw(editor, td) catch return;
+    }
+};
+
 pub const Translate = struct {
     vt: i3DTool,
 
@@ -369,8 +401,8 @@ pub const CubeDrawInput = struct {
     send_raycast: bool,
 };
 
-pub fn cubeDraw(self: *Editor, tool_data: ToolData, input: CubeDrawInput) !void {
-    const draw = tool_data.draw;
+pub fn cubeDraw(self: *Editor, td: ToolData) !void {
+    const draw = td.draw;
     const st = &self.edit_state.cube_draw;
     if (self.edit_state.last_frame_state != .cube_draw) { //First frame, reset state
         st.state = .start;
@@ -399,15 +431,18 @@ pub fn cubeDraw(self: *Editor, tool_data: ToolData, input: CubeDrawInput) !void 
         }
     };
     const snap = self.edit_state.grid_snap;
-    const ray = self.camRay(tool_data.screen_area, tool_data.view_3d.*);
+    const ray = self.camRay(td.screen_area, td.view_3d.*);
     switch (st.state) {
         .start => {
-            if (input.plane_up)
+            const plane_up = td.win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising);
+            const plane_down = td.win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising);
+            const send_raycast = td.win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high);
+            if (plane_up)
                 st.plane_z += snap;
-            if (input.plane_down)
+            if (plane_down)
                 st.plane_z -= snap;
-            if (input.send_raycast) {
-                const pot = self.screenRay(tool_data.screen_area, tool_data.view_3d.*);
+            if (send_raycast) {
+                const pot = self.screenRay(td.screen_area, td.view_3d.*);
                 if (pot.len > 0) {
                     const inter = pot[0].point;
                     const cc = snapV3(inter, snap);

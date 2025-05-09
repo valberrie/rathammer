@@ -105,52 +105,35 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         .draw = draw,
         .win = win,
     };
-    switch (self.edit_state.state) {
-        else => {},
-        .texture_apply => {
-            //BUG: we need to remove the side from its current batch
-            blk: {
-                const tid = self.asset_browser.selected_mat_vpk_id orelse break :blk;
-                //Raycast into world and apply texture to the face we hit
-                if (self.edit_state.rmouse == .high) {
-                    const pot = self.screenRay(screen_area, view_3d);
-                    if (pot.len == 0) break :blk;
-                    if (try self.ecs.getOptPtr(pot[0].id, .solid)) |solid| {
-                        if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
-                        const si = pot[0].side_id.?;
-                        solid.sides.items[si].tex_id = tid;
-                        //TODO this is slow, only rebuild the face
-                        try solid.rebuild(pot[0].id, self);
-                        try self.rebuildMeshesIfDirty();
-                    }
-                }
-            }
-        },
-        .cube_draw => {
-            try tools.cubeDraw(self, td, .{
-                .plane_up = win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising),
-                .plane_down = win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising),
-                .send_raycast = win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high),
-            });
-        },
-        .model_place => {
-            // if self.asset_browser.selected_model_vpk_id exists,
-            // do a raycast into the world and draw a model at nearest intersection with solid
-            try tools.modelPlace(self, td);
-        },
+    if (self.edit_state.tool_index < self.tools.items.len) {
+        const vt = self.tools.items[self.edit_state.tool_index];
+        vt.runTool_fn(vt, td, self);
     }
-
-    if (self.edit_state.id) |id| {
+    if (false) {
         switch (self.edit_state.state) {
             else => {},
-            .face_manip => {
-                try tools.faceTranslate(self, id, td);
-            },
-            .select => {
-                try tools.translate(self, id, td);
+            .texture_apply => {
+                //BUG: we need to remove the side from its current batch
+                blk: {
+                    const tid = self.asset_browser.selected_mat_vpk_id orelse break :blk;
+                    //Raycast into world and apply texture to the face we hit
+                    if (self.edit_state.rmouse == .high) {
+                        const pot = self.screenRay(screen_area, view_3d);
+                        if (pot.len == 0) break :blk;
+                        if (try self.ecs.getOptPtr(pot[0].id, .solid)) |solid| {
+                            if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
+                            const si = pot[0].side_id.?;
+                            solid.sides.items[si].tex_id = tid;
+                            //TODO this is slow, only rebuild the face
+                            try solid.rebuild(pot[0].id, self);
+                            try self.rebuildMeshesIfDirty();
+                        }
+                    }
+                }
             },
         }
     }
+
     try draw.flush(null, self.draw_state.cam3d);
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     //Crosshair
