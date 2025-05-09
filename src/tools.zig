@@ -113,10 +113,12 @@ pub const FastFaceManip = struct {
     } = .start,
     face_id: i32 = -1,
     start: Vec3 = Vec3.zero(),
+    right: bool = false,
 
     fn reset(self: *@This()) void {
         self.face_id = -1;
         self.state = .start;
+        self.right = false;
     }
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
@@ -156,6 +158,7 @@ pub const FastFaceManip = struct {
         switch (self.state) {
             .start => {
                 if (rm == .rising or lm == .rising) {
+                    self.right = rm == .rising;
                     const r = editor.camRay(td.screen_area, td.view_3d.*);
                     const rc = raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx) catch return;
                     if (rc.len > 0) {
@@ -163,7 +166,7 @@ pub const FastFaceManip = struct {
                         self.face_id = @intCast(rc[rci].side_index);
                         self.start = rc[rci].point;
                         self.state = .active;
-                        //solid.removeFromMeshMap(id, editor) catch return;
+                        solid.removeFromMeshMap(id, editor) catch return;
                     }
                 }
             },
@@ -182,20 +185,30 @@ pub const FastFaceManip = struct {
                         const proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
 
                         if (util3d.doesRayIntersectPlane(r[0], r[1], self.start, proj)) |inter| {
-                            td.draw.point3D(inter, 0xff0000ff);
-                            const cc = util3d.cubeFromBounds(self.start, inter);
-                            td.draw.cube(cc[0], cc[1], 0xff00ffff);
-
                             const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
                             const acc = dist_n.dot(plane_norm);
                             const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
 
                             solid.drawImmediate(td.draw, editor, dist, s_i) catch return;
+
+                            const commit_btn = if (self.right) lm else rm;
+                            if (commit_btn == .rising) {
+                                const ustack = editor.undoctx.pushNew() catch return;
+                                ustack.append(undo.UndoSolidFaceTranslate.create(
+                                    editor.undoctx.alloc,
+                                    id,
+                                    s_i,
+                                    dist,
+                                ) catch return) catch return;
+                                undo.applyRedo(ustack.items, editor);
+                            }
                         }
                     }
                 }
-                if (rm != .high and lm != .high)
+                if (rm != .high and lm != .high) {
+                    solid.rebuild(id, editor) catch return;
                     self.reset();
+                }
             },
         }
     }
