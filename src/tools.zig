@@ -163,6 +163,7 @@ pub const FastFaceManip = struct {
                         self.face_id = @intCast(rc[rci].side_index);
                         self.start = rc[rci].point;
                         self.state = .active;
+                        //solid.removeFromMeshMap(id, editor) catch return;
                     }
                 }
             },
@@ -184,6 +185,12 @@ pub const FastFaceManip = struct {
                             td.draw.point3D(inter, 0xff0000ff);
                             const cc = util3d.cubeFromBounds(self.start, inter);
                             td.draw.cube(cc[0], cc[1], 0xff00ffff);
+
+                            const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
+                            const acc = dist_n.dot(plane_norm);
+                            const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
+
+                            solid.drawImmediate(td.draw, editor, dist, s_i) catch return;
                         }
                     }
                 }
@@ -466,12 +473,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
 
                 if (giz_active == .high) {
                     const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
-                    try solid.drawImmediate(
-                        td.draw,
-                        self,
-                        dist,
-                        s_i,
-                    );
+                    try solid.drawImmediate(td.draw, self, dist, s_i);
                     if (self.edit_state.rmouse == .rising) {
                         //try solid.translateSide(id, dist, self, s_i);
                         const ustack = try self.undoctx.pushNew();
