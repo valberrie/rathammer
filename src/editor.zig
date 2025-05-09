@@ -652,6 +652,7 @@ pub const Context = struct {
             texture_apply,
         };
         tool_index: usize = 0,
+        last_frame_tool_index: usize = 0,
         last_frame_state: State = .select,
         state: State = .select,
         show_gui: bool = false,
@@ -783,6 +784,7 @@ pub const Context = struct {
         try self.tools.append(try tool_def.TranslateFace.create(self.alloc));
         try self.tools.append(try tool_def.PlaceModel.create(self.alloc));
         try self.tools.append(try tool_def.CubeDraw.create(self.alloc));
+        try self.tools.append(try tool_def.FastFaceManip.create(self.alloc));
     }
 
     pub fn deinit(self: *Self) void {
@@ -1103,6 +1105,12 @@ pub const Context = struct {
         return self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false) catch &.{};
     }
 
+    pub fn getCurrentTool(self: *Self) ?*tool_def.i3DTool {
+        if (self.edit_state.tool_index >= self.tools.items.len)
+            return null;
+        return self.tools.items[self.edit_state.tool_index];
+    }
+
     pub fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         var timer = try std.time.Timer.start();
         defer log.info("Loaded json in {d}ms", .{timer.read() / std.time.ns_per_ms});
@@ -1309,6 +1317,7 @@ pub const Context = struct {
 
     pub fn update(self: *Self) !void {
         self.edit_state.last_frame_state = self.edit_state.state;
+        self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});

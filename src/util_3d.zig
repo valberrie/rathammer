@@ -222,6 +222,7 @@ pub fn snapV3(v: Vec3, snap: f32) Vec3 {
         .data = @round(v.data / sn) * sn,
     };
 }
+
 pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
     const ext = p1.sub(p2);
     return .{
@@ -231,5 +232,6 @@ pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
 }
 
 pub fn snap1(comp: f32, snap: f32) f32 {
-    return @divFloor(comp, snap) * snap;
+    return @round(comp / snap) * snap;
+    //return @divFloor(comp, snap) * snap;
 }

@@ -104,6 +104,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         .view_3d = &view_3d,
         .draw = draw,
         .win = win,
+        .is_first_frame = self.edit_state.last_frame_tool_index != self.edit_state.tool_index,
     };
     if (self.edit_state.tool_index < self.tools.items.len) {
         const vt = self.tools.items[self.edit_state.tool_index];
@@ -174,7 +175,11 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
             //defer os9gui.endL();
             if (try os9gui.beginVScroll(&self.misc_gui_state.scroll_a, .{ .sw = area.w, .sh = 1000000 })) |scr| {
                 defer os9gui.endVScroll(scr);
-                os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
+                if (self.getCurrentTool()) |tool| {
+                    if (tool.guiDoc_fn) |gd| gd(tool, os9gui, self);
+                    if (tool.gui_fn) |gf| gf(tool, os9gui, self, scr.layout);
+                }
+                //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
                 if (self.edit_state.id) |id| {
                     if (try self.ecs.getOptPtr(id, .entity)) |ent| {
                         if (self.fgd_ctx.base.get(ent.class)) |base| {

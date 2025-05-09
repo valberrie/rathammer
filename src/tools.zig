@@ -12,16 +12,15 @@ const vpk = @import("vpk.zig");
 const raycast = @import("raycast_solid.zig");
 const undo = @import("undo.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
-// Anything with a bounding box can be translated
+const Gui = graph.Gui;
+const Os9Gui = graph.gui_app.Os9Gui;
 
 pub const i3DTool = struct {
-    //TODO finish this
-    //I want functions which will draw docs to gui
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
-    //reset_fn: *const fn (*@This()) void,
-    //guiDoc_fn: *const fn (*@This()) void,
+    guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor) void = null,
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
+    gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
 };
 
 pub const ToolData = struct {
@@ -29,6 +28,7 @@ pub const ToolData = struct {
     screen_area: graph.Rect,
     draw: *DrawCtx,
     win: *graph.SDL.Window,
+    is_first_frame: bool,
 };
 
 pub const TranslateInput = struct {
@@ -38,12 +38,17 @@ pub const TranslateInput = struct {
 pub const CubeDraw = struct {
     vt: i3DTool,
 
+    use_custom_height: bool = false,
+    custom_height: u32 = 16,
+
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
         obj.* = .{ .vt = .{
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
+            .guiDoc_fn = &@This().guiDoc,
+            .gui_fn = &@This().doGui,
         } };
         return &obj.vt;
     }
@@ -65,6 +70,134 @@ pub const CubeDraw = struct {
         _ = self;
         cubeDraw(editor, td) catch return;
     }
+
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+        os9gui.label("This is the draw cube tool.", .{});
+        os9gui.label("Left click to start drawing the cube.", .{});
+        os9gui.hr();
+        os9gui.label("To change the z, hold {s} and left click", .{editor.config.keys.cube_draw_plane_raycast.b.name()});
+        os9gui.label("Or, press {s} or {s} to move up and down", .{
+            editor.config.keys.cube_draw_plane_up.b.name(),
+            editor.config.keys.cube_draw_plane_down.b.name(),
+        });
+    }
+
+    pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.asset_browser.selected_mat_vpk_id) |id| {
+            os9gui.label("texture: ", .{});
+            const bound = os9gui.gui.layout.last_requested_bounds orelse return;
+            vl.pushHeight(bound.w / 2);
+            const tex = editor.getTexture(id);
+            const area = os9gui.gui.getArea() orelse return;
+            os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
+
+            _ = os9gui.checkbox("Use custom height", &self.use_custom_height);
+            if (self.use_custom_height) {
+                os9gui.sliderEx(&self.custom_height, 1, 512, "Height", .{});
+                self.custom_height = @intFromFloat(util3d.snap1(@floatFromInt(self.custom_height), editor.edit_state.grid_snap));
+            }
+            os9gui.label("This stuff doesn't actually work", .{});
+        } else {
+            os9gui.label("First select a texture by opening texture browser alt+t ", .{});
+        }
+    }
+};
+
+pub const FastFaceManip = struct {
+    vt: i3DTool,
+
+    state: enum {
+        start,
+        active,
+    } = .start,
+    face_id: i32 = -1,
+    start: Vec3 = Vec3.zero(),
+
+    fn reset(self: *@This()) void {
+        self.face_id = -1;
+        self.state = .start;
+    }
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var obj = try alloc.create(@This());
+        obj.* = .{ .vt = .{
+            .deinit_fn = &@This().deinit,
+            .runTool_fn = &@This().runTool,
+            .tool_icon_fn = &@This().drawIcon,
+            .guiDoc_fn = &@This().guiDoc,
+        } };
+        return &obj.vt;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("fast_face_manip.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (td.is_first_frame)
+            self.reset();
+
+        const id = (editor.edit_state.id) orelse return;
+        const solid = editor.ecs.getOptPtr(id, .solid) catch return orelse return;
+        const draw_nd = &editor.draw_state.ctx;
+        solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
+        const rm = editor.edit_state.rmouse;
+        const lm = editor.edit_state.lmouse;
+        switch (self.state) {
+            .start => {
+                if (rm == .rising or lm == .rising) {
+                    const r = editor.camRay(td.screen_area, td.view_3d.*);
+                    const rc = raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx) catch return;
+                    if (rc.len > 0) {
+                        const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
+                        self.face_id = @intCast(rc[rci].side_index);
+                        self.start = rc[rci].point;
+                        self.state = .active;
+                    }
+                }
+            },
+            .active => {
+                for (solid.sides.items, 0..) |side, s_i| {
+                    if (self.face_id == s_i) {
+                        draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088);
+                        //Side_normal
+                        //self.start
+                        if (side.index.items.len < 3) return;
+                        const ind = side.index.items;
+                        const ver = solid.verts.items;
+                        const plane_norm = util3d.trianglePlane([3]Vec3{ ver[ind[0]], ver[ind[1]], ver[ind[2]] });
+                        const r = editor.camRay(td.screen_area, td.view_3d.*);
+                        const u = r[1];
+                        const proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
+
+                        if (util3d.doesRayIntersectPlane(r[0], r[1], self.start, proj)) |inter| {
+                            td.draw.point3D(inter, 0xff0000ff);
+                            const cc = util3d.cubeFromBounds(self.start, inter);
+                            td.draw.cube(cc[0], cc[1], 0xff00ffff);
+                        }
+                    }
+                }
+                if (rm != .high and lm != .high)
+                    self.reset();
+            },
+        }
+    }
+
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+        os9gui.label("This is the Fast face tool.", .{});
+        os9gui.hr();
+        _ = editor;
+    }
 };
 
 pub const Translate = struct {
@@ -76,6 +209,7 @@ pub const Translate = struct {
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
+            .guiDoc_fn = &@This().guiDoc,
         } };
         return &obj.vt;
     }
@@ -98,6 +232,14 @@ pub const Translate = struct {
         if (editor.edit_state.id) |id| {
             translate(editor, id, td) catch return;
         }
+    }
+
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+        os9gui.label("This is the translate tool.", .{});
+        os9gui.label("Select an object with {s}", .{editor.config.keys.select.b.name()});
+        os9gui.label("While you drag the gizmo, press right click to commit the change.", .{});
+        os9gui.label("Optionally, hold {s} to duplicate the object.", .{editor.config.keys.duplicate.b.name()});
+        os9gui.hr();
     }
 };
 
@@ -142,6 +284,7 @@ pub const TranslateFace = struct {
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
+            .guiDoc_fn = &@This().guiDoc,
         } };
         return &obj.vt;
     }
@@ -164,6 +307,14 @@ pub const TranslateFace = struct {
         if (editor.edit_state.id) |id| {
             faceTranslate(editor, id, td) catch return;
         }
+    }
+
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+        os9gui.label("This is the face translate tool.", .{});
+        os9gui.label("Select a solid with {s}", .{editor.config.keys.select.b.name()});
+        os9gui.label("left click selects the near face.", .{});
+        os9gui.label("right click selects the far face.", .{});
+        os9gui.label("Once you drag the gizmo, press right click to commit the change.", .{});
     }
 };
 
@@ -404,7 +555,7 @@ pub const CubeDrawInput = struct {
 pub fn cubeDraw(self: *Editor, td: ToolData) !void {
     const draw = td.draw;
     const st = &self.edit_state.cube_draw;
-    if (self.edit_state.last_frame_state != .cube_draw) { //First frame, reset state
+    if (td.is_first_frame) { //First frame, reset state
         st.state = .start;
     }
     const helper = struct {
