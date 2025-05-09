@@ -325,7 +325,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
 }
 
 pub fn modelPlace(self: *Editor, td: ToolData) !void {
-    const model_id = self.asset_browser.selected_mat_vpk_id orelse return;
+    const model_id = self.asset_browser.selected_model_vpk_id orelse return;
     const omod = self.models.get(model_id);
     if (omod != null and omod.?.mesh != null) {
         const mod = omod.?.mesh.?;
