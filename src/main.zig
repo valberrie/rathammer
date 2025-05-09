@@ -32,13 +32,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     //var my_tex = try vtf.loadTexture(o.?, alloc);
     var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config);
     defer editor.deinit();
-
+    try editor.postInit(args);
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
     const splash = try graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{});
-    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2);
+    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, editor.dirs.pref);
     defer os9gui.deinit();
     var loadctx = edit.LoadCtx{
         .draw = &draw,
@@ -55,8 +55,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     var my_var: i32 = 0;
     my_var = my_var + 1;
-
-    try editor.postInit(args);
 
     loadctx.cb("Vpk's mounted");
 
