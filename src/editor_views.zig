@@ -136,9 +136,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         .model_place => {
             // if self.asset_browser.selected_model_vpk_id exists,
             // do a raycast into the world and draw a model at nearest intersection with solid
-            if (self.asset_browser.selected_model_vpk_id) |res_id| {
-                try tools.modelPlace(self, res_id, screen_area, view_3d);
-            }
+            try tools.modelPlace(self, td);
         },
     }
 
@@ -146,7 +144,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         switch (self.edit_state.state) {
             else => {},
             .face_manip => {
-                try tools.faceTranslate(self, id, screen_area, view_3d, draw);
+                try tools.faceTranslate(self, id, td);
             },
             .select => {
                 try tools.translate(self, id, td);
@@ -176,6 +174,8 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
     }
     try draw_nd.flush(null, self.draw_state.cam3d);
+    self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw);
+    try draw.flush(null, null);
 }
 
 pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {

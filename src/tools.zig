@@ -21,7 +21,7 @@ pub const i3DTool = struct {
     runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
     //reset_fn: *const fn (*@This()) void,
     //guiDoc_fn: *const fn (*@This()) void,
-    //tool_icon_fn: *const fn (*@This()) void,
+    tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
 };
 
 pub const ToolData = struct {
@@ -43,8 +43,16 @@ pub const Translate = struct {
         obj.* = .{ .vt = .{
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
+            .tool_icon_fn = &@This().drawIcon,
         } };
         return &obj.vt;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("translate.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
     }
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
@@ -57,6 +65,72 @@ pub const Translate = struct {
         _ = self;
         if (editor.edit_state.id) |id| {
             translate(editor, id, td) catch return;
+        }
+    }
+};
+
+pub const PlaceModel = struct {
+    vt: i3DTool,
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var obj = try alloc.create(@This());
+        obj.* = .{ .vt = .{
+            .deinit_fn = &@This().deinit,
+            .runTool_fn = &@This().runTool,
+            .tool_icon_fn = &@This().drawIcon,
+        } };
+        return &obj.vt;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("place_model.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        modelPlace(editor, td) catch return;
+    }
+};
+
+pub const TranslateFace = struct {
+    vt: i3DTool,
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var obj = try alloc.create(@This());
+        obj.* = .{ .vt = .{
+            .deinit_fn = &@This().deinit,
+            .runTool_fn = &@This().runTool,
+            .tool_icon_fn = &@This().drawIcon,
+        } };
+        return &obj.vt;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("face_translate.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        if (editor.edit_state.id) |id| {
+            faceTranslate(editor, id, td) catch return;
         }
     }
 };
@@ -94,23 +168,16 @@ pub fn translate(self: *Editor, selected_id: edit.EcsT.Id, td: ToolData) !void {
         if (giz_active == .falling) {
             try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
 
+            //Draw it here too so we it doesn't flash for a single frame
+            const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
+            try solid.drawImmediate(draw, self, dist, null);
         }
 
         if (giz_active == .high) {
             const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
-            try solid.drawImmediate(
-                draw,
-                self,
-                dist,
-                null,
-            );
+            try solid.drawImmediate(draw, self, dist, null);
             if (dupe) { //Draw original
-                try solid.drawImmediate(
-                    draw,
-                    self,
-                    Vec3.zero(),
-                    null,
-                );
+                try solid.drawImmediate(draw, self, Vec3.zero(), null);
             }
             solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
             if (self.edit_state.rmouse == .rising) {
@@ -185,7 +252,7 @@ pub fn translate(self: *Editor, selected_id: edit.EcsT.Id, td: ToolData) !void {
     }
 }
 
-pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, view_3d: graph.za.Mat4, draw: *graph.ImmediateDrawingContext) !void {
+pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
     const draw_nd = &self.draw_state.ctx;
     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
         var gizmo_is_active = false;
@@ -201,8 +268,8 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
                     self.draw_state.cam3d.pos,
                     self.edit_state.lmouse,
                     draw_nd,
-                    screen_area.dim(),
-                    view_3d,
+                    td.screen_area.dim(),
+                    td.view_3d.*,
                     self.edit_state.trans_begin,
                 );
                 gizmo_is_active = giz_active != .low;
@@ -217,7 +284,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
                 if (giz_active == .high) {
                     const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
                     try solid.drawImmediate(
-                        draw,
+                        td.draw,
                         self,
                         dist,
                         s_i,
@@ -240,7 +307,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
             }
         }
         if (!gizmo_is_active and (self.edit_state.lmouse == .rising or self.edit_state.rmouse == .rising)) {
-            const r = self.camRay(screen_area, view_3d);
+            const r = self.camRay(td.screen_area, td.view_3d.*);
             //Find the face it intersects with
             const rc = (try raycast.doesRayIntersectSolid(
                 r[0],
@@ -257,18 +324,19 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
     }
 }
 
-pub fn modelPlace(self: *Editor, model_id: vpk.VpkResId, screen_area: graph.Rect, view_3d: graph.za.Mat4) !void {
+pub fn modelPlace(self: *Editor, td: ToolData) !void {
+    const model_id = self.asset_browser.selected_mat_vpk_id orelse return;
     const omod = self.models.get(model_id);
     if (omod != null and omod.?.mesh != null) {
         const mod = omod.?.mesh.?;
-        const pot = self.screenRay(screen_area, view_3d);
+        const pot = self.screenRay(td.screen_area, td.view_3d.*);
         if (pot.len > 0) {
             const p = pot[0];
             const point = snapV3(p.point, self.edit_state.grid_snap);
             const mat1 = graph.za.Mat4.fromTranslate(point);
             //zyx
             //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-            mod.drawSimple(view_3d, mat1, self.draw_state.basic_shader);
+            mod.drawSimple(td.view_3d.*, mat1, self.draw_state.basic_shader);
             //Draw the model at
             if (self.edit_state.lmouse == .rising) {
                 const new = try self.ecs.createEntity();

@@ -699,13 +699,19 @@ pub const Context = struct {
         base: Dir,
         game: Dir,
         fgd: Dir,
+        pref: Dir,
     },
+
+    asset: graph.AssetBake.AssetMap,
+    asset_atlas: graph.Texture,
 
     pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
         return .{
             //These are initilized in editor.postInit
             .dirs = undefined,
             .game_conf = undefined,
+            .asset = undefined,
+            .asset_atlas = undefined,
 
             .rayctx = raycast.Ctx.init(alloc),
             .config = config,
@@ -756,15 +762,30 @@ pub const Context = struct {
         const base_dir = try cwd.openDir(args.basedir orelse game_conf.base_dir, .{});
         const game_dir = try cwd.openDir(args.gamedir orelse game_conf.game_dir, .{});
         const fgd_dir = try cwd.openDir(args.fgddir orelse game_conf.fgd_dir, .{});
-        self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir };
+
+        const ORG = "rathammer";
+        const APP = "";
+        const path = graph.c.SDL_GetPrefPath(ORG, APP);
+        const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
+
+        try graph.AssetBake.assetBake(self.alloc, std.fs.cwd(), "ratasset", pref, "packed", .{});
+
+        self.asset = try graph.AssetBake.AssetMap.initFromManifest(self.alloc, pref, "packed");
+        self.asset_atlas = try graph.AssetBake.AssetMap.initTextureFromManifest(self.alloc, pref, "packed");
+
+        self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir, .pref = pref };
         try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
 
         try self.tools.append(try tool_def.Translate.create(self.alloc));
+        try self.tools.append(try tool_def.TranslateFace.create(self.alloc));
+        try self.tools.append(try tool_def.PlaceModel.create(self.alloc));
     }
 
     pub fn deinit(self: *Self) void {
+        self.asset.deinit();
+
         for (self.tools.items) |item|
             item.deinit_fn(item, self.alloc);
         self.tools.deinit();
@@ -1207,6 +1228,16 @@ pub const Context = struct {
         }
         aa.deinit();
         loadctx.cb("csg generated");
+    }
+
+    pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx) void {
+        const start = area.pos();
+        const w = 100;
+        for (self.tools.items, 0..) |tool, i| {
+            const fi: f32 = @floatFromInt(i);
+            const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
+            tool.tool_icon_fn(tool, draw, self, rec);
+        }
     }
 
     fn modelIdFromName(self: *Self, mdl_name: []const u8) !?vpk.VpkResId {

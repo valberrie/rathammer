@@ -89,17 +89,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
 
-    {
-        const ORG = "rathammer";
-        const APP = "";
-        const path = graph.c.SDL_GetPrefPath(ORG, APP);
-        const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
-        const out = try pref.createFile("hello.txt", .{});
-        std.debug.print("MAKING IT {s}\n", .{path});
-        try out.writer().print("Hello\n", .{});
-        out.close();
-    }
-
     const Pane = enum {
         main_3d_view,
         asset_browser,
@@ -315,6 +304,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         try loadctx.loadedSplash(win.keys.len > 0);
         try os9gui.endFrame(&draw);
+
+        //draw.rectTex(graph.Rec(0, 0, 100, 100), editor.asset.getRectFromName("translate.png").?, editor.asset_atlas);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
     }
