@@ -4,9 +4,9 @@ const graph = @import("graph");
 const Editor = edit.Context;
 const util3d = @import("util_3d.zig");
 const Vec3 = graph.za.Vec3;
-const cubeFromBounds = edit.cubeFromBounds;
+const cubeFromBounds = util3d.cubeFromBounds;
 const ButtonState = graph.SDL.ButtonState;
-const snapV3 = edit.snapV3;
+const snapV3 = util3d.snapV3;
 const Solid = edit.Solid;
 const vpk = @import("vpk.zig");
 const raycast = @import("raycast_solid.zig");
@@ -15,7 +15,12 @@ const DrawCtx = graph.ImmediateDrawingContext;
 // Anything with a bounding box can be translated
 
 pub const i3DTool = struct {
+    //TODO finish this
+    //I want functions which will draw docs to gui
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
+    runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
+    guiDoc_fn: *const fn (*@This()) void,
+    tool_icon_fn: *const fn (*@This()) void,
 };
 
 pub const ToolData = struct {
@@ -31,9 +36,10 @@ pub const TranslateInput = struct {
 //TODO tools should be virtual functions
 //Combined with the new ecs it would allow for dynamic linking of new tools and components
 
-pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id, screen_area: graph.Rect, view_3d: graph.za.Mat4, draw: *graph.ImmediateDrawingContext) !void {
+pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id, td: ToolData) !void {
     const id = selected_id;
     const draw_nd = &self.draw_state.ctx;
+    const draw = td.draw;
     const dupe = input.dupe;
     const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse return;
     const COLOR_MOVE = 0xe8a130_ee;
@@ -48,8 +54,8 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
             self.draw_state.cam3d.pos,
             self.edit_state.lmouse,
             draw_nd,
-            screen_area.dim(),
-            view_3d,
+            td.screen_area.dim(),
+            td.view_3d.*,
             self.edit_state.trans_begin,
         );
 
@@ -112,8 +118,8 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
             self.draw_state.cam3d.pos,
             self.edit_state.lmouse,
             draw_nd,
-            screen_area.dim(),
-            view_3d,
+            td.screen_area.dim(),
+            td.view_3d.*,
             self.edit_state.trans_begin,
         );
         if (giz_active == .high) {
@@ -121,7 +127,7 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
             const dist = snapV3(orig.sub(ent.origin), self.edit_state.grid_snap);
             var copy_ent = ent.*;
             copy_ent.origin = orr;
-            copy_ent.drawEnt(self, view_3d, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
+            copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
 
             //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
             if (self.edit_state.rmouse == .rising) {
@@ -160,8 +166,9 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
         var gizmo_is_active = false;
         solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
-        for (solid.sides.items, 0..) |_, s_i| {
+        for (solid.sides.items, 0..) |side, s_i| {
             if (self.edit_state.face_id == s_i) {
+                draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088);
                 const origin_i = self.edit_state.face_origin;
                 var origin = origin_i;
                 const giz_active = self.edit_state.gizmo.handle(

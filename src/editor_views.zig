@@ -99,6 +99,11 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
     }
 
+    const td = tools.ToolData{
+        .screen_area = screen_area,
+        .view_3d = &view_3d,
+        .draw = draw,
+    };
     switch (self.edit_state.state) {
         else => {},
         .texture_apply => {
@@ -121,7 +126,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             }
         },
         .cube_draw => {
-            try tools.cubeDraw(self, .{ .screen_area = screen_area, .view_3d = &view_3d, .draw = draw }, .{
+            try tools.cubeDraw(self, td, .{
                 .plane_up = win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising),
                 .plane_down = win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising),
                 .send_raycast = win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high),
@@ -147,7 +152,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             .select => {
                 try tools.translate(self, .{
                     .dupe = win.isBindState(self.config.keys.duplicate.b, .high),
-                }, id, screen_area, view_3d, draw);
+                }, id, td);
             },
         }
     }

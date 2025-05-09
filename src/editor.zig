@@ -30,27 +30,6 @@ pub const ResourceId = struct {
     vpk_id: vpk.VpkResId,
 };
 
-pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
-    const ext = p1.sub(p2);
-    return .{
-        Vec3{ .data = @min(p1.data, p2.data) },
-        Vec3{ .data = @abs(ext.data) },
-    };
-}
-
-fn snapV3old(v: Vec3, snap: f32) Vec3 {
-    return Vec3{ .data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)) };
-}
-
-pub fn snapV3(v: Vec3, snap: f32) Vec3 {
-    // @round(v / snap)  * snap
-    const sn = @as(@Vector(3, f32), @splat(snap));
-    return Vec3{
-        //.data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)),
-        .data = @round(v.data / sn) * sn,
-    };
-}
-
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
 pub const MeshBatch = struct {
     const Self = @This();
@@ -316,7 +295,7 @@ pub const Solid = struct {
         var ret = init(alloc);
         //const Va = std.ArrayList(Vec3);
         //const Ia = std.ArrayList(u32);
-        const cc = cubeFromBounds(v1, v2);
+        const cc = util3d.cubeFromBounds(v1, v2);
         const N = Vec3.new;
         const o = cc[0];
         const e = cc[1];
@@ -331,7 +310,6 @@ pub const Solid = struct {
             o.add(N(e.x(), e.y(), e.z())),
             o.add(N(0, e.y(), e.z())),
         };
-        //All ccw
         const vis = [6][4]u32{
             .{ 0, 1, 2, 3 }, //-z
             .{ 7, 6, 5, 4 }, //+z
@@ -342,8 +320,6 @@ pub const Solid = struct {
             .{ 4, 5, 1, 0 }, //-y
             .{ 6, 7, 3, 2 }, //+y
         };
-        //+y, -x is broken both ways
-        //-y, +x is broken only y
         const Uvs = [6][2]Vec3{
             .{ N(1, 0, 0), N(0, 1, 0) },
             .{ N(1, 0, 0), N(0, -1, 0) },
@@ -543,7 +519,7 @@ pub const Entity = struct {
                         //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
                         if (param.draw_model_bb) {
-                            const cc = cubeFromBounds(mod.hull_min, mod.hull_max);
+                            const cc = util3d.cubeFromBounds(mod.hull_min, mod.hull_max);
                             //TODO rotate it
                             draw.cubeFrame(ent.origin.add(cc[0]), cc[1], param.frame_color);
                         }

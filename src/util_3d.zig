@@ -214,8 +214,20 @@ pub fn doesRayIntersectPlane(ray_0: V3f, ray_norm: V3f, plane_0: V3f, plane_norm
     return ray_0.add(ray_norm.scale(d));
 }
 
-pub fn snapV3(v: V3f, snap: f32) V3f {
-    return V3f{ .data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)) };
+pub fn snapV3(v: Vec3, snap: f32) Vec3 {
+    // @round(v / snap)  * snap
+    const sn = @as(@Vector(3, f32), @splat(snap));
+    return Vec3{
+        //.data = @divFloor(v.data, @as(@Vector(3, f32), @splat(snap))) * @as(@Vector(3, f32), @splat(snap)),
+        .data = @round(v.data / sn) * sn,
+    };
+}
+pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
+    const ext = p1.sub(p2);
+    return .{
+        Vec3{ .data = @min(p1.data, p2.data) },
+        Vec3{ .data = @abs(ext.data) },
+    };
 }
 
 pub fn snap1(comp: f32, snap: f32) f32 {
