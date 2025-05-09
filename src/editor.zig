@@ -23,6 +23,7 @@ const texture_load_thread = @import("texture_load_thread.zig");
 const assetbrowse = @import("asset_browser.zig");
 const Conf = @import("config.zig");
 const undo = @import("undo.zig");
+const tool_def = @import("tools.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -597,6 +598,8 @@ pub const Context = struct {
     texture_load_ctx: texture_load_thread.Context,
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
 
+    tools: std.ArrayList(*tool_def.i3DTool),
+
     draw_state: struct {
         meshes_dirty: bool = false,
         tog: struct {
@@ -725,6 +728,7 @@ pub const Context = struct {
             .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
             .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
+            .tools = std.ArrayList(*tool_def.i3DTool).init(alloc),
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
@@ -756,9 +760,14 @@ pub const Context = struct {
         try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
+
+        try self.tools.append(try tool_def.Translate.create(self.alloc));
     }
 
     pub fn deinit(self: *Self) void {
+        for (self.tools.items) |item|
+            item.deinit_fn(item, self.alloc);
+        self.tools.deinit();
         self.tool_res_map.deinit();
         self.undoctx.deinit();
         self.ecs.deinit();

@@ -19,28 +19,56 @@ pub const i3DTool = struct {
     //I want functions which will draw docs to gui
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
-    guiDoc_fn: *const fn (*@This()) void,
-    tool_icon_fn: *const fn (*@This()) void,
+    //reset_fn: *const fn (*@This()) void,
+    //guiDoc_fn: *const fn (*@This()) void,
+    //tool_icon_fn: *const fn (*@This()) void,
 };
 
 pub const ToolData = struct {
     view_3d: *const graph.za.Mat4,
     screen_area: graph.Rect,
     draw: *DrawCtx,
+    win: *graph.SDL.Window,
 };
 
 pub const TranslateInput = struct {
     dupe: bool,
 };
 
+pub const Translate = struct {
+    vt: i3DTool,
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var obj = try alloc.create(@This());
+        obj.* = .{ .vt = .{
+            .deinit_fn = &@This().deinit,
+            .runTool_fn = &@This().runTool,
+        } };
+        return &obj.vt;
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        if (editor.edit_state.id) |id| {
+            translate(editor, id, td) catch return;
+        }
+    }
+};
+
 //TODO tools should be virtual functions
 //Combined with the new ecs it would allow for dynamic linking of new tools and components
 
-pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id, td: ToolData) !void {
+pub fn translate(self: *Editor, selected_id: edit.EcsT.Id, td: ToolData) !void {
     const id = selected_id;
     const draw_nd = &self.draw_state.ctx;
     const draw = td.draw;
-    const dupe = input.dupe;
+    const dupe = td.win.isBindState(self.config.keys.duplicate.b, .high);
     const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse return;
     const COLOR_MOVE = 0xe8a130_ee;
     const COLOR_DUPE = 0xfc35ac_ee;
@@ -157,11 +185,7 @@ pub fn translate(self: *Editor, input: TranslateInput, selected_id: edit.EcsT.Id
     }
 }
 
-pub const FaceTranslateInput = struct {
-    grab_far: bool,
-};
-
-pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, view_3d: graph.za.Mat4, draw: *graph.ImmediateDrawingContext, input: FaceTranslateInput) !void {
+pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, view_3d: graph.za.Mat4, draw: *graph.ImmediateDrawingContext) !void {
     const draw_nd = &self.draw_state.ctx;
     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
         var gizmo_is_active = false;
@@ -215,7 +239,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
                 }
             }
         }
-        if (!gizmo_is_active and self.edit_state.lmouse == .rising) {
+        if (!gizmo_is_active and (self.edit_state.lmouse == .rising or self.edit_state.rmouse == .rising)) {
             const r = self.camRay(screen_area, view_3d);
             //Find the face it intersects with
             const rc = (try raycast.doesRayIntersectSolid(
@@ -225,7 +249,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, screen_area: graph.Rect, v
                 &self.csgctx,
             ));
             if (rc.len > 0) {
-                const rci = if (input.grab_far) @min(1, rc.len) else 0;
+                const rci = if (self.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
                 self.edit_state.face_id = rc[rci].side_index;
                 self.edit_state.face_origin = rc[rci].point;
             }

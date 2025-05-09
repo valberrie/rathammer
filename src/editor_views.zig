@@ -103,6 +103,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         .screen_area = screen_area,
         .view_3d = &view_3d,
         .draw = draw,
+        .win = win,
     };
     switch (self.edit_state.state) {
         else => {},
@@ -145,14 +146,10 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         switch (self.edit_state.state) {
             else => {},
             .face_manip => {
-                try tools.faceTranslate(self, id, screen_area, view_3d, draw, .{
-                    .grab_far = win.isBindState(self.config.keys.grab_far.b, .high),
-                });
+                try tools.faceTranslate(self, id, screen_area, view_3d, draw);
             },
             .select => {
-                try tools.translate(self, .{
-                    .dupe = win.isBindState(self.config.keys.duplicate.b, .high),
-                }, id, td);
+                try tools.translate(self, id, td);
             },
         }
     }
