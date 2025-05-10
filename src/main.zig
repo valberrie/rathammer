@@ -151,7 +151,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         if (paused) {
             win.pumpEvents(.wait);
             win.grabMouse(false);
-            try draw.begin(0x75573cff, win.screen_dimensions.toF());
+            try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
             const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
             try os9gui.beginFrame(is, &win);
             if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
@@ -178,7 +178,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             win.swap();
             continue;
         }
-        try draw.begin(0x75573cff, win.screen_dimensions.toF());
+        try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
 
         graph.c.glPolygonMode(
             graph.c.GL_FRONT_AND_BACK,

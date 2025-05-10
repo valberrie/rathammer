@@ -173,7 +173,6 @@ pub const FastFaceManip = struct {
             .active => {
                 for (solid.sides.items, 0..) |side, s_i| {
                     if (self.face_id == s_i) {
-                        draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088);
                         //Side_normal
                         //self.start
                         if (side.index.items.len < 3) return;
@@ -190,6 +189,7 @@ pub const FastFaceManip = struct {
                             const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
 
                             solid.drawImmediate(td.draw, editor, dist, s_i) catch return;
+                            draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{ .offset = dist });
 
                             const commit_btn = if (self.right) lm else rm;
                             if (commit_btn == .rising) {
@@ -202,6 +202,8 @@ pub const FastFaceManip = struct {
                                 ) catch return) catch return;
                                 undo.applyRedo(ustack.items, editor);
                             }
+                        } else {
+                            draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
                         }
                     }
                 }
@@ -462,7 +464,7 @@ pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
         solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
         for (solid.sides.items, 0..) |side, s_i| {
             if (self.edit_state.face_id == s_i) {
-                draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088);
+                draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
                 const origin_i = self.edit_state.face_origin;
                 var origin = origin_i;
                 const giz_active = self.edit_state.gizmo.handle(

@@ -23,6 +23,13 @@ Dependencies:
         Determine the cost of our Imgui
         Having sdl and libepoxy as our only dependencies makes building easy.
 
+    GUI
+        I hate gui
+        If you use fixed width fonts the math gets really easy
+        Idea for gui is this.
+        Its a tui, tui's are ugly.
+        The issue with the current gui is that it isnt scaleable
+
 Features
     Add loose file capability to vpk.Context // Partially done
     Save vmf file.
@@ -59,6 +66,8 @@ Interface
     Texture application
     Vertex tool
     Face translation
+
+    EXTRUDE Tooll, create a new solid at face
 
     vmf loading and saving.
         Could use gui.FileBrowser
