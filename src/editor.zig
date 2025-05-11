@@ -24,6 +24,7 @@ const assetbrowse = @import("asset_browser.zig");
 const Conf = @import("config.zig");
 const undo = @import("undo.zig");
 const tool_def = @import("tools.zig");
+const util = @import("util.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -760,10 +761,10 @@ pub const Context = struct {
         };
         self.game_conf = game_conf;
 
-        const cwd = if (args.custom_cwd) |cc| try std.fs.cwd().openDir(cc, .{}) else std.fs.cwd();
-        const base_dir = try cwd.openDir(args.basedir orelse game_conf.base_dir, .{});
-        const game_dir = try cwd.openDir(args.gamedir orelse game_conf.game_dir, .{});
-        const fgd_dir = try cwd.openDir(args.fgddir orelse game_conf.fgd_dir, .{});
+        const cwd = if (args.custom_cwd) |cc| util.openDirFatal(std.fs.cwd(), cc, .{}, "") else std.fs.cwd();
+        const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, "");
+        const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, "");
+        const fgd_dir = util.openDirFatal(cwd, args.fgddir orelse game_conf.fgd_dir, .{}, "");
 
         const ORG = "rathammer";
         const APP = "";
@@ -1163,9 +1164,9 @@ pub const Context = struct {
 
     pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         var timer = try std.time.Timer.start();
-        defer log.info("Loaded vmf in {d}ms", .{timer.read() / std.time.ns_per_ms});
-        const infile = try path.openFile(filename, .{});
+        const infile = util.openFileFatal(path, filename, .{}, "");
         defer infile.close();
+        defer log.info("Loaded vmf in {d}ms", .{timer.read() / std.time.ns_per_ms});
 
         const slice = try infile.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
         defer self.alloc.free(slice);

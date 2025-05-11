@@ -31,8 +31,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
     //var my_tex = try vtf.loadTexture(o.?, alloc);
     var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config);
-    defer editor.deinit();
     try editor.postInit(args);
+    defer editor.deinit(); //important to call this after postInit as some fields are not initilized yet
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
