@@ -179,12 +179,21 @@ pub const FastFaceManip = struct {
                         if (side.index.items.len < 3) return;
                         const ind = side.index.items;
                         const ver = solid.verts.items;
-                        const plane_norm = util3d.trianglePlane([3]Vec3{ ver[ind[0]], ver[ind[1]], ver[ind[2]] });
-                        const r = editor.camRay(td.screen_area, td.view_3d.*);
-                        const u = r[1];
-                        const proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
 
-                        if (util3d.doesRayIntersectPlane(r[0], r[1], self.start, proj)) |inter| {
+                        //The projection of a vector u onto a plane with normal n is given by:
+                        //v_proj = u - n.scale(u dot n), assuming n is normalized
+                        const plane_norm = util3d.trianglePlane([3]Vec3{ ver[ind[0]], ver[ind[1]], ver[ind[2]] });
+                        const ray = editor.camRay(td.screen_area, td.view_3d.*);
+                        const u = ray[1];
+                        const v_proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
+                        // By projecting the cam_norm onto the side's plane,
+                        // we can use the resulting vector as a normal for a plane to raycast against
+                        // The resulting plane's normal is as colinear with the cameras normal as we can get
+                        // while still having the side's normal perpendicular (in the raycast plane)
+                        //
+                        // If cam_norm and side_norm are colinear the projection is near zero, in the future discard vectors below a threshold as they cause explosions
+
+                        if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
                             const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
                             const acc = dist_n.dot(plane_norm);
                             const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
@@ -226,14 +235,30 @@ pub const FastFaceManip = struct {
 pub const Translate = struct {
     vt: i3DTool,
 
+    gizmo: gizmo2.Gizmo,
+    mode: enum {
+        translate,
+        rotate,
+        pub fn next(self: *@This()) void {
+            self.* = switch (self.*) {
+                .translate => .rotate,
+                .rotate => .translate,
+            };
+        }
+    } = .translate,
+
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
-        obj.* = .{ .vt = .{
-            .deinit_fn = &@This().deinit,
-            .runTool_fn = &@This().runTool,
-            .tool_icon_fn = &@This().drawIcon,
-            .guiDoc_fn = &@This().guiDoc,
-        } };
+        obj.* = .{
+            .vt = .{
+                .deinit_fn = &@This().deinit,
+                .runTool_fn = &@This().runTool,
+                .tool_icon_fn = &@This().drawIcon,
+                .guiDoc_fn = &@This().guiDoc,
+            },
+            .gizmo = .{},
+            .mode = .translate,
+        };
         return &obj.vt;
     }
 
@@ -251,9 +276,11 @@ pub const Translate = struct {
 
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
+        if (td.is_first_frame)
+            self.gizmo.reset();
+
         if (editor.edit_state.id) |id| {
-            translate(editor, id, td) catch return;
+            translate(self, editor, id, td) catch return;
         }
     }
 
@@ -263,6 +290,176 @@ pub const Translate = struct {
         os9gui.label("While you drag the gizmo, press right click to commit the change.", .{});
         os9gui.label("Optionally, hold {s} to duplicate the object.", .{editor.config.keys.duplicate.b.name()});
         os9gui.hr();
+    }
+
+    pub fn translate(tool: *Translate, self: *Editor, selected_id: edit.EcsT.Id, td: ToolData) !void {
+        const id = selected_id;
+        const draw_nd = &self.draw_state.ctx;
+        const draw = td.draw;
+        const dupe = td.win.isBindState(self.config.keys.duplicate.b, .high);
+        const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse return;
+        const COLOR_MOVE = 0xe8a130_ee;
+        const COLOR_DUPE = 0xfc35ac_ee;
+        const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
+        if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+            const mid_i = bb.a.add(bb.b).scale(0.5);
+            var mid = mid_i;
+            const giz_active = self.edit_state.gizmo.handle(
+                mid,
+                &mid,
+                self.draw_state.cam3d.pos,
+                self.edit_state.lmouse,
+                draw_nd,
+                td.screen_area.dim(),
+                td.view_3d.*,
+                self.edit_state.trans_begin,
+            );
+
+            solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+            if (giz_active == .rising) {
+                try solid.removeFromMeshMap(id, self);
+            }
+            if (giz_active == .falling) {
+                try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+
+                //Draw it here too so we it doesn't flash for a single frame
+                const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
+                try solid.drawImmediate(draw, self, dist, null);
+            }
+
+            if (giz_active == .high) {
+                const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
+                try solid.drawImmediate(draw, self, dist, null);
+                if (dupe) { //Draw original
+                    try solid.drawImmediate(draw, self, Vec3.zero(), null);
+                }
+                solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
+                if (self.edit_state.rmouse == .rising) {
+                    if (dupe) {
+                        const new = try self.ecs.createEntity();
+                        try self.ecs.destroyEntity(new);
+
+                        const ustack = try self.undoctx.pushNew();
+                        try ustack.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
+                        try ustack.append(try undo.UndoTranslate.create(
+                            self.undoctx.alloc,
+                            dist,
+                            null,
+                            new,
+                        ));
+                        undo.applyRedo(ustack.items, self);
+                    } else {
+                        const ustack = try self.undoctx.pushNew();
+                        try ustack.append(try undo.UndoTranslate.create(
+                            self.undoctx.alloc,
+                            dist,
+                            null,
+                            id,
+                        ));
+                        undo.applyRedo(ustack.items, self);
+                    }
+                }
+            }
+        }
+        if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+            var orig = ent.origin;
+            var angle = ent.angle;
+            //TODO the angle function is usable but suboptimal.
+            //the gizmo always manipulates extrinsic angles, rather than relative to current rotation
+            //this is how the angles in the vmf are stored but make for unintuitive editing
+            const giz_active = switch (tool.mode) {
+                .translate => self.edit_state.gizmo.handle(
+                    orig,
+                    &orig,
+                    self.draw_state.cam3d.pos,
+                    self.edit_state.lmouse,
+                    draw_nd,
+                    td.screen_area.dim(),
+                    td.view_3d.*,
+                    self.edit_state.trans_begin,
+                ),
+                .rotate => tool.gizmo.drawGizmo(
+                    orig,
+                    &angle,
+                    self.draw_state.cam3d.pos,
+                    self.edit_state.lmouse,
+                    draw_nd,
+                    td.screen_area.dim(),
+                    td.view_3d.*,
+                    self.edit_state.trans_begin,
+                ),
+            };
+            if (giz_active == .low) {
+                const switcher_sz = orig.distance(self.draw_state.cam3d.pos) / 64 * 5;
+                const orr = orig.add(Vec3.new(0, 0, switcher_sz * 3));
+                const co = orr.sub(Vec3.set(switcher_sz / 2));
+                const ce = Vec3.set(switcher_sz);
+                draw_nd.cube(co, ce, 0xffffff88);
+                const rc = util3d.screenSpaceRay(td.screen_area.dim(), self.edit_state.trans_begin, td.view_3d.*);
+                if (self.edit_state.lmouse == .rising) {
+                    if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(ce))) |_| {
+                        tool.mode.next();
+                    }
+                }
+            }
+            //const giz_active = self.edit_state.gizmo.handle(
+            //    orig,
+            //    &orig,
+            //    self.draw_state.cam3d.pos,
+            //    self.edit_state.lmouse,
+            //    draw_nd,
+            //    td.screen_area.dim(),
+            //    td.view_3d.*,
+            //    self.edit_state.trans_begin,
+            //);
+            //const other = orig.add(Vec3.new(0, 0, 128));
+            //const og = tool.gizmo.drawGizmo(
+            //    other,
+            //    &angle,
+            //    self.draw_state.cam3d.pos,
+            //    self.edit_state.lmouse,
+            //    draw_nd,
+            //    td.screen_area.dim(),
+            //    td.view_3d.*,
+            //    self.edit_state.trans_begin,
+            //);
+            if (giz_active == .high) {
+                const orr = snapV3(orig, self.edit_state.grid_snap);
+                const dist = snapV3(orig.sub(ent.origin), self.edit_state.grid_snap);
+                var copy_ent = ent.*;
+                copy_ent.origin = orr;
+                copy_ent.angle = angle;
+                copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
+
+                //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
+                if (self.edit_state.rmouse == .rising) {
+                    const angle_delta = copy_ent.angle.sub(ent.angle);
+                    if (dupe) {
+                        const new = try self.ecs.createEntity();
+                        try self.ecs.destroyEntity(new);
+
+                        const ustack = try self.undoctx.pushNew();
+                        try ustack.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
+                        try ustack.append(try undo.UndoTranslate.create(
+                            self.undoctx.alloc,
+                            dist,
+                            angle_delta,
+                            new,
+                        ));
+                        undo.applyRedo(ustack.items, self);
+                    } else {
+                        const ustack = try self.undoctx.pushNew();
+                        try ustack.append(try undo.UndoTranslate.create(
+                            self.undoctx.alloc,
+                            dist,
+                            angle_delta,
+                            id,
+                        ));
+                        undo.applyRedo(ustack.items, self);
+                    }
+                }
+            }
+        }
     }
 };
 
@@ -343,123 +540,6 @@ pub const TranslateFace = struct {
 
 //TODO tools should be virtual functions
 //Combined with the new ecs it would allow for dynamic linking of new tools and components
-
-pub fn translate(self: *Editor, selected_id: edit.EcsT.Id, td: ToolData) !void {
-    const id = selected_id;
-    const draw_nd = &self.draw_state.ctx;
-    const draw = td.draw;
-    const dupe = td.win.isBindState(self.config.keys.duplicate.b, .high);
-    const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse return;
-    const COLOR_MOVE = 0xe8a130_ee;
-    const COLOR_DUPE = 0xfc35ac_ee;
-    const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
-    if (try self.ecs.getOptPtr(id, .solid)) |solid| {
-        const mid_i = bb.a.add(bb.b).scale(0.5);
-        var mid = mid_i;
-        const giz_active = self.edit_state.gizmo.handle(
-            mid,
-            &mid,
-            self.draw_state.cam3d.pos,
-            self.edit_state.lmouse,
-            draw_nd,
-            td.screen_area.dim(),
-            td.view_3d.*,
-            self.edit_state.trans_begin,
-        );
-
-        const other = mid.add(Vec3.new(0, 0, 128));
-        gizmo2.drawGizmo(other, draw_nd, self.draw_state.cam3d.pos);
-
-        solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
-        if (giz_active == .rising) {
-            try solid.removeFromMeshMap(id, self);
-        }
-        if (giz_active == .falling) {
-            try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
-
-            //Draw it here too so we it doesn't flash for a single frame
-            const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
-            try solid.drawImmediate(draw, self, dist, null);
-        }
-
-        if (giz_active == .high) {
-            const dist = snapV3(mid.sub(mid_i), self.edit_state.grid_snap);
-            try solid.drawImmediate(draw, self, dist, null);
-            if (dupe) { //Draw original
-                try solid.drawImmediate(draw, self, Vec3.zero(), null);
-            }
-            solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
-            if (self.edit_state.rmouse == .rising) {
-                if (dupe) {
-                    const new = try self.ecs.createEntity();
-                    try self.ecs.destroyEntity(new);
-
-                    const ustack = try self.undoctx.pushNew();
-                    try ustack.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
-                    try ustack.append(try undo.UndoTranslate.create(
-                        self.undoctx.alloc,
-                        dist,
-                        new,
-                    ));
-                    undo.applyRedo(ustack.items, self);
-                } else {
-                    const ustack = try self.undoctx.pushNew();
-                    try ustack.append(try undo.UndoTranslate.create(
-                        self.undoctx.alloc,
-                        dist,
-                        id,
-                    ));
-                    undo.applyRedo(ustack.items, self);
-                }
-            }
-        }
-    }
-    if (try self.ecs.getOptPtr(id, .entity)) |ent| {
-        var orig = ent.origin;
-        const giz_active = self.edit_state.gizmo.handle(
-            orig,
-            &orig,
-            self.draw_state.cam3d.pos,
-            self.edit_state.lmouse,
-            draw_nd,
-            td.screen_area.dim(),
-            td.view_3d.*,
-            self.edit_state.trans_begin,
-        );
-        if (giz_active == .high) {
-            const orr = snapV3(orig, self.edit_state.grid_snap);
-            const dist = snapV3(orig.sub(ent.origin), self.edit_state.grid_snap);
-            var copy_ent = ent.*;
-            copy_ent.origin = orr;
-            copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
-
-            //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
-            if (self.edit_state.rmouse == .rising) {
-                if (dupe) {
-                    const new = try self.ecs.createEntity();
-                    try self.ecs.destroyEntity(new);
-
-                    const ustack = try self.undoctx.pushNew();
-                    try ustack.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
-                    try ustack.append(try undo.UndoTranslate.create(
-                        self.undoctx.alloc,
-                        dist,
-                        new,
-                    ));
-                    undo.applyRedo(ustack.items, self);
-                } else {
-                    const ustack = try self.undoctx.pushNew();
-                    try ustack.append(try undo.UndoTranslate.create(
-                        self.undoctx.alloc,
-                        dist,
-                        id,
-                    ));
-                    undo.applyRedo(ustack.items, self);
-                }
-            }
-        }
-    }
-}
 
 pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
     const draw_nd = &self.draw_state.ctx;

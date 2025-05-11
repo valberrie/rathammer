@@ -142,12 +142,14 @@ pub const UndoTranslate = struct {
     vt: iUndo,
 
     vec: Vec3,
+    angle_delta: Vec3,
     id: Id,
 
-    pub fn create(alloc: std.mem.Allocator, vec: Vec3, id: Id) !*iUndo {
+    pub fn create(alloc: std.mem.Allocator, vec: Vec3, angle_delta: ?Vec3, id: Id) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vec = vec,
+            .angle_delta = angle_delta orelse Vec3.zero(),
             .id = id,
             .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
         };
@@ -161,6 +163,7 @@ pub const UndoTranslate = struct {
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
             ent.origin = ent.origin.add(self.vec.scale(-1));
+            ent.angle = ent.angle.sub(self.angle_delta);
             bb.setFromOrigin(ent.origin);
         }
     }
@@ -171,6 +174,7 @@ pub const UndoTranslate = struct {
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
             ent.origin = ent.origin.add(self.vec);
+            ent.angle = ent.angle.add(self.angle_delta);
             bb.setFromOrigin(ent.origin);
         }
     }
