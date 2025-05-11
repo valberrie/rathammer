@@ -24,7 +24,7 @@ pub const AssetBrowserGui = struct {
     model_search: Os9Gui.DynamicTextbox,
     mat_search: Os9Gui.DynamicTextbox,
 
-    num_texture_column: usize = 4,
+    num_texture_column: usize = 10,
     start_index_model: usize = 0,
     start_index_mat: usize = 0,
 
@@ -241,7 +241,7 @@ pub const AssetBrowserGui = struct {
                     self.start_index_mat = @min(self.start_index_mat, self.mat_list_sub.items.len);
                     const max_scroll = @divFloor(self.mat_list_sub.items.len, self.num_texture_column);
                     os9gui.sliderEx(&self.start_index_mat, 0, max_scroll, "", .{});
-                    os9gui.sliderEx(&self.num_texture_column, 1, 10, "num column", .{});
+                    os9gui.sliderEx(&self.num_texture_column, 1, self.max_column, "num column", .{});
                     const len = self.mat_search.arraylist.items.len;
                     {
                         _ = try os9gui.beginH(3);

@@ -20,7 +20,7 @@ const Gizmo = @import("gizmo.zig").Gizmo;
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
-    guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor) void = null,
+    guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
 };
@@ -78,19 +78,26 @@ pub const CubeDraw = struct {
         cubeDraw(self, editor, td) catch return;
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
-        os9gui.label("This is the draw cube tool.", .{});
-        os9gui.label("Left click to start drawing the cube.", .{});
-        os9gui.hr();
-        os9gui.label("To change the z, hold {s} and left click", .{editor.config.keys.cube_draw_plane_raycast.b.name()});
-        os9gui.label("Or, press {s} or {s} to move up and down", .{
-            editor.config.keys.cube_draw_plane_up.b.name(),
-            editor.config.keys.cube_draw_plane_down.b.name(),
-        });
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
+        vl.pushHeight(200 * os9gui.scale);
+        if (os9gui.textView(20 * os9gui.scale, 0xff)) |tvc| {
+            var tv = tvc;
+            tv.text("This is the draw cube tool.", .{});
+            tv.text("Left click to start drawing the cube.", .{});
+            //os9gui.hr();
+            tv.text("To change the z, hold {s} and left click", .{editor.config.keys.cube_draw_plane_raycast.b.name()});
+            tv.text("Or, press {s} or {s} to move up and down", .{
+                editor.config.keys.cube_draw_plane_up.b.name(),
+                editor.config.keys.cube_draw_plane_down.b.name(),
+            });
+        }
     }
 
     pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        vl.pushHeight(200);
+        _ = os9gui.textView(20, 0xff);
+
         if (editor.asset_browser.selected_mat_vpk_id) |id| {
             os9gui.label("texture: ", .{});
             const bound = os9gui.gui.layout.last_requested_bounds orelse return;
@@ -328,7 +335,7 @@ pub const FastFaceManip = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, _: *Gui.VerticalLayout) void {
         os9gui.label("This is the Fast face tool.", .{});
         os9gui.hr();
         _ = editor;
@@ -389,7 +396,7 @@ pub const Translate = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, _: *Gui.VerticalLayout) void {
         os9gui.label("This is the translate tool.", .{});
         os9gui.label("Select an object with {s}", .{editor.config.keys.select.b.name()});
         os9gui.label("While you drag the gizmo, press right click to commit the change.", .{});
@@ -615,7 +622,7 @@ pub const TranslateFace = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, _: *Gui.VerticalLayout) void {
         os9gui.label("This is the face translate tool.", .{});
         os9gui.label("Select a solid with {s}", .{editor.config.keys.select.b.name()});
         os9gui.label("left click selects the near face.", .{});

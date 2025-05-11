@@ -30,6 +30,13 @@ Dependencies:
         Its a tui, tui's are ugly.
         The issue with the current gui is that it isnt scaleable
 
+        Requirements:
+            Render fast
+            looks good enough.
+            allow all text to be read
+            could just be a widget
+
+
 Features
     Add loose file capability to vpk.Context // Partially done
     Save vmf file.

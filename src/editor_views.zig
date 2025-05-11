@@ -172,7 +172,7 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
             if (try os9gui.beginVScroll(&self.misc_gui_state.scroll_a, .{ .sw = area.w, .sh = 1000000 })) |scr| {
                 defer os9gui.endVScroll(scr);
                 if (self.getCurrentTool()) |tool| {
-                    if (tool.guiDoc_fn) |gd| gd(tool, os9gui, self);
+                    if (tool.guiDoc_fn) |gd| gd(tool, os9gui, self, scr.layout);
                     if (tool.gui_fn) |gf| gf(tool, os9gui, self, scr.layout);
                 }
                 //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
