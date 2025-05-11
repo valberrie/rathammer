@@ -14,6 +14,7 @@ const undo = @import("undo.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
 const Gui = graph.Gui;
 const Os9Gui = graph.gui_app.Os9Gui;
+const gizmo2 = @import("gizmo2.zig");
 
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
@@ -365,6 +366,9 @@ pub fn translate(self: *Editor, selected_id: edit.EcsT.Id, td: ToolData) !void {
             td.view_3d.*,
             self.edit_state.trans_begin,
         );
+
+        const other = mid.add(Vec3.new(0, 0, 128));
+        gizmo2.drawGizmo(other, draw_nd, self.draw_state.cam3d.pos);
 
         solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
         if (giz_active == .rising) {

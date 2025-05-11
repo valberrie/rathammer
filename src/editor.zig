@@ -506,19 +506,18 @@ pub const Entity = struct {
             if (ent.model_id) |m| {
                 if (editor.models.getPtr(m)) |o_mod| {
                     if (o_mod.mesh) |mod| {
-                        const M4 = graph.za.Mat4;
-                        //x: fwd
-                        //y:left
-                        //z: up
+                        const mat1 = Mat4.fromTranslate(ent.origin);
+                        const fr = Mat4.fromRotation;
+                        //I don't understand why they angles are mapped like this
+                        //see https://developer.valvesoftware.com/wiki/QAngle
+                        //x->y
+                        //y->z
+                        //z->x
+                        const x1 = fr(ent.angle.z(), Vec3.new(1, 0, 0));
+                        const y1 = fr(ent.angle.x(), Vec3.new(0, 1, 0));
+                        const z1 = fr(ent.angle.y(), Vec3.new(0, 0, 1));
 
-                        //TODO, these are slightly incorrect
-                        const x1 = M4.fromRotation(ent.angle.z(), Vec3.new(1, 0, 0));
-                        const y1 = M4.fromRotation(ent.angle.y(), Vec3.new(0, 0, 1));
-                        const z = M4.fromRotation(ent.angle.x(), Vec3.new(0, 1, 0));
-                        const mat1 = graph.za.Mat4.fromTranslate(ent.origin);
-                        //zyx
-                        const mat3 = mat1.mul(z.mul(y1.mul(x1)));
-                        //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                        const mat3 = mat1.mul(z1.mul(y1.mul(x1)));
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
                         if (param.draw_model_bb) {
                             const cc = util3d.cubeFromBounds(mod.hull_min, mod.hull_max);
