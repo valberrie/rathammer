@@ -587,8 +587,12 @@ pub const Context = struct {
     fgd_ctx: fgd.EntCtx,
     icon_map: std.StringHashMap(graph.Texture),
 
+    /// These maps map vpkids to their respective resource,
+    /// when fetching a resource with getTexture, etc. Something is always returned. If an entry does not exist,
+    /// a job is submitted to the load thread pool and a placeholder is inserted into the map and returned
     textures: std.AutoHashMap(vpk.VpkResId, graph.Texture),
     models: std.AutoHashMap(vpk.VpkResId, Model),
+
     skybox: Skybox,
 
     asset_browser: assetbrowse.AssetBrowserGui,
@@ -673,6 +677,7 @@ pub const Context = struct {
 
     asset: graph.AssetBake.AssetMap,
     asset_atlas: graph.Texture,
+    frame_arena: std.heap.ArenaAllocator,
 
     pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
         return .{
@@ -683,6 +688,7 @@ pub const Context = struct {
             .asset_atlas = undefined,
 
             .rayctx = raycast.Ctx.init(alloc),
+            .frame_arena = std.heap.ArenaAllocator.init(alloc),
             .config = config,
             .alloc = alloc,
             .fgd_ctx = fgd.EntCtx.init(alloc),
@@ -772,6 +778,7 @@ pub const Context = struct {
         self.csgctx.deinit();
         self.vpkctx.deinit();
         self.skybox.deinit();
+        self.frame_arena.deinit();
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {
             m.deinit(self.alloc);
@@ -807,6 +814,8 @@ pub const Context = struct {
         var jwr = std.json.writeStream(bb, .{});
         try jwr.beginObject();
         {
+            try jwr.objectField("sky_name");
+            try jwr.write(self.skybox.sky_name);
             try jwr.objectField("objects");
             try jwr.beginArray();
             {
@@ -1091,6 +1100,16 @@ pub const Context = struct {
         if (parsed.value != .object)
             return error.invalidMap;
 
+        { //Sky stuff
+            if (parsed.value.object.get("sky_name")) |sky_name| {
+                if (sky_name == .string) {
+                    try self.skybox.loadSky(try self.storeString(sky_name.string), &self.vpkctx);
+                } else {
+                    return error.invalidSky;
+                }
+            }
+        }
+
         const obj_o = parsed.value.object.get("objects") orelse return error.invalidMap;
         if (obj_o != .array) return error.invalidMap;
 
@@ -1101,6 +1120,7 @@ pub const Context = struct {
             var it = val.object.iterator();
             //TODO all entities have bounding boxes, add those
             //TODO finally get that model loading thing to set bb's
+            var origin = Vec3.zero();
             outer: while (it.next()) |data| {
                 if (std.mem.eql(u8, "id", data.key_ptr.*)) continue;
                 inline for (EcsT.Fields, 0..) |field, f_i| {
@@ -1108,22 +1128,25 @@ pub const Context = struct {
                         const comp = try self.readComponentFromJson(data.value_ptr.*, field.ftype);
                         try self.ecs.attachComponentAndCreate(@intCast(id), @enumFromInt(f_i), comp);
 
+                        switch (field.ftype) {
+                            Entity => {
+                                origin = comp.origin;
+                            },
+                            else => {},
+                        }
+
                         continue :outer;
                     }
                 }
 
                 return error.invalidKey;
             }
+            var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+            bb.setFromOrigin(origin);
+            try self.ecs.attachComponentAndCreate(@intCast(id), .bounding_box, bb);
             loadctx.printCb("Ent parsed {d} / {d}", .{ i, obj_o.array.items.len });
         }
         loadctx.cb("Building meshes}");
-        {
-            var it = self.ecs.iterator(.solid);
-            while (it.next()) |item| {
-                _ = item;
-                try self.ecs.attach(it.i, .bounding_box, .{});
-            }
-        }
         try self.rebuildAllMeshes();
     }
 
@@ -1140,7 +1163,7 @@ pub const Context = struct {
         defer obj.deinit();
         loadctx.cb("vmf parsed");
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
-        try self.skybox.loadSky(vmf_.world.skyname, &self.vpkctx);
+        try self.skybox.loadSky(try self.storeString(vmf_.world.skyname), &self.vpkctx);
         {
             loadctx.expected_cb = vmf_.world.solid.len + vmf_.entity.len + 10;
             var gen_timer = try std.time.Timer.start();
@@ -1296,6 +1319,7 @@ pub const Context = struct {
     }
 
     pub fn update(self: *Self) !void {
+        _ = self.frame_arena.reset(.retain_capacity);
         self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();
@@ -1322,6 +1346,7 @@ pub const Context = struct {
             for (0..num_rm_tex) |_|
                 _ = self.texture_load_ctx.completed.orderedRemove(0);
 
+            var completed_ids = std.ArrayList(vpk.VpkResId).init(self.frame_arena.allocator());
             var num_removed: usize = 0;
             for (self.texture_load_ctx.completed_models.items) |*completed| {
                 var model = completed.mesh;
@@ -1334,6 +1359,7 @@ pub const Context = struct {
                     const t = try self.getTexture(mesh.tex_res_id);
                     mesh.texture_id = t.id;
                 }
+                try completed_ids.append(completed.res_id);
                 completed.texture_ids.deinit();
                 num_removed += 1;
 
@@ -1343,6 +1369,21 @@ pub const Context = struct {
             }
             for (0..num_removed) |_|
                 _ = self.texture_load_ctx.completed_models.orderedRemove(0);
+
+            var m_it = self.ecs.iterator(.entity);
+            while (m_it.next()) |ent| {
+                if (ent.model_id) |mid| {
+                    if (std.mem.indexOfScalar(vpk.VpkResId, completed_ids.items, mid) != null) {
+                        const mod = self.models.getPtr(mid) orelse continue;
+                        const mesh = mod.mesh orelse continue;
+                        const bb = try self.ecs.getPtr(m_it.i, .bounding_box);
+                        bb.origin_offset = mesh.hull_min.scale(-1);
+                        bb.a = mesh.hull_min;
+                        bb.b = mesh.hull_max;
+                        bb.setFromOrigin(ent.origin);
+                    }
+                }
+            }
         }
         if (tcount > 0) {
             self.draw_state.meshes_dirty = true;

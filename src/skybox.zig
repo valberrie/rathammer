@@ -9,6 +9,7 @@ pub const Skybox = struct {
     textures: std.ArrayList(graph.Texture),
     shader: c_uint,
     alloc: std.mem.Allocator,
+    sky_name: []const u8,
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         const sky_shad = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
@@ -20,11 +21,13 @@ pub const Skybox = struct {
             .meshes = std.ArrayList(SkyBatch).init(alloc),
             .textures = std.ArrayList(graph.Texture).init(alloc),
             .shader = sky_shad,
+            .sky_name = "",
         };
     }
 
     pub fn loadSky(self: *Self, sky_name: []const u8, vpkctx: *vpk.Context) !void {
         //TODO clear out the old ones;
+        self.sky_name = sky_name;
         const a = 1;
         const t = 1;
         const b = 0.006; //Inset the uv sligtly to prevent seams from showing
