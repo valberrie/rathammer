@@ -23,8 +23,8 @@ mapname=$2 # name of map without the vmf extension
 cp "$mapdir"/"$mapname".vmf "$workingdir"/"$mapname".vmf
 cd $workingdir
 
-wine "$gamedir"/bin/vbsp.exe -game "$gamedir"/"$ganename"  -novconfig $mapname
-wine "$gamedir"/bin/vvis.exe -game "$gamedir"/"$ganename"  -novconfig $mapname
-wine "$gamedir"/bin/vrad.exe -game "$gamedir"/"$ganename"  -novconfig $mapname
+wine "$gamedir"/bin/vbsp.exe -game "$gamedir"/"$gamename"  -novconfig $mapname
+wine "$gamedir"/bin/vvis.exe -game "$gamedir"/"$gamename"  -novconfig $mapname
+wine "$gamedir"/bin/vrad.exe -game "$gamedir"/"$gamename"  -novconfig $mapname
 #sdk_materials.vmf out.bsp
 cp "$mapname".bsp "$outputdir"/"$mapname".bsp
