@@ -38,7 +38,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
 
     var it = self.meshmap.iterator();
     while (it.next()) |mesh| {
-        if (!self.draw_state.draw_tools) {
+        if (!self.draw_state.tog.tools) {
             if (self.tool_res_map.contains(mesh.key_ptr.*))
                 continue;
         }
@@ -73,9 +73,6 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     }
     try draw.flush(null, self.draw_state.cam3d);
 
-    if (self.edit_state.btn_x_trans == .rising or self.edit_state.btn_y_trans == .rising)
-        self.edit_state.state = .face_manip;
-
     if (win.isBindState(self.config.keys.undo.b, .rising)) {
         self.undoctx.undo(self);
     }
@@ -84,7 +81,6 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     }
 
     if (win.isBindState(self.config.keys.select.b, .rising)) {
-        self.edit_state.state = .select;
         const pot = self.screenRay(screen_area, view_3d);
         if (pot.len > 0) {
             const ustack = try self.undoctx.pushNew();
@@ -110,30 +106,30 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         const vt = self.tools.items[self.edit_state.tool_index];
         vt.runTool_fn(vt, td, self);
     }
-    if (false) {
-        switch (self.edit_state.state) {
-            else => {},
-            .texture_apply => {
-                //BUG: we need to remove the side from its current batch
-                blk: {
-                    const tid = self.asset_browser.selected_mat_vpk_id orelse break :blk;
-                    //Raycast into world and apply texture to the face we hit
-                    if (self.edit_state.rmouse == .high) {
-                        const pot = self.screenRay(screen_area, view_3d);
-                        if (pot.len == 0) break :blk;
-                        if (try self.ecs.getOptPtr(pot[0].id, .solid)) |solid| {
-                            if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
-                            const si = pot[0].side_id.?;
-                            solid.sides.items[si].tex_id = tid;
-                            //TODO this is slow, only rebuild the face
-                            try solid.rebuild(pot[0].id, self);
-                            try self.rebuildMeshesIfDirty();
-                        }
-                    }
-                }
-            },
-        }
-    }
+    //if (false) {
+    //    switch (self.edit_state.state) {
+    //        else => {},
+    //        .texture_apply => {
+    //            //BUG: we need to remove the side from its current batch
+    //            blk: {
+    //                const tid = self.asset_browser.selected_mat_vpk_id orelse break :blk;
+    //                //Raycast into world and apply texture to the face we hit
+    //                if (self.edit_state.rmouse == .high) {
+    //                    const pot = self.screenRay(screen_area, view_3d);
+    //                    if (pot.len == 0) break :blk;
+    //                    if (try self.ecs.getOptPtr(pot[0].id, .solid)) |solid| {
+    //                        if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
+    //                        const si = pot[0].side_id.?;
+    //                        solid.sides.items[si].tex_id = tid;
+    //                        //TODO this is slow, only rebuild the face
+    //                        try solid.rebuild(pot[0].id, self);
+    //                        try self.rebuildMeshesIfDirty();
+    //                    }
+    //                }
+    //            }
+    //        },
+    //    }
+    //}
 
     try draw.flush(null, self.draw_state.cam3d);
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
@@ -155,7 +151,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         const p = self.draw_state.cam3d.pos;
         draw.textFmt(tpos, "pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, font, fh, col);
         tpos.y += fh;
-        draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
+        //draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
     }
     try draw_nd.flush(null, self.draw_state.cam3d);
     self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw);
@@ -230,24 +226,24 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         for (solid.sides.items) |side| {
                             os9gui.label("Texture: {s}", .{side.material});
                         }
-                        blk: {
-                            if (self.edit_state.state == .face_manip) {
-                                const fid = self.edit_state.face_id orelse break :blk;
-                                if (fid >= solid.sides.items.len) break :blk;
-                                const side = &solid.sides.items[fid];
-                                const old_scale = side.u.scale;
-                                const old_scalev = side.v.scale;
-                                os9gui.sliderEx(&side.u.scale, 0.1, 10, "Scale u", .{});
-                                os9gui.sliderEx(&side.v.scale, 0.1, 10, "Scale v", .{});
-                                os9gui.sliderEx(side.v.axis.xMut(), 0, 1, "axis v", .{});
-                                os9gui.sliderEx(side.v.axis.yMut(), 0, 1, "axis v", .{});
-                                os9gui.sliderEx(side.v.axis.zMut(), 0, 1, "axis v", .{});
-                                if (side.u.scale != old_scale or side.v.scale != old_scalev) {
-                                    //rebuild
-                                    try solid.rebuild(id, self);
-                                    try self.rebuildMeshesIfDirty();
-                                }
-                            }
+                        {
+                            //if (self.edit_state.state == .face_manip) {
+                            //    const fid = self.edit_state.face_id orelse break :blk;
+                            //    if (fid >= solid.sides.items.len) break :blk;
+                            //    const side = &solid.sides.items[fid];
+                            //    const old_scale = side.u.scale;
+                            //    const old_scalev = side.v.scale;
+                            //    os9gui.sliderEx(&side.u.scale, 0.1, 10, "Scale u", .{});
+                            //    os9gui.sliderEx(&side.v.scale, 0.1, 10, "Scale v", .{});
+                            //    os9gui.sliderEx(side.v.axis.xMut(), 0, 1, "axis v", .{});
+                            //    os9gui.sliderEx(side.v.axis.yMut(), 0, 1, "axis v", .{});
+                            //    os9gui.sliderEx(side.v.axis.zMut(), 0, 1, "axis v", .{});
+                            //    if (side.u.scale != old_scale or side.v.scale != old_scalev) {
+                            //        //rebuild
+                            //        try solid.rebuild(id, self);
+                            //        try self.rebuildMeshesIfDirty();
+                            //    }
+                            //}
                         }
                     }
                     //scr.layout.padding.top = 0;

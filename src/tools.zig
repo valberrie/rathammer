@@ -15,6 +15,7 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const Gui = graph.Gui;
 const Os9Gui = graph.gui_app.Os9Gui;
 const gizmo2 = @import("gizmo2.zig");
+const Gizmo = @import("gizmo.zig").Gizmo;
 
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
@@ -41,6 +42,12 @@ pub const CubeDraw = struct {
 
     use_custom_height: bool = false,
     custom_height: u32 = 16,
+    state: enum { start, planar, cubic } = .start,
+    start: Vec3 = undefined,
+    end: Vec3 = undefined,
+    z: f32 = 0,
+
+    plane_z: f32 = 0,
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -68,8 +75,7 @@ pub const CubeDraw = struct {
 
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
-        cubeDraw(editor, td) catch return;
+        cubeDraw(self, editor, td) catch return;
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor) void {
@@ -101,6 +107,103 @@ pub const CubeDraw = struct {
             os9gui.label("This stuff doesn't actually work", .{});
         } else {
             os9gui.label("First select a texture by opening texture browser alt+t ", .{});
+        }
+    }
+    pub fn cubeDraw(tool: *@This(), self: *Editor, td: ToolData) !void {
+        const draw = td.draw;
+        if (td.is_first_frame) { //First frame, reset state
+            tool.state = .start;
+        }
+        const helper = struct {
+            fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
+                //const cpos = inter;
+                const cpos = snapV3(inter, snap);
+                const nline: f32 = @floatFromInt(count);
+
+                const iline2: f32 = @floatFromInt(count / 2);
+
+                const oth = @trunc(nline * snap / 2);
+                for (0..count) |n| {
+                    const fnn: f32 = @floatFromInt(n);
+                    {
+                        const start = Vec3.new((fnn - iline2) * snap + cpos.x(), cpos.y() - oth, plane_z);
+                        const end = start.add(Vec3.new(0, 2 * oth, 0));
+                        d.line3D(start, end, 0xffffffff);
+                    }
+                    const start = Vec3.new(cpos.x() - oth, (fnn - iline2) * snap + cpos.y(), plane_z);
+                    const end = start.add(Vec3.new(2 * oth, 0, 0));
+                    d.line3D(start, end, 0xffffffff);
+                }
+                //d.point3D(cpos, 0xff0000ee);
+            }
+        };
+        const snap = self.edit_state.grid_snap;
+        const ray = self.camRay(td.screen_area, td.view_3d.*);
+        switch (tool.state) {
+            .start => {
+                const plane_up = td.win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising);
+                const plane_down = td.win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising);
+                const send_raycast = td.win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high);
+                if (plane_up)
+                    tool.plane_z += snap;
+                if (plane_down)
+                    tool.plane_z -= snap;
+                if (send_raycast) {
+                    const pot = self.screenRay(td.screen_area, td.view_3d.*);
+                    if (pot.len > 0) {
+                        const inter = pot[0].point;
+                        const cc = snapV3(inter, snap);
+                        helper.drawGrid(inter, cc.z(), draw, snap, 11);
+                        if (self.edit_state.lmouse == .rising) {
+                            tool.plane_z = cc.z();
+                        }
+                    }
+                } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
+                    //user has a xy plane
+                    //can reposition using keys or doing a raycast into world
+                    helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
+
+                    const cc = snapV3(inter, snap);
+                    draw.point3D(cc, 0xff0000ee);
+
+                    if (self.edit_state.lmouse == .rising) {
+                        tool.start = cc;
+                        tool.state = .planar;
+                    }
+                }
+            },
+            .planar => {
+                if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
+                    helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
+                    const in = snapV3(inter, snap);
+                    const cc = cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, snap)));
+                    draw.cube(cc[0], cc[1], 0xffffff88);
+
+                    if (self.edit_state.lmouse == .rising) {
+                        tool.state = .cubic;
+                        tool.end = in;
+                        tool.end.data[2] += snap;
+
+                        //Put it into the
+                        const new = try self.ecs.createEntity();
+                        const newsolid = try Solid.initFromCube(self.alloc, tool.start, tool.end, self.asset_browser.selected_mat_vpk_id orelse 0);
+                        try self.ecs.attach(new, .solid, newsolid);
+                        try self.ecs.attach(new, .bounding_box, .{});
+                        const solid_ptr = try self.ecs.getPtr(new, .solid);
+                        try solid_ptr.translate(new, Vec3.zero(), self);
+                        {
+                            const ustack = try self.undoctx.pushNew();
+                            try ustack.append(try undo.UndoCreate.create(self.undoctx.alloc, new));
+                            undo.applyRedo(ustack.items, self);
+                        }
+                    }
+                }
+            },
+            .cubic => {
+                //const cc = cubeFromBounds(st.start, st.end);
+                //draw.cube(cc[0], cc[1], 0xffffff88);
+                //draw.cube(st.start, st.end.sub(st.start), 0xffffffee);
+            },
         }
     }
 };
@@ -235,7 +338,8 @@ pub const FastFaceManip = struct {
 pub const Translate = struct {
     vt: i3DTool,
 
-    gizmo: gizmo2.Gizmo,
+    gizmo_rotation: gizmo2.Gizmo,
+    gizmo_translate: Gizmo,
     mode: enum {
         translate,
         rotate,
@@ -256,7 +360,8 @@ pub const Translate = struct {
                 .tool_icon_fn = &@This().drawIcon,
                 .guiDoc_fn = &@This().guiDoc,
             },
-            .gizmo = .{},
+            .gizmo_rotation = .{},
+            .gizmo_translate = .{},
             .mode = .translate,
         };
         return &obj.vt;
@@ -277,7 +382,7 @@ pub const Translate = struct {
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (td.is_first_frame)
-            self.gizmo.reset();
+            self.gizmo_rotation.reset();
 
         if (editor.edit_state.id) |id| {
             translate(self, editor, id, td) catch return;
@@ -304,7 +409,7 @@ pub const Translate = struct {
         if (try self.ecs.getOptPtr(id, .solid)) |solid| {
             const mid_i = bb.a.add(bb.b).scale(0.5);
             var mid = mid_i;
-            const giz_active = self.edit_state.gizmo.handle(
+            const giz_active = tool.gizmo_translate.handle(
                 mid,
                 &mid,
                 self.draw_state.cam3d.pos,
@@ -312,7 +417,7 @@ pub const Translate = struct {
                 draw_nd,
                 td.screen_area.dim(),
                 td.view_3d.*,
-                self.edit_state.trans_begin,
+                self.edit_state.mpos,
             );
 
             solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
@@ -368,7 +473,7 @@ pub const Translate = struct {
             //the gizmo always manipulates extrinsic angles, rather than relative to current rotation
             //this is how the angles in the vmf are stored but make for unintuitive editing
             const giz_active = switch (tool.mode) {
-                .translate => self.edit_state.gizmo.handle(
+                .translate => tool.gizmo_translate.handle(
                     orig,
                     &orig,
                     self.draw_state.cam3d.pos,
@@ -376,9 +481,9 @@ pub const Translate = struct {
                     draw_nd,
                     td.screen_area.dim(),
                     td.view_3d.*,
-                    self.edit_state.trans_begin,
+                    self.edit_state.mpos,
                 ),
-                .rotate => tool.gizmo.drawGizmo(
+                .rotate => tool.gizmo_rotation.drawGizmo(
                     orig,
                     &angle,
                     self.draw_state.cam3d.pos,
@@ -386,43 +491,22 @@ pub const Translate = struct {
                     draw_nd,
                     td.screen_area.dim(),
                     td.view_3d.*,
-                    self.edit_state.trans_begin,
+                    self.edit_state.mpos,
                 ),
             };
             if (giz_active == .low) {
                 const switcher_sz = orig.distance(self.draw_state.cam3d.pos) / 64 * 5;
-                const orr = orig.add(Vec3.new(0, 0, switcher_sz * 3));
+                const orr = orig.add(Vec3.new(0, 0, switcher_sz * 5));
                 const co = orr.sub(Vec3.set(switcher_sz / 2));
                 const ce = Vec3.set(switcher_sz);
                 draw_nd.cube(co, ce, 0xffffff88);
-                const rc = util3d.screenSpaceRay(td.screen_area.dim(), self.edit_state.trans_begin, td.view_3d.*);
+                const rc = util3d.screenSpaceRay(td.screen_area.dim(), self.edit_state.mpos, td.view_3d.*);
                 if (self.edit_state.lmouse == .rising) {
                     if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(ce))) |_| {
                         tool.mode.next();
                     }
                 }
             }
-            //const giz_active = self.edit_state.gizmo.handle(
-            //    orig,
-            //    &orig,
-            //    self.draw_state.cam3d.pos,
-            //    self.edit_state.lmouse,
-            //    draw_nd,
-            //    td.screen_area.dim(),
-            //    td.view_3d.*,
-            //    self.edit_state.trans_begin,
-            //);
-            //const other = orig.add(Vec3.new(0, 0, 128));
-            //const og = tool.gizmo.drawGizmo(
-            //    other,
-            //    &angle,
-            //    self.draw_state.cam3d.pos,
-            //    self.edit_state.lmouse,
-            //    draw_nd,
-            //    td.screen_area.dim(),
-            //    td.view_3d.*,
-            //    self.edit_state.trans_begin,
-            //);
             if (giz_active == .high) {
                 const orr = snapV3(orig, self.edit_state.grid_snap);
                 const dist = snapV3(orig.sub(ent.origin), self.edit_state.grid_snap);
@@ -497,6 +581,9 @@ pub const PlaceModel = struct {
 
 pub const TranslateFace = struct {
     vt: i3DTool,
+    gizmo: Gizmo,
+    face_id: ?usize = null,
+    face_origin: Vec3 = Vec3.zero(),
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -505,7 +592,7 @@ pub const TranslateFace = struct {
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
             .guiDoc_fn = &@This().guiDoc,
-        } };
+        }, .gizmo = .{} };
         return &obj.vt;
     }
 
@@ -523,9 +610,8 @@ pub const TranslateFace = struct {
 
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
         if (editor.edit_state.id) |id| {
-            faceTranslate(editor, id, td) catch return;
+            faceTranslate(self, editor, id, td) catch return;
         }
     }
 
@@ -536,77 +622,76 @@ pub const TranslateFace = struct {
         os9gui.label("right click selects the far face.", .{});
         os9gui.label("Once you drag the gizmo, press right click to commit the change.", .{});
     }
+    pub fn faceTranslate(tool: *@This(), self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
+        const draw_nd = &self.draw_state.ctx;
+        if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+            var gizmo_is_active = false;
+            solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
+            for (solid.sides.items, 0..) |side, s_i| {
+                if (tool.face_id == s_i) {
+                    draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
+                    const origin_i = tool.face_origin;
+                    var origin = origin_i;
+                    const giz_active = tool.gizmo.handle(
+                        origin,
+                        &origin,
+                        self.draw_state.cam3d.pos,
+                        self.edit_state.lmouse,
+                        draw_nd,
+                        td.screen_area.dim(),
+                        td.view_3d.*,
+                        self.edit_state.mpos,
+                    );
+                    gizmo_is_active = giz_active != .low;
+                    if (giz_active == .rising) {
+                        try solid.removeFromMeshMap(id, self);
+                    }
+                    if (giz_active == .falling) {
+                        try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+                        tool.face_origin = origin;
+                    }
+
+                    if (giz_active == .high) {
+                        const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
+                        try solid.drawImmediate(td.draw, self, dist, s_i);
+                        if (self.edit_state.rmouse == .rising) {
+                            //try solid.translateSide(id, dist, self, s_i);
+                            const ustack = try self.undoctx.pushNew();
+                            try ustack.append(try undo.UndoSolidFaceTranslate.create(
+                                self.undoctx.alloc,
+                                id,
+                                s_i,
+                                dist,
+                            ));
+                            undo.applyRedo(ustack.items, self);
+                            tool.face_origin = origin;
+                            tool.gizmo.start = origin;
+                            //Commit the changes
+                        }
+                    }
+                }
+            }
+            if (!gizmo_is_active and (self.edit_state.lmouse == .rising or self.edit_state.rmouse == .rising)) {
+                const r = self.camRay(td.screen_area, td.view_3d.*);
+                //Find the face it intersects with
+                const rc = (try raycast.doesRayIntersectSolid(
+                    r[0],
+                    r[1],
+                    solid,
+                    &self.csgctx,
+                ));
+                if (rc.len > 0) {
+                    const rci = if (self.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
+                    tool.face_id = rc[rci].side_index;
+                    tool.face_origin = rc[rci].point;
+                }
+            }
+        }
+    }
 };
 
 //TODO tools should be virtual functions
 //Combined with the new ecs it would allow for dynamic linking of new tools and components
-
-pub fn faceTranslate(self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
-    const draw_nd = &self.draw_state.ctx;
-    if (try self.ecs.getOptPtr(id, .solid)) |solid| {
-        var gizmo_is_active = false;
-        solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
-        for (solid.sides.items, 0..) |side, s_i| {
-            if (self.edit_state.face_id == s_i) {
-                draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
-                const origin_i = self.edit_state.face_origin;
-                var origin = origin_i;
-                const giz_active = self.edit_state.gizmo.handle(
-                    origin,
-                    &origin,
-                    self.draw_state.cam3d.pos,
-                    self.edit_state.lmouse,
-                    draw_nd,
-                    td.screen_area.dim(),
-                    td.view_3d.*,
-                    self.edit_state.trans_begin,
-                );
-                gizmo_is_active = giz_active != .low;
-                if (giz_active == .rising) {
-                    try solid.removeFromMeshMap(id, self);
-                }
-                if (giz_active == .falling) {
-                    try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
-                    self.edit_state.face_origin = origin;
-                }
-
-                if (giz_active == .high) {
-                    const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
-                    try solid.drawImmediate(td.draw, self, dist, s_i);
-                    if (self.edit_state.rmouse == .rising) {
-                        //try solid.translateSide(id, dist, self, s_i);
-                        const ustack = try self.undoctx.pushNew();
-                        try ustack.append(try undo.UndoSolidFaceTranslate.create(
-                            self.undoctx.alloc,
-                            id,
-                            s_i,
-                            dist,
-                        ));
-                        undo.applyRedo(ustack.items, self);
-                        self.edit_state.face_origin = origin;
-                        self.edit_state.gizmo.start = origin;
-                        //Commit the changes
-                    }
-                }
-            }
-        }
-        if (!gizmo_is_active and (self.edit_state.lmouse == .rising or self.edit_state.rmouse == .rising)) {
-            const r = self.camRay(td.screen_area, td.view_3d.*);
-            //Find the face it intersects with
-            const rc = (try raycast.doesRayIntersectSolid(
-                r[0],
-                r[1],
-                solid,
-                &self.csgctx,
-            ));
-            if (rc.len > 0) {
-                const rci = if (self.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
-                self.edit_state.face_id = rc[rci].side_index;
-                self.edit_state.face_origin = rc[rci].point;
-            }
-        }
-    }
-}
 
 pub fn modelPlace(self: *Editor, td: ToolData) !void {
     const model_id = self.asset_browser.selected_model_vpk_id orelse return;
@@ -652,102 +737,3 @@ pub const CubeDrawInput = struct {
     plane_down: bool,
     send_raycast: bool,
 };
-
-pub fn cubeDraw(self: *Editor, td: ToolData) !void {
-    const draw = td.draw;
-    const st = &self.edit_state.cube_draw;
-    if (td.is_first_frame) { //First frame, reset state
-        st.state = .start;
-    }
-    const helper = struct {
-        fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
-            //const cpos = inter;
-            const cpos = snapV3(inter, snap);
-            const nline: f32 = @floatFromInt(count);
-
-            const iline2: f32 = @floatFromInt(count / 2);
-
-            const oth = @trunc(nline * snap / 2);
-            for (0..count) |n| {
-                const fnn: f32 = @floatFromInt(n);
-                {
-                    const start = Vec3.new((fnn - iline2) * snap + cpos.x(), cpos.y() - oth, plane_z);
-                    const end = start.add(Vec3.new(0, 2 * oth, 0));
-                    d.line3D(start, end, 0xffffffff);
-                }
-                const start = Vec3.new(cpos.x() - oth, (fnn - iline2) * snap + cpos.y(), plane_z);
-                const end = start.add(Vec3.new(2 * oth, 0, 0));
-                d.line3D(start, end, 0xffffffff);
-            }
-            //d.point3D(cpos, 0xff0000ee);
-        }
-    };
-    const snap = self.edit_state.grid_snap;
-    const ray = self.camRay(td.screen_area, td.view_3d.*);
-    switch (st.state) {
-        .start => {
-            const plane_up = td.win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising);
-            const plane_down = td.win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising);
-            const send_raycast = td.win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high);
-            if (plane_up)
-                st.plane_z += snap;
-            if (plane_down)
-                st.plane_z -= snap;
-            if (send_raycast) {
-                const pot = self.screenRay(td.screen_area, td.view_3d.*);
-                if (pot.len > 0) {
-                    const inter = pot[0].point;
-                    const cc = snapV3(inter, snap);
-                    helper.drawGrid(inter, cc.z(), draw, snap, 11);
-                    if (self.edit_state.lmouse == .rising) {
-                        st.plane_z = cc.z();
-                    }
-                }
-            } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                //user has a xy plane
-                //can reposition using keys or doing a raycast into world
-                helper.drawGrid(inter, st.plane_z, draw, snap, 11);
-
-                const cc = snapV3(inter, snap);
-                draw.point3D(cc, 0xff0000ee);
-
-                if (self.edit_state.lmouse == .rising) {
-                    st.start = cc;
-                    st.state = .planar;
-                }
-            }
-        },
-        .planar => {
-            if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, st.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                helper.drawGrid(inter, st.plane_z, draw, snap, 11);
-                const in = snapV3(inter, snap);
-                const cc = cubeFromBounds(st.start, in.add(Vec3.new(0, 0, snap)));
-                draw.cube(cc[0], cc[1], 0xffffff88);
-
-                if (self.edit_state.lmouse == .rising) {
-                    st.state = .cubic;
-                    st.end = in;
-                    st.end.data[2] += snap;
-
-                    //Put it into the
-                    const new = try self.ecs.createEntity();
-                    const newsolid = try Solid.initFromCube(self.alloc, st.start, st.end, self.asset_browser.selected_mat_vpk_id orelse 0);
-                    try self.ecs.attach(new, .solid, newsolid);
-                    try self.ecs.attach(new, .bounding_box, .{});
-                    const solid_ptr = try self.ecs.getPtr(new, .solid);
-                    try solid_ptr.translate(new, Vec3.zero(), self);
-                    {
-                        const ustack = try self.undoctx.pushNew();
-                        try ustack.append(try undo.UndoCreate.create(self.undoctx.alloc, new));
-                        undo.applyRedo(ustack.items, self);
-                    }
-                }
-            }
-        },
-        .cubic => {
-            //const cc = cubeFromBounds(st.start, st.end);
-            //draw.cube(cc[0], cc[1], 0xffffff88);
-            //draw.cube(st.start, st.end.sub(st.start), 0xffffffee);
-        },
-    }
-}

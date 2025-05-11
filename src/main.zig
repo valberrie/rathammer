@@ -166,7 +166,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 if (os9gui.button("Write json"))
                     try editor.writeToJson(std.fs.cwd(), "serial.json");
                 const ds = &editor.draw_state;
-                _ = os9gui.checkbox("draw tools", &ds.draw_tools);
+                _ = os9gui.checkbox("draw tools", &ds.tog.tools);
                 _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
                 _ = os9gui.checkbox("draw model", &ds.tog.models);
                 _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
@@ -196,20 +196,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         editor.edit_state.lmouse = win.mouse.left;
         editor.edit_state.rmouse = win.mouse.right;
         if (editor.edit_state.lmouse == .rising) {}
-        editor.edit_state.trans_begin = win.mouse.pos;
-        { //key stuff
-            if (editor.edit_state.btn_x_trans == .rising) {
-                editor.edit_state.trans_begin = win.mouse.pos;
-            }
-            editor.edit_state.trans_end = win.mouse.pos;
-        }
         editor.edit_state.mpos = win.mouse.pos;
 
         const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
         try os9gui.beginFrame(is, &win);
 
         if (win.keyRising(.TAB))
-            editor.draw_state.draw_tools = !editor.draw_state.draw_tools;
+            editor.draw_state.tog.tools = !editor.draw_state.tog.tools;
         const cam_state = graph.ptypes.Camera3D.MoveState{
             .down = win.bindHigh(config.keys.cam_down.b),
             .up = win.bindHigh(config.keys.cam_up.b),

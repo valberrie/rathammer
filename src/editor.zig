@@ -611,7 +611,6 @@ pub const Context = struct {
             model_render_dist: f32 = 512 * 2,
         } = .{},
 
-        draw_tools: bool = true,
         basic_shader: graph.glID,
         cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100 },
         cam_far_plane: f32 = 512 * 64,
@@ -619,6 +618,7 @@ pub const Context = struct {
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,
 
+        /// This state determines if sdl.grabMouse is true. each view that wants to grab mouse should call setGrab
         grab: struct {
             is: bool = false,
             was: bool = false,
@@ -644,49 +644,16 @@ pub const Context = struct {
     },
 
     edit_state: struct {
-        const State = enum {
-            select,
-            face_manip,
-            model_place,
-            cube_draw,
-            texture_apply,
-        };
         tool_index: usize = 0,
         last_frame_tool_index: usize = 0,
-        last_frame_state: State = .select,
-        state: State = .select,
-        show_gui: bool = false,
-        gui_tab: enum {
-            model,
-            texture,
-            fgd,
-        } = .model,
 
         id: ?EcsT.Id = null,
-        face_id: ?usize = null,
-        face_origin: Vec3 = undefined,
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
 
-        gizmo: Gizmo = .{},
-
         grid_snap: f32 = 16,
 
-        btn_x_trans: ButtonState = .low,
-        btn_y_trans: ButtonState = .low,
-        btn_z_trans: ButtonState = .low,
         mpos: graph.Vec2f = undefined,
-        trans_begin: graph.Vec2f = undefined,
-        trans_end: graph.Vec2f = undefined,
-
-        cube_draw: struct {
-            state: enum { start, planar, cubic } = .start,
-            start: Vec3 = undefined,
-            end: Vec3 = undefined,
-            z: f32 = 0,
-
-            plane_z: f32 = 0,
-        } = .{},
     } = .{},
 
     misc_gui_state: struct {
@@ -1316,7 +1283,6 @@ pub const Context = struct {
     }
 
     pub fn update(self: *Self) !void {
-        self.edit_state.last_frame_state = self.edit_state.state;
         self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();

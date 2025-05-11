@@ -1,0 +1,17 @@
+Outline small tasks.
+
+Center the camera on model in asset browser
+draw a plane in asset browser.
+prevent numlock, capslock etc from breaking keybinds
+fix depth overdraw of tool icons
+remove the single frame flashing from the gizmos.
+make the rotation gizmo more intuitive
+allow setting the rotation snap settings
+allow toggling grid snap
+allow rebinding of lmouse and rmouse functions
+toggle texture lock when translating
+don't snap translation when rotating, same for rotation when translating
+set correct bounding boxes of deferred model loads
+load all the body parts of mdl's, not just the first.
+remove the unchecked access' from vvd.zig
+don't raycast hidden items (tools, models)
