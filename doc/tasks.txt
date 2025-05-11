@@ -15,3 +15,4 @@ set correct bounding boxes of deferred model loads
 load all the body parts of mdl's, not just the first.
 remove the unchecked access' from vvd.zig
 don't raycast hidden items (tools, models)
+fix displacment uv calculation

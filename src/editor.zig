@@ -444,7 +444,7 @@ pub const Solid = struct {
         for (self.sides.items) |side| {
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
-                .texture = editor.getTexture(side.tex_id).id,
+                .texture = (try editor.getTexture(side.tex_id)).id,
                 .camera = ._3d,
             } }) catch return).billboard;
             //try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
@@ -499,7 +499,7 @@ pub const Entity = struct {
     pub fn drawEnt(ent: *@This(), editor: *Context, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx, param: struct {
         frame_color: u32 = 0x00ff00ff,
         draw_model_bb: bool = false,
-    }) void {
+    }) !void {
         const ENT_RENDER_DIST = 64 * 10;
         const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (editor.draw_state.tog.models and dist < editor.draw_state.tog.model_render_dist) {
@@ -525,6 +525,8 @@ pub const Entity = struct {
                             draw.cubeFrame(ent.origin.add(cc[0]), cc[1], param.frame_color);
                         }
                     }
+                } else {
+                    try editor.loadModelFromId(m);
                 }
             }
         }
@@ -534,7 +536,7 @@ pub const Entity = struct {
         if (editor.draw_state.tog.sprite) {
             if (ent.sprite) |spr| {
                 draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
-                const isp = editor.getTexture(spr);
+                const isp = try editor.getTexture(spr);
                 draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
             }
         }
@@ -592,8 +594,6 @@ pub const Context = struct {
     asset_browser: assetbrowse.AssetBrowserGui,
 
     ecs: EcsT,
-
-    temp_line_array: std.ArrayList([2]Vec3),
 
     texture_load_ctx: texture_load_thread.Context,
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
@@ -700,7 +700,6 @@ pub const Context = struct {
             .texture_load_ctx = try texture_load_thread.Context.init(alloc, num_threads),
             .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
-            .temp_line_array = std.ArrayList([2]Vec3).init(alloc),
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
             .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
             .tools = std.ArrayList(*tool_def.i3DTool).init(alloc),
@@ -989,7 +988,7 @@ pub const Context = struct {
     pub fn getOrPutMeshBatch(self: *Self, res_id: vpk.VpkResId) !*MeshBatch {
         const res = try self.meshmap.getOrPut(res_id);
         if (!res.found_existing) {
-            const tex = self.getTexture(res_id);
+            const tex = try self.getTexture(res_id);
             res.value_ptr.* = try self.alloc.create(MeshBatch);
             res.value_ptr.*.* = .{
                 .notify_vt = .{ .notify_fn = &MeshBatch.notify },
@@ -999,8 +998,6 @@ pub const Context = struct {
                 .contains = std.AutoHashMap(EcsT.Id, void).init(self.alloc),
             };
             res.value_ptr.*.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.*.tex.id);
-            if (tex.id == missingTexture().id)
-                try self.loadTexture(res_id);
 
             try self.texture_load_ctx.addNotify(res_id, &res.value_ptr.*.notify_vt);
         }
@@ -1102,6 +1099,8 @@ pub const Context = struct {
             if (val != .object) return error.invalidMap;
             const id = (val.object.get("id") orelse return error.invalidMap).integer;
             var it = val.object.iterator();
+            //TODO all entities have bounding boxes, add those
+            //TODO finally get that model loading thing to set bb's
             outer: while (it.next()) |data| {
                 if (std.mem.eql(u8, "id", data.key_ptr.*)) continue;
                 inline for (EcsT.Fields, 0..) |field, f_i| {
@@ -1240,12 +1239,26 @@ pub const Context = struct {
         return res_id;
     }
 
+    pub fn loadModelFromId(self: *Self, res_id: vpk.VpkResId) !void {
+        if (self.models.get(res_id)) |_| return; //Don't load model twice!
+        if (self.vpkctx.namesFromId(res_id)) |names| {
+            self.scratch_buf.clearRetainingCapacity();
+            try self.scratch_buf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
+            const mod = try self.storeString(self.scratch_buf.items);
+            try self.models.put(res_id, Model.initEmpty(self.alloc));
+
+            try self.texture_load_ctx.loadModel(res_id, mod, &self.vpkctx);
+        }
+    }
+
     pub fn storeString(self: *Self, string: []const u8) ![]const u8 {
         return try self.string_storage.store(string);
     }
 
-    pub fn getTexture(self: *Self, res_id: vpk.VpkResId) graph.Texture {
+    pub fn getTexture(self: *Self, res_id: vpk.VpkResId) !graph.Texture {
         if (self.textures.get(res_id)) |tex| return tex;
+
+        try self.loadTexture(res_id);
 
         return missingTexture();
     }
@@ -1318,7 +1331,7 @@ pub const Context = struct {
                     try self.texture_load_ctx.addNotify(tid, &completed.mesh.notify_vt);
                 }
                 for (model.meshes.items) |*mesh| {
-                    const t = self.getTexture(mesh.tex_res_id);
+                    const t = try self.getTexture(mesh.tex_res_id);
                     mesh.texture_id = t.id;
                 }
                 completed.texture_ids.deinit();

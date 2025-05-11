@@ -290,8 +290,7 @@ pub const AssetBrowserGui = struct {
                     const acc_ind = @min(self.start_index_mat * self.num_texture_column, self.mat_list_sub.items.len);
                     const missing = edit.missingTexture();
                     for (self.mat_list_sub.items[acc_ind..], acc_ind..) |model, i| {
-                        const tex = editor.getTexture(model);
-                        try editor.loadTexture(model);
+                        const tex = try editor.getTexture(model);
                         if (self.hide_missing and tex.id == missing.id) {
                             continue;
                         }

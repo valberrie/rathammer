@@ -56,7 +56,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     {
         var ent_it = self.ecs.iterator(.entity);
         while (ent_it.next()) |ent| {
-            ent.drawEnt(self, view_3d, draw, draw_nd, .{});
+            try ent.drawEnt(self, view_3d, draw, draw_nd, .{});
         }
     }
     { //sky stuff

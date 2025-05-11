@@ -95,7 +95,7 @@ pub const CubeDraw = struct {
             os9gui.label("texture: ", .{});
             const bound = os9gui.gui.layout.last_requested_bounds orelse return;
             vl.pushHeight(bound.w / 2);
-            const tex = editor.getTexture(id);
+            const tex = editor.getTexture(id) catch return;
             const area = os9gui.gui.getArea() orelse return;
             os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
 
@@ -513,7 +513,7 @@ pub const Translate = struct {
                 var copy_ent = ent.*;
                 copy_ent.origin = orr;
                 copy_ent.angle = angle;
-                copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
+                try copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
 
                 //draw.cube(orr, Vec3.new(16, 16, 16), 0xff000022);
                 if (self.edit_state.rmouse == .rising) {
