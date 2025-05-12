@@ -569,6 +569,7 @@ pub const TextureTool = struct {
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
+            .gui_fn = &@This().doGui,
         } };
         return &obj.vt;
     }
@@ -590,6 +591,27 @@ pub const TextureTool = struct {
         self.run(td, editor) catch return;
     }
 
+    pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.doGuiErr(os9gui, editor, vl) catch return;
+    }
+
+    pub fn doGuiErr(self: *@This(), os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) !void {
+        _ = vl;
+        if (try self.getCurrentlySelected(editor)) |sel| {
+            os9gui.label("u", .{});
+            try os9gui.textboxNumber(&sel.side.u.scale);
+        }
+    }
+
+    fn getCurrentlySelected(self: *TextureTool, editor: *Editor) !?struct { solid: *edit.Solid, side: *edit.Side } {
+        const id = self.id orelse return null;
+        const solid = try editor.ecs.getOptPtr(id, .solid) orelse return null;
+        if (self.face_index == null or self.face_index.? >= solid.sides.items.len) return null;
+
+        return .{ .solid = solid, .side = &solid.sides.items[self.face_index.?] };
+    }
+
     fn run(self: *TextureTool, td: ToolData, editor: *Editor) !void {
         if (editor.edit_state.lmouse == .rising) {
             const pot = editor.screenRay(td.screen_area, td.view_3d.*);
@@ -600,15 +622,29 @@ pub const TextureTool = struct {
         }
         blk: {
             if (editor.edit_state.rmouse == .rising) {
+                const dupe = td.win.isBindState(editor.config.keys.duplicate.b, .high);
                 const res_id = (editor.asset_browser.selected_mat_vpk_id) orelse break :blk;
                 const pot = editor.screenRay(td.screen_area, td.view_3d.*);
                 if (pot.len == 0) break :blk;
                 const solid = try editor.ecs.getOptPtr(pot[0].id, .solid) orelse break :blk;
                 if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
                 const side = &solid.sides.items[pot[0].side_id.?];
+                const source = src: {
+                    if (dupe) {
+                        if (try self.getCurrentlySelected(editor)) |f| {
+                            var duped = side.*;
+                            duped.u.trans = f.side.u.trans;
+                            duped.v.trans = f.side.v.trans;
+                            duped.u.scale = f.side.u.scale;
+                            duped.v.scale = f.side.v.scale;
+                            break :src duped;
+                        }
+                    }
+                    break :src side.*;
+                };
 
                 const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id };
-                const new = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = res_id };
+                const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id };
 
                 const ustack = try editor.undoctx.pushNew();
                 try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
@@ -616,17 +652,13 @@ pub const TextureTool = struct {
             }
         }
 
-        blk: {
-            const id = self.id orelse break :blk;
-            const solid = try editor.ecs.getOptPtr(id, .solid) orelse break :blk;
-            if (self.face_index == null or self.face_index.? >= solid.sides.items.len) break :blk;
-
-            const side = &solid.sides.items[self.face_index.?];
-            const v = solid.verts.items;
-            if (side.index.items.len > 0) {
-                var last = v[side.index.items[side.index.items.len - 1]];
-                for (0..side.index.items.len) |ti| {
-                    const p = v[side.index.items[ti]];
+        if (try self.getCurrentlySelected(editor)) |sel| {
+            const v = sel.solid.verts.items;
+            const ind = sel.side.index.items;
+            if (ind.len > 0) {
+                var last = v[ind[ind.len - 1]];
+                for (0..ind.len) |ti| {
+                    const p = v[ind[ti]];
                     editor.draw_state.ctx.line3D(last, p, 0xff0000ff);
                     last = p;
                 }
