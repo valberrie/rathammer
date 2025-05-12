@@ -6,6 +6,11 @@ const StringStorage = @import("string.zig").StringStorage;
 // TODO all values should have a default value
 /// The user's 'config.vdf' maps directly into this structure
 pub const Config = struct {
+    autosave: struct {
+        enable: bool = true,
+        interval_min: u64 = 5,
+        max: u32 = 5,
+    } = .{},
     keys: struct {
         const SC = graph.SDL.NewBind.Scancode;
         const KC = graph.SDL.NewBind.Keycode;

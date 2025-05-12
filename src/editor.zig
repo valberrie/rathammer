@@ -25,6 +25,7 @@ const Conf = @import("config.zig");
 const undo = @import("undo.zig");
 const tool_def = @import("tools.zig");
 const util = @import("util.zig");
+const Autosaver = @import("autosave.zig").Autosaver;
 
 const util3d = @import("util_3d.zig");
 
@@ -269,6 +270,7 @@ pub const Solid = struct {
     const Self = @This();
     sides: std.ArrayList(Side) = undefined,
     verts: std.ArrayList(Vec3) = undefined,
+    parent_entity: ?EcsT.Id = null,
 
     /// Bounding box is used during broad phase ray tracing
     /// they are recomputed along with vertex arrays
@@ -543,12 +545,54 @@ pub const Entity = struct {
     }
 };
 
+pub const KeyValues = struct {
+    const Self = @This();
+    const MapT = std.StringHashMap([]const u8);
+    map: MapT,
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .map = MapT.init(alloc),
+        };
+    }
+
+    pub fn initFromJson(v: std.json.Value, editor: *Context) !@This() {
+        if (v != .object) return error.broken;
+        var ret = init(editor.alloc);
+
+        var it = v.object.iterator();
+        while (it.next()) |item| {
+            if (item.value_ptr.* != .string) return error.invalidKv;
+            try ret.map.put(try editor.storeString(item.key_ptr.*), try editor.storeString(item.value_ptr.string));
+        }
+
+        return ret;
+    }
+
+    pub fn serial(self: @This(), _: *Context, jw: anytype) !void {
+        try jw.beginObject();
+        {
+            var it = self.map.iterator();
+            while (it.next()) |item| {
+                try jw.objectField(item.value_ptr.*);
+                try jw.write(item.key_ptr.*);
+            }
+        }
+        try jw.endObject();
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.map.deinit();
+    }
+};
+
 const Comp = graph.Ecs.Component;
 pub const EcsT = graph.Ecs.Registry(&.{
     Comp("bounding_box", AABB),
     Comp("solid", Solid),
     Comp("entity", Entity),
     Comp("displacement", Displacement),
+    Comp("key_values", KeyValues),
     //Comp("model"),
 });
 
@@ -573,6 +617,7 @@ pub const Context = struct {
     const Self = @This();
     const ButtonState = graph.SDL.ButtonState;
 
+    autosaver: Autosaver,
     rayctx: raycast.Ctx,
     csgctx: csg.Context,
     vpkctx: vpk.Context,
@@ -673,11 +718,36 @@ pub const Context = struct {
         game: Dir,
         fgd: Dir,
         pref: Dir,
+        autosave: Dir,
     },
 
     asset: graph.AssetBake.AssetMap,
     asset_atlas: graph.Texture,
     frame_arena: std.heap.ArenaAllocator,
+    loaded_map_name: ?[]const u8 = null,
+
+    fn setMapName(self: *Self, filename: []const u8) !void {
+        const eql = std.mem.eql;
+        const allowed_exts = [_][]const u8{
+            ".json",
+            ".vmf",
+        };
+        if (std.mem.lastIndexOfScalar(u8, filename, '.')) |index| {
+            var found = false;
+            for (allowed_exts) |ex| {
+                if (eql(u8, filename[index..], ex)) {
+                    found = true;
+                }
+            }
+            if (!found) {
+                log.warn("Unknown map extension: {s}", .{filename});
+            }
+            self.loaded_map_name = try self.storeString(filename[0..index]);
+            return;
+        }
+        log.warn("Map has no extension {s}", .{filename});
+        self.loaded_map_name = try self.storeString(filename);
+    }
 
     pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
         return .{
@@ -687,6 +757,7 @@ pub const Context = struct {
             .asset = undefined,
             .asset_atlas = undefined,
 
+            .autosaver = try Autosaver.init(config.autosave.interval_min * std.time.ms_per_min, config.autosave.max, config.autosave.enable, alloc),
             .rayctx = raycast.Ctx.init(alloc),
             .frame_arena = std.heap.ArenaAllocator.init(alloc),
             .config = config,
@@ -741,13 +812,14 @@ pub const Context = struct {
         const APP = "";
         const path = graph.c.SDL_GetPrefPath(ORG, APP);
         const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
+        const autosave = try pref.makeOpenPath("autosave", .{});
 
         try graph.AssetBake.assetBake(self.alloc, std.fs.cwd(), "ratasset", pref, "packed", .{});
 
         self.asset = try graph.AssetBake.AssetMap.initFromManifest(self.alloc, pref, "packed");
         self.asset_atlas = try graph.AssetBake.AssetMap.initTextureFromManifest(self.alloc, pref, "packed");
 
-        self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir, .pref = pref };
+        self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir, .pref = pref, .autosave = autosave };
         try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
@@ -804,10 +876,14 @@ pub const Context = struct {
         }
     }
 
-    pub fn writeToJson(self: *Self, path: std.fs.Dir, name: []const u8) !void {
-        const to_omit = [_]usize{@intFromEnum(EcsT.Components.bounding_box)};
-        const outfile = try path.createFile(name, .{});
+    pub fn writeToJsonFile(self: *Self, path: std.fs.Dir, filename: []const u8) !void {
+        const outfile = try path.createFile(filename, .{});
         defer outfile.close();
+        try self.writeToJson(outfile);
+    }
+
+    pub fn writeToJson(self: *Self, outfile: std.fs.File) !void {
+        const to_omit = [_]usize{@intFromEnum(EcsT.Components.bounding_box)};
         const wr = outfile.writer();
         var bwr = std.io.bufferedWriter(wr);
         const bb = bwr.writer();
@@ -1014,15 +1090,16 @@ pub const Context = struct {
     }
 
     ///Given a csg defined solid, convert to mesh and store.
-    pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid) !void {
+    pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid, parent_id: ?EcsT.Id) !void {
         const new = try self.ecs.createEntity();
-        const newsolid = try self.csgctx.genMesh2(
+        var newsolid = try self.csgctx.genMesh2(
             solid.side,
             self.alloc,
             &self.string_storage,
             self,
             //@intCast(self.set.sparse.items.len),
         );
+        newsolid.parent_entity = parent_id;
         for (solid.side, 0..) |*side, s_i| {
             const tex = try self.loadTextureFromVpk(side.material);
             const res = try self.getOrPutMeshBatch(tex.res_id);
@@ -1096,6 +1173,7 @@ pub const Context = struct {
         defer aa.deinit();
         var parsed = try std.json.parseFromSlice(std.json.Value, self.alloc, slice, .{});
         defer parsed.deinit();
+        try self.setMapName(filename);
         loadctx.cb("json parsed");
         if (parsed.value != .object)
             return error.invalidMap;
@@ -1162,21 +1240,22 @@ pub const Context = struct {
         var obj = try vdf.parse(self.alloc, slice);
         defer obj.deinit();
         loadctx.cb("vmf parsed");
+        try self.setMapName(filename);
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
         try self.skybox.loadSky(try self.storeString(vmf_.world.skyname), &self.vpkctx);
         {
             loadctx.expected_cb = vmf_.world.solid.len + vmf_.entity.len + 10;
             var gen_timer = try std.time.Timer.start();
             for (vmf_.world.solid, 0..) |solid, si| {
-                try self.putSolidFromVmf(solid);
+                try self.putSolidFromVmf(solid, null);
                 loadctx.printCb("csg generated {d} / {d}", .{ si, vmf_.world.solid.len });
             }
             for (vmf_.entity, 0..) |ent, ei| {
                 loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
+                const new = try self.ecs.createEntity();
                 for (ent.solid) |solid|
-                    try self.putSolidFromVmf(solid);
+                    try self.putSolidFromVmf(solid, new);
                 {
-                    const new = try self.ecs.createEntity();
                     var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
                     if (ent.model.len > 0) {
                         if (self.loadModel(ent.model)) |m| {
@@ -1214,6 +1293,15 @@ pub const Context = struct {
                         .sprite = sprite_tex,
                     });
                     try self.ecs.attach(new, .bounding_box, bb);
+                }
+
+                if (ent.rest_kvs.count() > 0) {
+                    var kvs = KeyValues.init(self.alloc);
+                    var it = ent.rest_kvs.iterator();
+                    while (it.next()) |item|
+                        try kvs.map.put(try self.storeString(item.key_ptr.*), try self.storeString(item.value_ptr.*));
+
+                    try self.ecs.attach(new, .key_values, kvs);
                 }
 
                 //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
@@ -1319,6 +1407,22 @@ pub const Context = struct {
     }
 
     pub fn update(self: *Self) !void {
+        //TODO in the future, set app state to 'autosaving' and send saving to worker thread
+        if (self.autosaver.shouldSave()) {
+            log.info("Autosaving {s}", .{self.loaded_map_name orelse "no map loaded"});
+            self.autosaver.resetTimer();
+            if (self.loaded_map_name) |basename| {
+                if (self.autosaver.getSaveFileAndPrune(self.dirs.autosave, basename, ".json")) |out_file| {
+                    defer out_file.close();
+                    self.writeToJson(out_file) catch |err| {
+                        log.err("writeToJson failed ! {}", .{err});
+                    };
+                } else |err| {
+                    log.err("Autosave failed with error {}", .{err});
+                }
+            }
+        }
+
         _ = self.frame_arena.reset(.retain_capacity);
         self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;

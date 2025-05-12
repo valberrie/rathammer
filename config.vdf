@@ -40,6 +40,10 @@ keys {
     cube_draw_plane_down    scancode:z
 }
 
+autosave {
+    interval_min    1
+}
+
 window {
     width_px    1920
     height_px   1080

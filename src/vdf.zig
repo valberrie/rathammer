@@ -50,6 +50,8 @@ pub const Object = struct {
     }
 };
 
+pub const KVMap = std.StringHashMap([]const u8);
+
 //pub fn fromValue(comptime T: type, value : *const KV.Value, alloc: std.mem.Allocator)
 pub const ValueCtx = struct {
     strings: ?StringStorage,
@@ -93,6 +95,9 @@ pub fn countUnvisited(v: *const Object) usize {
     return count;
 }
 
+const MAX_KVS = 512;
+const KVT = std.bit_set.StaticBitSet(MAX_KVS);
+threadlocal var from_value_visit_tracker = KVT.initEmpty();
 pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Allocator, strings: ?*StringStorage) !T {
     const info = @typeInfo(T);
     switch (info) {
@@ -102,46 +107,73 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                     value.obj.debug_visited = true;
                 return try T.parseVdf(value, alloc, strings);
             }
+
             //IF hasField vdf_generic then
             //add any fields that were not visted to vdf_generic
             var ret: T = undefined;
             if (value.* != .obj) {
                 return error.broken;
             }
+            const DO_REST = @hasField(T, "rest_kvs");
+            if (DO_REST) {
+                ret.rest_kvs = KVMap.init(alloc);
+                from_value_visit_tracker = KVT.initEmpty();
+                if (value.obj.list.items.len > MAX_KVS)
+                    return error.tooManyKeys;
+            }
             inline for (s.fields) |f| {
-                const child_info = @typeInfo(f.type);
-                const is_alist = getArrayListChild(f.type);
-                const do_many = (is_alist != null) or (child_info == .Pointer and child_info.Pointer.size == .Slice and child_info.Pointer.child != u8);
-                if (!do_many and f.default_value != null) {
-                    @field(ret, f.name) = @as(*const f.type, @alignCast(@ptrCast(f.default_value.?))).*;
-                }
-                const ar_c = is_alist orelse if (do_many) child_info.Pointer.child else void;
-                var vec = std.ArrayList(ar_c).init(alloc);
-                for (value.obj.list.items) |*item| {
-                    if (std.mem.eql(u8, item.key, f.name)) {
-                        if (do_many) {
-                            if (track_visited)
-                                item.debug_visited = true;
+                if (f.type == KVMap) {} else {
+                    const child_info = @typeInfo(f.type);
+                    const is_alist = getArrayListChild(f.type);
+                    const do_many = (is_alist != null) or (child_info == .Pointer and child_info.Pointer.size == .Slice and child_info.Pointer.child != u8);
+                    if (!do_many and f.default_value != null) {
+                        @field(ret, f.name) = @as(*const f.type, @alignCast(@ptrCast(f.default_value.?))).*;
+                    }
+                    const ar_c = is_alist orelse if (do_many) child_info.Pointer.child else void;
+                    var vec = std.ArrayList(ar_c).init(alloc);
 
-                            const val = fromValue(ar_c, &item.val, alloc, strings) catch blk: {
-                                //std.debug.print("parse FAILED {any}\n", .{item.val});
-                                break :blk null;
-                            };
-                            if (val) |v|
-                                try vec.append(v);
-                        } else {
-                            if (track_visited)
-                                item.debug_visited = true;
-                            //A regular struct field
-                            @field(ret, f.name) = try fromValue(f.type, &item.val, alloc, strings);
-                            break;
+                    for (value.obj.list.items, 0..) |*item, vi| {
+                        if (std.mem.eql(u8, item.key, f.name)) {
+                            if (do_many) {
+                                if (track_visited)
+                                    item.debug_visited = true;
+
+                                const val = fromValue(ar_c, &item.val, alloc, strings) catch blk: {
+                                    //std.debug.print("parse FAILED {any}\n", .{item.val});
+                                    break :blk null;
+                                };
+                                if (val) |v| {
+                                    try vec.append(v);
+                                    if (DO_REST)
+                                        from_value_visit_tracker.set(vi);
+                                }
+                            } else {
+                                if (track_visited)
+                                    item.debug_visited = true;
+                                //A regular struct field
+                                @field(ret, f.name) = try fromValue(f.type, &item.val, alloc, strings);
+                                if (DO_REST)
+                                    from_value_visit_tracker.set(vi);
+                                break;
+                            }
                         }
                     }
-                }
-                if (do_many) {
-                    @field(ret, f.name) = if (is_alist != null) vec else vec.items;
+                    if (do_many) {
+                        @field(ret, f.name) = if (is_alist != null) vec else vec.items;
+                    }
                 }
             }
+            if (DO_REST) {
+                var it = from_value_visit_tracker.iterator(.{ .kind = .unset });
+                while (it.next()) |bit_i| {
+                    if (bit_i >= value.obj.list.items.len) break;
+                    const v = &value.obj.list.items[bit_i];
+                    if (v.val == .literal) {
+                        try ret.rest_kvs.put(v.key, v.val.literal);
+                    }
+                }
+            }
+
             return ret;
         },
         .Int => {
@@ -149,6 +181,13 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
         },
         .Float => {
             return try std.fmt.parseFloat(T, value.literal);
+        },
+        .Bool => {
+            if (std.mem.eql(u8, "true", value.literal))
+                return true;
+            if (std.mem.eql(u8, "false", value.literal))
+                return false;
+            return error.invalidBool;
         },
         .Pointer => |p| {
             if (p.size != .Slice or p.child != u8) @compileError("no ptr");

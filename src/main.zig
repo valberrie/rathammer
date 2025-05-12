@@ -70,14 +70,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     if (args.vmf) |mapname| {
         if (std.mem.endsWith(u8, mapname, ".json")) {
             try editor.loadJson(std.fs.cwd(), mapname, &loadctx);
-            try editor.writeToJson(std.fs.cwd(), "serial2.json");
+            try editor.writeToJsonFile(std.fs.cwd(), "serial2.json");
         } else {
             try editor.loadVmf(std.fs.cwd(), mapname, &loadctx);
-            try editor.writeToJson(std.fs.cwd(), "serial.json");
+            try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
         }
     } else {
         try editor.loadVmf(std.fs.cwd(), "sdk_materials.vmf", &loadctx);
-        try editor.writeToJson(std.fs.cwd(), "serial.json");
+        try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
     }
 
     //TODO with assets loaded dynamically, names might not be correct
@@ -164,7 +164,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 if (os9gui.button("Quit"))
                     break :main_loop;
                 if (os9gui.button("Write json"))
-                    try editor.writeToJson(std.fs.cwd(), "serial.json");
+                    editor.autosaver.force = true;
+                //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
                 const ds = &editor.draw_state;
                 _ = os9gui.checkbox("draw tools", &ds.tog.tools);
                 _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);

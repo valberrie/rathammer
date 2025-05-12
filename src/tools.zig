@@ -234,12 +234,14 @@ pub const FastFaceManip = struct {
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
-        obj.* = .{ .vt = .{
-            .deinit_fn = &@This().deinit,
-            .runTool_fn = &@This().runTool,
-            .tool_icon_fn = &@This().drawIcon,
-            .guiDoc_fn = &@This().guiDoc,
-        } };
+        obj.* = .{
+            .vt = .{
+                .deinit_fn = &@This().deinit,
+                .runTool_fn = &@This().runTool,
+                .tool_icon_fn = &@This().drawIcon,
+                .guiDoc_fn = &@This().guiDoc,
+            },
+        };
         return &obj.vt;
     }
 

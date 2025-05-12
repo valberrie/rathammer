@@ -38,6 +38,39 @@ pub const EditorInfo = struct {
     comments: []const u8 = "",
 };
 
+pub const Connection = struct {
+    listen_event: []const u8,
+    target: []const u8,
+    input: []const u8,
+    value: []const u8,
+    delay: f32,
+    fire_count: i32,
+};
+
+pub const Connections = struct {
+    is_init: bool = false,
+    list: std.ArrayList(Connection) = undefined,
+
+    pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
+        if (val.* != .obj) return error.notGood;
+
+        var ret = try std.ArrayList(Connection).initCapacity(alloc, val.obj.list.items.len);
+        for (val.obj.list.items) |conn| {
+            if (conn.val != .literal) return error.invalidConnection;
+            var it = std.mem.tokenizeAny(u8, conn.val.literal, ",\x1b");
+            try ret.append(.{
+                .listen_event = conn.key,
+                .target = it.next() orelse "",
+                .input = it.next() orelse "",
+                .value = it.next() orelse "",
+                .delay = if (it.next()) |t| try std.fmt.parseFloat(f32, t) else 0,
+                .fire_count = if (it.next()) |t| try std.fmt.parseInt(i32, t, 10) else -1,
+            });
+        }
+        return .{ .list = ret, .is_init = true };
+    }
+};
+
 pub const World = struct {
     id: u32,
     mapversion: u32,
@@ -167,6 +200,9 @@ pub const Entity = struct {
     origin: StringVec,
     angles: StringVec,
     editor: EditorInfo,
+    connections: Connections = .{},
+
+    rest_kvs: vdf.KVMap,
 };
 pub const Side = struct {
     pub const UvCoord = struct {

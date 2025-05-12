@@ -221,6 +221,17 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                             os9gui.endL();
                         }
                     }
+                    if (try self.ecs.getOptPtr(id, .key_values)) |kvs| {
+                        os9gui.hr();
+                        var it = kvs.map.iterator();
+                        scr.layout.pushHeight(400);
+                        _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 30 });
+                        while (it.next()) |item| {
+                            os9gui.label("{s}", .{item.key_ptr.*});
+                            os9gui.label("{s}", .{item.value_ptr.*});
+                        }
+                        os9gui.endL();
+                    }
                     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                         os9gui.label("Solid with {d} sides", .{solid.sides.items.len});
                         for (solid.sides.items) |side| {
