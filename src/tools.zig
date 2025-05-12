@@ -336,9 +336,15 @@ pub const FastFaceManip = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, _: *Gui.VerticalLayout) void {
-        os9gui.label("This is the Fast face tool.", .{});
-        os9gui.hr();
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
+        vl.pushHeight(hl * 10 * os9gui.scale);
+        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+            var tv = tvc;
+            tv.text("This is the Fast Face tool", .{});
+            tv.text("Left click selects the near face, right click selects the far face.", .{});
+            tv.text("Click and drag and click the opposite mouse button to commit changes", .{});
+            //tv.text("", .{});
+        }
         _ = editor;
     }
 };

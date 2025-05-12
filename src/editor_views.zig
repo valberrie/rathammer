@@ -146,6 +146,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         const fh = 20;
         const col = 0xff_ff_ffff;
         var tpos = screen_area.pos();
+        draw.rect(graph.Rec(tpos.x, tpos.y, fh * 100, fh * 4), 0x99);
         draw.textFmt(tpos, "grid: {d:.2}", .{self.edit_state.grid_snap}, font, fh, col);
         tpos.y += fh;
         const p = self.draw_state.cam3d.pos;
