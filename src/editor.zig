@@ -732,6 +732,7 @@ pub const Context = struct {
             ".json",
             ".vmf",
         };
+        var pruned = filename;
         if (std.mem.lastIndexOfScalar(u8, filename, '.')) |index| {
             var found = false;
             for (allowed_exts) |ex| {
@@ -742,11 +743,14 @@ pub const Context = struct {
             if (!found) {
                 log.warn("Unknown map extension: {s}", .{filename});
             }
-            self.loaded_map_name = try self.storeString(filename[0..index]);
-            return;
+            pruned = filename[0..index];
+        } else {
+            log.warn("Map has no extension {s}", .{filename});
         }
-        log.warn("Map has no extension {s}", .{filename});
-        self.loaded_map_name = try self.storeString(filename);
+        if (std.mem.lastIndexOfAny(u8, pruned, "\\/")) |sep| {
+            pruned = pruned[sep + 1 ..];
+        }
+        self.loaded_map_name = try self.storeString(pruned);
     }
 
     pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
