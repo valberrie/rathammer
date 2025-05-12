@@ -35,7 +35,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer editor.deinit(); //important to call this after postInit as some fields are not initilized yet
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
-    var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
+    var font = try graph.Font.initStb(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
     const splash = try graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{});
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, editor.dirs.pref);

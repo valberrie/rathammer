@@ -181,7 +181,7 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         if (self.fgd_ctx.base.get(ent.class)) |base| {
                             os9gui.label("{s}", .{base.name});
                             scr.layout.pushHeight(400);
-                            _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 30 });
+                            _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 20 });
                             for (base.fields.items) |f| {
                                 os9gui.label("{s}", .{f.name});
                                 switch (f.type) {
@@ -225,7 +225,7 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         os9gui.hr();
                         var it = kvs.map.iterator();
                         scr.layout.pushHeight(400);
-                        _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 30 });
+                        _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 20 });
                         while (it.next()) |item| {
                             os9gui.label("{s}", .{item.key_ptr.*});
                             os9gui.label("{s}", .{item.value_ptr.*});

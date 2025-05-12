@@ -16,6 +16,7 @@ const Gui = graph.Gui;
 const Os9Gui = graph.gui_app.Os9Gui;
 const gizmo2 = @import("gizmo2.zig");
 const Gizmo = @import("gizmo.zig").Gizmo;
+const hl = 10;
 
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
@@ -79,10 +80,10 @@ pub const CubeDraw = struct {
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
-        vl.pushHeight(200 * os9gui.scale);
-        if (os9gui.textView(20 * os9gui.scale, 0xff)) |tvc| {
+        vl.pushHeight(hl * 10 * os9gui.scale);
+        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
             var tv = tvc;
-            tv.text("This is the draw cube tool.", .{});
+            tv.text("AThis is the draw cube tool.", .{});
             tv.text("Left click to start drawing the cube.", .{});
             //os9gui.hr();
             tv.text("To change the z, hold {s} and left click", .{editor.config.keys.cube_draw_plane_raycast.b.name()});
@@ -95,8 +96,6 @@ pub const CubeDraw = struct {
 
     pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        vl.pushHeight(200);
-        _ = os9gui.textView(20, 0xff);
 
         if (editor.asset_browser.selected_mat_vpk_id) |id| {
             os9gui.label("texture: ", .{});
@@ -398,11 +397,16 @@ pub const Translate = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, _: *Gui.VerticalLayout) void {
-        os9gui.label("This is the translate tool.", .{});
-        os9gui.label("Select an object with {s}", .{editor.config.keys.select.b.name()});
-        os9gui.label("While you drag the gizmo, press right click to commit the change.", .{});
-        os9gui.label("Optionally, hold {s} to duplicate the object.", .{editor.config.keys.duplicate.b.name()});
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
+        vl.pushHeight(hl * 10 * os9gui.scale);
+        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+            var tv = tvc;
+
+            tv.text("This is the translate tool.", .{});
+            tv.text("Select an object with {s}", .{editor.config.keys.select.b.name()});
+            tv.text("While you drag the gizmo, press right click to commit the change.", .{});
+            tv.text("Optionally, hold {s} to duplicate the object.", .{editor.config.keys.duplicate.b.name()});
+        }
         os9gui.hr();
     }
 
@@ -735,12 +739,16 @@ pub const TranslateFace = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, _: *Gui.VerticalLayout) void {
-        os9gui.label("This is the face translate tool.", .{});
-        os9gui.label("Select a solid with {s}", .{editor.config.keys.select.b.name()});
-        os9gui.label("left click selects the near face.", .{});
-        os9gui.label("right click selects the far face.", .{});
-        os9gui.label("Once you drag the gizmo, press right click to commit the change.", .{});
+    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
+        vl.pushHeight(hl * 10 * os9gui.scale);
+        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+            var tv = tvc;
+            tv.text("This is the face translate tool.", .{});
+            tv.text("Select a solid with {s}", .{editor.config.keys.select.b.name()});
+            tv.text("left click selects the near face.", .{});
+            tv.text("right click selects the far face.", .{});
+            tv.text("Once you drag the gizmo, press right click to commit the change.", .{});
+        }
     }
     pub fn faceTranslate(tool: *@This(), self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
         const draw_nd = &self.draw_state.ctx;
