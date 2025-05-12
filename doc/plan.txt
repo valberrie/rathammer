@@ -97,7 +97,7 @@ Interface
         Interface for user to create splits and assign panes to each section
 
 FeatureCreep
-    Drawing the 3d skybox
+    DONE Drawing the 3d skybox
     Model Animation
     Lighting
     Network transparent editing. Coop editing over tcp
@@ -109,8 +109,7 @@ Utility
         deinit
         dupe
 
-    Configuring keybindings, 
-        Just use a vdf file
+    DONE Configuring keybindings, 
     Export to obj
     Executing a build script for map compilation
     A lua api?
@@ -122,7 +121,7 @@ Utility
         cone
         stairs
 
-    Auto saves
+    DONE Auto saves
 
 Game support
     Portal 2's gameinfo txt doesn't specify vpk's

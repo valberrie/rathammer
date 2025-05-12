@@ -833,6 +833,7 @@ pub const Context = struct {
         try self.tools.append(try tool_def.PlaceModel.create(self.alloc));
         try self.tools.append(try tool_def.CubeDraw.create(self.alloc));
         try self.tools.append(try tool_def.FastFaceManip.create(self.alloc));
+        try self.tools.append(try tool_def.TextureTool.create(self.alloc));
     }
 
     pub fn deinit(self: *Self) void {

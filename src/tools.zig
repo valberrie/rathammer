@@ -556,6 +556,85 @@ pub const Translate = struct {
     }
 };
 
+pub const TextureTool = struct {
+    vt: i3DTool,
+    id: ?edit.EcsT.Id = null,
+    face_index: ?u32 = 0,
+
+    //Left click to select a face,
+    //right click to apply texture to any face
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var obj = try alloc.create(@This());
+        obj.* = .{ .vt = .{
+            .deinit_fn = &@This().deinit,
+            .runTool_fn = &@This().runTool,
+            .tool_icon_fn = &@This().drawIcon,
+        } };
+        return &obj.vt;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("texture_tool.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.run(td, editor) catch return;
+    }
+
+    fn run(self: *TextureTool, td: ToolData, editor: *Editor) !void {
+        if (editor.edit_state.lmouse == .rising) {
+            const pot = editor.screenRay(td.screen_area, td.view_3d.*);
+            if (pot.len > 0) {
+                self.id = pot[0].id;
+                self.face_index = pot[0].side_id;
+            }
+        }
+        blk: {
+            if (editor.edit_state.rmouse == .rising) {
+                const res_id = (editor.asset_browser.selected_mat_vpk_id) orelse break :blk;
+                const pot = editor.screenRay(td.screen_area, td.view_3d.*);
+                if (pot.len == 0) break :blk;
+                const solid = try editor.ecs.getOptPtr(pot[0].id, .solid) orelse break :blk;
+                if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
+                const side = &solid.sides.items[pot[0].side_id.?];
+
+                const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id };
+                const new = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = res_id };
+
+                const ustack = try editor.undoctx.pushNew();
+                try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
+                undo.applyRedo(ustack.items, editor);
+            }
+        }
+
+        blk: {
+            const id = self.id orelse break :blk;
+            const solid = try editor.ecs.getOptPtr(id, .solid) orelse break :blk;
+            if (self.face_index == null or self.face_index.? >= solid.sides.items.len) break :blk;
+
+            const side = &solid.sides.items[self.face_index.?];
+            const v = solid.verts.items;
+            if (side.index.items.len > 0) {
+                var last = v[side.index.items[side.index.items.len - 1]];
+                for (0..side.index.items.len) |ti| {
+                    const p = v[side.index.items[ti]];
+                    editor.draw_state.ctx.line3D(last, p, 0xff0000ff);
+                    last = p;
+                }
+            }
+        }
+    }
+};
+
 pub const PlaceModel = struct {
     vt: i3DTool,
 

@@ -3,6 +3,7 @@ const edit = @import("editor.zig");
 const Editor = edit.Context;
 const Id = edit.EcsT.Id;
 const graph = @import("graph");
+const vpk = @import("vpk.zig");
 const Vec3 = graph.za.Vec3;
 
 //Stack based undo,
@@ -294,6 +295,60 @@ pub const UndoCreate = struct {
         editor.ecs.wakeEntity(self.id) catch return;
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
             solid.rebuild(self.id, editor) catch return;
+        }
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
+
+pub const UndoTextureManip = struct {
+    pub const State = struct {
+        u: edit.Side.UVaxis,
+        v: edit.Side.UVaxis,
+        tex_id: vpk.VpkResId,
+    };
+
+    id: Id,
+    face_id: u32,
+    vt: iUndo,
+    old: State,
+    new: State,
+
+    pub fn create(alloc: std.mem.Allocator, old: State, new: State, id: Id, face_id: u32) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .old = old,
+            .new = new,
+            .id = id,
+            .face_id = face_id,
+        };
+        return &obj.vt;
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.set(self.old, editor) catch return;
+    }
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.set(self.new, editor) catch return;
+    }
+
+    fn set(self: *@This(), new: State, editor: *Editor) !void {
+        if (try editor.ecs.getOptPtr(self.id, .solid)) |solid| {
+            if (self.face_id >= solid.sides.items.len) return;
+            const side = &solid.sides.items[self.face_id];
+            side.u = new.u;
+            side.v = new.v;
+            if (new.tex_id != side.tex_id) {
+                try solid.removeFromMeshMap(self.id, editor);
+            }
+            side.tex_id = new.tex_id;
+            try solid.rebuild(self.id, editor);
         }
     }
 
