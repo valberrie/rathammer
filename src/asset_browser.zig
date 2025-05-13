@@ -42,7 +42,7 @@ pub const AssetBrowserGui = struct {
 
     hide_missing: bool = false,
 
-    model_cam: graph.Camera3D = .{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z, .move_speed = 20 },
+    model_cam: graph.Camera3D = .{ .pos = Vec3.new(0, -100, 0), .up = .z, .move_speed = 20 },
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{

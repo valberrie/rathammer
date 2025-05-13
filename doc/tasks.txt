@@ -17,3 +17,4 @@ remove the unchecked access' from vvd.zig
 don't raycast hidden items (tools, models)
 fix displacment uv calculation
 catch errors in tools and return them
+models draw transparent for some reason

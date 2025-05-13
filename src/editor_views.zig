@@ -53,25 +53,13 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         }
     }
 
+    try draw.flush(null, self.draw_state.cam3d);
     {
         var ent_it = self.ecs.iterator(.entity);
         while (ent_it.next()) |ent| {
             try ent.drawEnt(self, view_3d, draw, draw_nd, .{});
         }
     }
-    { //sky stuff
-        const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
-        const c = graph.c;
-        c.glDepthMask(c.GL_FALSE);
-        c.glDepthFunc(c.GL_LEQUAL);
-        defer c.glDepthFunc(c.GL_LESS);
-        defer c.glDepthMask(c.GL_TRUE);
-
-        for (self.skybox.meshes.items, 0..) |*sk, i| {
-            sk.draw(.{ .texture = self.skybox.textures.items[i].id, .shader = self.skybox.shader }, view_3d, trans);
-        }
-    }
-    try draw.flush(null, self.draw_state.cam3d);
 
     if (win.isBindState(self.config.keys.undo.b, .rising)) {
         self.undoctx.undo(self);
@@ -138,6 +126,18 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     //        },
     //    }
     //}
+    { //sky stuff
+        const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
+        const c = graph.c;
+        c.glDepthMask(c.GL_FALSE);
+        c.glDepthFunc(c.GL_LEQUAL);
+        defer c.glDepthFunc(c.GL_LESS);
+        defer c.glDepthMask(c.GL_TRUE);
+
+        for (self.skybox.meshes.items, 0..) |*sk, i| {
+            sk.draw(.{ .texture = self.skybox.textures.items[i].id, .shader = self.skybox.shader }, view_3d, trans);
+        }
+    }
 
     try draw.flush(null, self.draw_state.cam3d);
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
@@ -198,7 +198,10 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         if (self.fgd_ctx.base.get(ent.class)) |base| {
                             os9gui.label("{s}", .{base.name});
                             scr.layout.pushHeight(400);
-                            _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 20 });
+                            _ = try os9gui.beginL(Gui.TableLayout{
+                                .columns = 2,
+                                .item_height = os9gui.style.config.default_item_h,
+                            });
                             for (base.fields.items) |f| {
                                 os9gui.label("{s}", .{f.name});
                                 switch (f.type) {
@@ -242,7 +245,11 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         os9gui.hr();
                         var it = kvs.map.iterator();
                         scr.layout.pushHeight(400);
-                        _ = try os9gui.beginL(Gui.TableLayout{ .columns = 2, .item_height = 20 });
+                        _ = try os9gui.beginL(Gui.TableLayout{
+                            .columns = 2,
+
+                            .item_height = os9gui.style.config.default_item_h,
+                        });
                         while (it.next()) |item| {
                             os9gui.label("{s}", .{item.key_ptr.*});
                             os9gui.label("{s}", .{item.value_ptr.*});

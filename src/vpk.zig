@@ -438,7 +438,6 @@ pub const Context = struct {
         const ext = sl[dot + 1 ..]; //Eat the dot
         const name_ = sl[slash + 1 .. dot];
 
-        std.debug.print("{s} {s} {s}\n", .{ ext, path, name_ });
         return self.getResourceId(ext, path, name_);
     }
 

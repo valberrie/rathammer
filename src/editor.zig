@@ -892,8 +892,9 @@ pub const Context = struct {
         self.game_conf = game_conf;
 
         const cwd = if (args.custom_cwd) |cc| util.openDirFatal(std.fs.cwd(), cc, .{}, "") else std.fs.cwd();
-        const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, "");
-        const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, "");
+        const custom_cwd_msg = "Set a custom cwd with --custom_cwd flag";
+        const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, custom_cwd_msg);
+        const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, custom_cwd_msg);
         const fgd_dir = util.openDirFatal(cwd, args.fgddir orelse game_conf.fgd_dir, .{}, "");
 
         const ORG = "rathammer";
