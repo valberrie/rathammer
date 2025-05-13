@@ -31,6 +31,10 @@ zig build
 # Example, running with hl2
 ./zig-out/bin/zig-hammer --custom_cwd ~/.local/share/Steam/steamapps/common --vmf my_maps/my_hl2map.vmf
 
+# This will load a vmf map. When we save the map with ctrl+s, a file named my_hl2_map.json will be written to the my_maps directory.
+The vmf file is not touched.
+After closing the editor, to continue editing our map, we must use --vmf my_maps/my_hl2_map.json
+
 The file 'config.vdf' defines various game configurations. The default is basic_hl2, which searches the set cwd for a directory named Half-Life 2
 See config.vdf for defining other game configs.
 ```
