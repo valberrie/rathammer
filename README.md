@@ -16,21 +16,21 @@ Wip
 * Writing vmf files.
 * Writing obj files
 * alpha sorting
-* rotation gizmo.
 * Translation and rotation about arbitrary axis
 * Write documentation
 
 ![d1_trainstation_01](doc/photo1.jpg)
 
-### Running
+### Building and running
 ```
+git clone https://github.com/nmalthouse/rathammer.git
+cd rathammer
 git submodule update --init --recursive
 zig build
 
-# Example, running with tf2, 
-# First symlink the Game's directory for easy access.
-ln path/to/steamapps/common/Team Fortress\ 2.
-./zig-out/bin/zig-hammer --basedir "Team Fortress 2" --gamedir "Team Fortress 2/tf" --vmf my_tf2maps/sdk_ctf_2fort.vmf
+# Example, running with hl2
+./zig-out/bin/zig-hammer --custom_cwd ~/.local/share/Steam/steamapps/common --vmf my_maps/my_hl2map.vmf
 
-# If basedir and gameinfo are not specified it defaults to searching inside of "./Half-Life 2".
+The file 'config.vdf' defines various game configurations. The default is basic_hl2, which searches the set cwd for a directory named Half-Life 2
+See config.vdf for defining other game configs.
 ```

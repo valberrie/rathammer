@@ -17,6 +17,12 @@ const Os9Gui = graph.gui_app.Os9Gui;
 const gizmo2 = @import("gizmo2.zig");
 const Gizmo = @import("gizmo.zig").Gizmo;
 
+//todo
+//extrude tool
+//clipping tool
+//  click on a face twice
+//  if points lie on same plane, infer clipping normal to be perpendicular to that plane
+
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
