@@ -34,6 +34,32 @@ pub const ResourceId = struct {
     vpk_id: vpk.VpkResId,
 };
 
+//typedef void (SDLCALL *SDL_DialogFileCallback)(void *userdata, const char * const *filelist, int filter);
+
+// expected type '?*const fn (?*anyopaque, [*c]const [*c]const u8, c_int) callconv(.C) void',
+// found '*const fn (*anyopaque,           [*c]const [*c]const u8, c_int) callconv(
+
+export fn saveFileCallback(udo: ?*anyopaque, filelist: [*c]const [*c]const u8, index: c_int) void {
+    if (udo) |ud| {
+        const editor: *Context = @alignCast(@ptrCast(ud));
+
+        editor.file_selection.mutex.lock();
+        defer editor.file_selection.mutex.unlock();
+
+        if (filelist == 0 or filelist[0] == 0) {
+            editor.file_selection.has_file = .failed;
+            return;
+        }
+
+        const first = std.mem.span(filelist[0]);
+
+        editor.file_selection.file_buf.clearRetainingCapacity();
+        editor.file_selection.file_buf.appendSlice(first) catch return;
+        editor.file_selection.has_file = .has;
+    }
+    _ = index;
+}
+
 const JsonCamera = struct {
     yaw: f32,
     pitch: f32,
@@ -723,6 +749,20 @@ pub const Context = struct {
         } = .{},
     },
 
+    file_selection: struct {
+        mutex: std.Thread.Mutex = .{},
+        has_file: enum { waiting, failed, has } = .waiting,
+        file_buf: std.ArrayList(u8),
+        await_file: bool = false,
+
+        fn reset(self: *@This()) void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.has_file = .waiting;
+            self.await_file = false;
+        }
+    },
+
     edit_state: struct {
         tool_index: usize = 0,
         last_frame_tool_index: usize = 0,
@@ -802,6 +842,9 @@ pub const Context = struct {
             .asset = undefined,
             .asset_atlas = undefined,
 
+            .file_selection = .{
+                .file_buf = std.ArrayList(u8).init(alloc),
+            },
             .notifier = NotifyCtx.init(alloc, 4000),
             .autosaver = try Autosaver.init(config.autosave.interval_min * std.time.ms_per_min, config.autosave.max, config.autosave.enable, alloc),
             .rayctx = raycast.Ctx.init(alloc),
@@ -885,6 +928,7 @@ pub const Context = struct {
             item.deinit_fn(item, self.alloc);
         self.tools.deinit();
         self.tool_res_map.deinit();
+        self.file_selection.file_buf.deinit();
         self.undoctx.deinit();
         self.ecs.deinit();
         self.fgd_ctx.deinit();
@@ -1470,39 +1514,63 @@ pub const Context = struct {
         return self.scratch_buf.items;
     }
 
+    fn saveAndNotify(self: *Self, basename: []const u8, path: []const u8) !void {
+        var timer = try std.time.Timer.start();
+        try self.notifier.submitNotify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
+        const name = try self.printScratch("{s}{s}.json", .{ path, basename });
+        //TODO make copy of existing map incase something goes wrong
+        const out_file = try std.fs.cwd().createFile(name, .{});
+        defer out_file.close();
+        if (self.writeToJson(out_file)) {
+            try self.notifier.submitNotify("saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
+        } else |err| {
+            log.err("writeToJson failed ! {}", .{err});
+            try self.notifier.submitNotify("save failed!: {}", .{err}, 0xff0000ff);
+        }
+    }
+
     pub fn update(self: *Self, win: *graph.SDL.Window) !void {
         //TODO in the future, set app state to 'autosaving' and send saving to worker thread
         if (self.autosaver.shouldSave()) {
-            log.info("Autosaving {s}", .{self.loaded_map_name orelse "no map loaded"});
+            const basename = self.loaded_map_name orelse "unnamed_map";
+            log.info("Autosaving {s}", .{basename});
             self.autosaver.resetTimer();
-            if (self.loaded_map_name) |basename| {
-                if (self.autosaver.getSaveFileAndPrune(self.dirs.autosave, basename, ".json")) |out_file| {
-                    defer out_file.close();
-                    self.writeToJson(out_file) catch |err| {
-                        log.err("writeToJson failed ! {}", .{err});
-                        try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
-                    };
-                } else |err| {
-                    log.err("Autosave failed with error {}", .{err});
+            if (self.autosaver.getSaveFileAndPrune(self.dirs.autosave, basename, ".json")) |out_file| {
+                defer out_file.close();
+                self.writeToJson(out_file) catch |err| {
+                    log.err("writeToJson failed ! {}", .{err});
                     try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
-                }
-                try self.notifier.submitNotify("Autosaved: {s}", .{basename}, 0x00ff00ff);
+                };
+            } else |err| {
+                log.err("Autosave failed with error {}", .{err});
+                try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
             }
+            try self.notifier.submitNotify("Autosaved: {s}", .{basename}, 0x00ff00ff);
         }
         if (win.isBindState(self.config.keys.save.b, .rising)) {
             if (self.loaded_map_name) |basename| {
-                const path = self.loaded_map_path orelse "";
-                var timer = try std.time.Timer.start();
-                try self.notifier.submitNotify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
-                const name = try self.printScratch("{s}{s}.json", .{ path, basename });
-                //TODO make copy of existing map incase something goes wrong
-                const out_file = try std.fs.cwd().createFile(name, .{});
-                defer out_file.close();
-                if (self.writeToJson(out_file)) {
-                    try self.notifier.submitNotify("saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
-                } else |err| {
-                    log.err("writeToJson failed ! {}", .{err});
-                    try self.notifier.submitNotify("save failed!: {}", .{err}, 0xff0000ff);
+                try self.saveAndNotify(basename, self.loaded_map_path orelse "");
+            } else {
+                if (!self.file_selection.await_file) {
+                    self.file_selection.reset();
+                    self.file_selection.await_file = true;
+                    graph.c.SDL_ShowSaveFileDialog(&saveFileCallback, self, null, null, 0, null);
+                }
+            }
+        }
+        if (self.file_selection.await_file) {
+            if (self.file_selection.mutex.tryLock()) {
+                defer self.file_selection.mutex.unlock();
+                switch (self.file_selection.has_file) {
+                    .waiting => {},
+                    .failed => self.file_selection.await_file = false,
+                    .has => {
+                        try self.setMapName(self.file_selection.file_buf.items);
+                        self.file_selection.await_file = false;
+                        if (self.loaded_map_name) |basename| {
+                            try self.saveAndNotify(basename, self.loaded_map_path orelse "");
+                        }
+                    },
                 }
             }
         }

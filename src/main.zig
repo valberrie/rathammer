@@ -79,12 +79,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             try editor.loadVmf(std.fs.cwd(), mapname, &loadctx);
             try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
         }
-    } else {
-        try editor.loadVmf(std.fs.cwd(), "sdk_materials.vmf", &loadctx);
-        try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
-    }
+    } else {}
 
-    //TODO with assets loaded dynamically, names might not be correct
+    //TODO with assets loaded dynamically, names might not be correct when saving before all loaded
 
     loadctx.time = loadctx.gtimer.read();
 
