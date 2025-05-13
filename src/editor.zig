@@ -26,11 +26,41 @@ const undo = @import("undo.zig");
 const tool_def = @import("tools.zig");
 const util = @import("util.zig");
 const Autosaver = @import("autosave.zig").Autosaver;
+const NotifyCtx = @import("notify.zig").NotifyCtx;
 
 const util3d = @import("util_3d.zig");
 
 pub const ResourceId = struct {
     vpk_id: vpk.VpkResId,
+};
+
+const JsonCamera = struct {
+    yaw: f32,
+    pitch: f32,
+    move_speed: f32,
+    fov: f32,
+    pos: Vec3,
+
+    pub fn fromCam(cam: graph.Camera3D) @This() {
+        return .{
+            .yaw = cam.yaw,
+            .pitch = cam.pitch,
+            .move_speed = cam.move_speed,
+            .fov = cam.fov,
+            .pos = cam.pos,
+        };
+    }
+
+    pub fn setCam(self: @This(), cam: *graph.Camera3D) void {
+        const info = @typeInfo(@This());
+        inline for (info.Struct.fields) |f| {
+            @field(cam, f.name) = @field(self, f.name);
+        }
+    }
+};
+
+const JsonEditor = struct {
+    cam: JsonCamera,
 };
 
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
@@ -639,6 +669,7 @@ pub const Context = struct {
     models: std.AutoHashMap(vpk.VpkResId, Model),
 
     skybox: Skybox,
+    notifier: NotifyCtx,
 
     asset_browser: assetbrowse.AssetBrowserGui,
 
@@ -661,7 +692,7 @@ pub const Context = struct {
         } = .{},
 
         basic_shader: graph.glID,
-        cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100 },
+        cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100, .fwd_back_kind = .planar },
         cam_far_plane: f32 = 512 * 64,
 
         /// we keep our own so that we can do some draw calls with depth some without.
@@ -724,7 +755,10 @@ pub const Context = struct {
     asset: graph.AssetBake.AssetMap,
     asset_atlas: graph.Texture,
     frame_arena: std.heap.ArenaAllocator,
+    // basename of map, without extension or path
     loaded_map_name: ?[]const u8 = null,
+    //This is always relative to cwd
+    loaded_map_path: ?[]const u8 = null,
 
     fn setMapName(self: *Self, filename: []const u8) !void {
         const eql = std.mem.eql;
@@ -732,7 +766,8 @@ pub const Context = struct {
             ".json",
             ".vmf",
         };
-        var pruned = filename;
+        var dot_index: ?usize = null;
+        var slash_index: ?usize = null;
         if (std.mem.lastIndexOfScalar(u8, filename, '.')) |index| {
             var found = false;
             for (allowed_exts) |ex| {
@@ -743,14 +778,20 @@ pub const Context = struct {
             if (!found) {
                 log.warn("Unknown map extension: {s}", .{filename});
             }
-            pruned = filename[0..index];
+            dot_index = index;
+            //pruned = filename[0..index];
         } else {
             log.warn("Map has no extension {s}", .{filename});
         }
-        if (std.mem.lastIndexOfAny(u8, pruned, "\\/")) |sep| {
-            pruned = pruned[sep + 1 ..];
+        if (std.mem.lastIndexOfAny(u8, filename, "\\/")) |sep| {
+            slash_index = sep;
         }
-        self.loaded_map_name = try self.storeString(pruned);
+        const lname = filename[if (slash_index) |si| si + 1 else 0..if (dot_index) |d| d else filename.len];
+        self.loaded_map_name = try self.storeString(lname);
+        self.loaded_map_path = try self.storeString(filename[0..if (slash_index) |s| s + 1 else 0]);
+        //pruned = pruned[sep + 1 ..];
+
+        //self.loaded_map_name = try self.storeString(pruned);
     }
 
     pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
@@ -761,6 +802,7 @@ pub const Context = struct {
             .asset = undefined,
             .asset_atlas = undefined,
 
+            .notifier = NotifyCtx.init(alloc, 4000),
             .autosaver = try Autosaver.init(config.autosave.interval_min * std.time.ms_per_min, config.autosave.max, config.autosave.enable, alloc),
             .rayctx = raycast.Ctx.init(alloc),
             .frame_arena = std.heap.ArenaAllocator.init(alloc),
@@ -846,6 +888,7 @@ pub const Context = struct {
         self.undoctx.deinit();
         self.ecs.deinit();
         self.fgd_ctx.deinit();
+        self.notifier.deinit();
         self.icon_map.deinit();
         self.lower_buf.deinit();
         self.string_storage.deinit();
@@ -895,6 +938,10 @@ pub const Context = struct {
         var jwr = std.json.writeStream(bb, .{});
         try jwr.beginObject();
         {
+            try jwr.objectField("editor");
+            try jwr.write(.{
+                .cam = JsonCamera.fromCam(self.draw_state.cam3d),
+            });
             try jwr.objectField("sky_name");
             try jwr.write(self.skybox.sky_name);
             try jwr.objectField("objects");
@@ -1192,6 +1239,12 @@ pub const Context = struct {
                 }
             }
         }
+        {
+            if (parsed.value.object.get("editor")) |editor| {
+                const ed = try std.json.parseFromValueLeaky(JsonEditor, aa.allocator(), editor, .{});
+                ed.cam.setCam(&self.draw_state.cam3d);
+            }
+        }
 
         const obj_o = parsed.value.object.get("objects") orelse return error.invalidMap;
         if (obj_o != .array) return error.invalidMap;
@@ -1411,7 +1464,13 @@ pub const Context = struct {
         );
     }
 
-    pub fn update(self: *Self) !void {
+    fn printScratch(self: *Self, comptime str: []const u8, args: anytype) ![]const u8 {
+        self.scratch_buf.clearRetainingCapacity();
+        try self.scratch_buf.writer().print(str, args);
+        return self.scratch_buf.items;
+    }
+
+    pub fn update(self: *Self, win: *graph.SDL.Window) !void {
         //TODO in the future, set app state to 'autosaving' and send saving to worker thread
         if (self.autosaver.shouldSave()) {
             log.info("Autosaving {s}", .{self.loaded_map_name orelse "no map loaded"});
@@ -1421,9 +1480,29 @@ pub const Context = struct {
                     defer out_file.close();
                     self.writeToJson(out_file) catch |err| {
                         log.err("writeToJson failed ! {}", .{err});
+                        try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
                     };
                 } else |err| {
                     log.err("Autosave failed with error {}", .{err});
+                    try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
+                }
+                try self.notifier.submitNotify("Autosaved: {s}", .{basename}, 0x00ff00ff);
+            }
+        }
+        if (win.isBindState(self.config.keys.save.b, .rising)) {
+            if (self.loaded_map_name) |basename| {
+                const path = self.loaded_map_path orelse "";
+                var timer = try std.time.Timer.start();
+                try self.notifier.submitNotify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
+                const name = try self.printScratch("{s}{s}.json", .{ path, basename });
+                //TODO make copy of existing map incase something goes wrong
+                const out_file = try std.fs.cwd().createFile(name, .{});
+                defer out_file.close();
+                if (self.writeToJson(out_file)) {
+                    try self.notifier.submitNotify("saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
+                } else |err| {
+                    log.err("writeToJson failed ! {}", .{err});
+                    try self.notifier.submitNotify("save failed!: {}", .{err}, 0xff0000ff);
                 }
             }
         }

@@ -94,6 +94,14 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         //var rcast_timer = try std.time.Timer.start();
         //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
     }
+    if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
+        if (self.edit_state.id) |id| {
+            const ustack = try self.undoctx.pushNew();
+            try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, id, .destroy));
+            undo.applyRedo(ustack.items, self);
+            self.edit_state.id = null;
+        }
+    }
 
     const td = tools.ToolData{
         .screen_area = screen_area,
@@ -151,7 +159,14 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         tpos.y += fh;
         const p = self.draw_state.cam3d.pos;
         draw.textFmt(tpos, "pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, font, fh, col);
-        tpos.y += fh;
+        {
+            //TODO put an actual dt here
+            const notify_slice = try self.notifier.getSlice(16);
+            for (notify_slice) |n| {
+                tpos.y += fh;
+                draw.text(tpos, n.msg, font, fh, n.color);
+            }
+        }
         //draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
     }
     try draw_nd.flush(null, self.draw_state.cam3d);

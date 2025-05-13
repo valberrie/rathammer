@@ -1,5 +1,5 @@
 *.vmf
 .zig-cache
 zig-out
-pngmat
 Half-Life\ 2
+*.json

@@ -12,6 +12,8 @@ keys {
     cam_down        scancode:c
 
     select          scancode:E
+    delete_selected scancode:X
+
     grid_inc        scancode:R
     grid_dec        scancode:F
     undo            left_ctrl+scancode:z
@@ -41,7 +43,13 @@ keys {
 }
 
 autosave {
-    interval_min    1
+    interval_min    5   //Minutes between autosaves
+    max             10  //How many autosaves of a given map name before pruning
+
+                        //Autosaves are stored per the filename of the map so
+                        //my_path_to_map/my_map.json
+                        //other_path/my_map.json
+                        //would clobber each others autosaves
 }
 
 window {

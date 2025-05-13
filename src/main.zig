@@ -35,12 +35,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer editor.deinit(); //important to call this after postInit as some fields are not initilized yet
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
-    var font = try graph.Font.initStb(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
+    var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
     const splash = try graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{});
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, .{
         .cache_dir = editor.dirs.pref,
-        .font_size_px = 20,
+        .font_size_px = args.gui_font_size,
+        .item_height = args.gui_item_height,
     });
     defer os9gui.deinit();
     var loadctx = edit.LoadCtx{
@@ -176,6 +177,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
                 os9gui.label("num model {d}", .{editor.models.count()});
                 os9gui.label("num mesh {d}", .{editor.meshmap.count()});
+
+                try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
             }
             try os9gui.endFrame(&draw);
             try draw.end(editor.draw_state.cam3d);
@@ -220,7 +223,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         };
 
         graph.c.glEnable(graph.c.GL_BLEND);
-        try editor.update();
+        try editor.update(&win);
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
         for (config.keys.workspace.items, 0..) |b, i| {
             if (win.isBindState(b.b, .rising))
@@ -323,6 +326,8 @@ pub fn main() !void {
         Arg("fgd", .string, "name of fgd file"),
         Arg("nthread", .number, "How many threads."),
         Arg("gui_scale", .number, "Scale the gui"),
+        Arg("gui_font_size", .number, "pixel size of font"),
+        Arg("gui_item_height", .number, "item height in pixels / gui_scale"),
         Arg("game", .string, "Name of a game defined in config.vdf"),
         Arg("custom_cwd", .string, "override the directory used for game"),
     }, &arg_it);

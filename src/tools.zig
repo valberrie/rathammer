@@ -16,7 +16,6 @@ const Gui = graph.Gui;
 const Os9Gui = graph.gui_app.Os9Gui;
 const gizmo2 = @import("gizmo2.zig");
 const Gizmo = @import("gizmo.zig").Gizmo;
-const hl = 10;
 
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
@@ -80,8 +79,9 @@ pub const CubeDraw = struct {
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
-        vl.pushHeight(hl * 10 * os9gui.scale);
-        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+        const hl = os9gui.style.config.text_h;
+        vl.pushHeight(hl * 10);
+        if (os9gui.textView(hl, 0xff)) |tvc| {
             var tv = tvc;
             tv.text("AThis is the draw cube tool.", .{});
             tv.text("Left click to start drawing the cube.", .{});
@@ -199,7 +199,7 @@ pub const CubeDraw = struct {
                         try solid_ptr.translate(new, Vec3.zero(), self);
                         {
                             const ustack = try self.undoctx.pushNew();
-                            try ustack.append(try undo.UndoCreate.create(self.undoctx.alloc, new));
+                            try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
                             undo.applyRedo(ustack.items, self);
                         }
                     }
@@ -337,8 +337,9 @@ pub const FastFaceManip = struct {
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
-        vl.pushHeight(hl * 10 * os9gui.scale);
-        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+        const hl = os9gui.style.config.text_h;
+        vl.pushHeight(hl * 10);
+        if (os9gui.textView(hl, 0xff)) |tvc| {
             var tv = tvc;
             tv.text("This is the Fast Face tool", .{});
             tv.text("Left click selects the near face, right click selects the far face.", .{});
@@ -404,8 +405,9 @@ pub const Translate = struct {
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
-        vl.pushHeight(hl * 10 * os9gui.scale);
-        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+        const hl = os9gui.style.config.text_h;
+        vl.pushHeight(hl * 10);
+        if (os9gui.textView(hl, 0xff)) |tvc| {
             var tv = tvc;
 
             tv.text("This is the translate tool.", .{});
@@ -746,8 +748,9 @@ pub const TranslateFace = struct {
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
-        vl.pushHeight(hl * 10 * os9gui.scale);
-        if (os9gui.textView(hl * os9gui.scale, 0xff)) |tvc| {
+        const hl = os9gui.style.config.text_h;
+        vl.pushHeight(hl * 10);
+        if (os9gui.textView(hl, 0xff)) |tvc| {
             var tv = tvc;
             tv.text("This is the face translate tool.", .{});
             tv.text("Select a solid with {s}", .{editor.config.keys.select.b.name()});
@@ -859,7 +862,7 @@ pub fn modelPlace(self: *Editor, td: ToolData) !void {
                 });
                 try self.ecs.attach(new, .bounding_box, bb);
                 const ustack = try self.undoctx.pushNew();
-                try ustack.append(try undo.UndoCreate.create(self.undoctx.alloc, new));
+                try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
                 undo.applyRedo(ustack.items, self);
             }
         }

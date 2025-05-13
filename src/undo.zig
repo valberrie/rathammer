@@ -268,33 +268,51 @@ pub const UndoSolidFaceTranslate = struct {
 /// Rather than actually creating/deleting entities, this just unsleeps/sleeps them
 /// On map serial, slept entities are omitted
 /// Sleep/unsleep is idempotent so no need to sleep before calling applyAll
-pub const UndoCreate = struct {
+pub const UndoCreateDestroy = struct {
+    pub const Kind = enum { create, destroy };
     vt: iUndo,
 
     id: Id,
+    /// area we undoing a creation, or a destruction
+    kind: Kind,
 
-    pub fn create(alloc: std.mem.Allocator, id: Id) !*iUndo {
+    pub fn create(alloc: std.mem.Allocator, id: Id, kind: Kind) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
             .id = id,
+            .kind = kind,
         };
         return &obj.vt;
     }
 
+    fn undoCreate(self: *@This(), editor: *Editor) !void {
+        if (try editor.ecs.getOptPtr(self.id, .solid)) |solid| {
+            try solid.removeFromMeshMap(self.id, editor);
+        }
+        try editor.ecs.sleepEntity(self.id);
+    }
+
+    fn redoCreate(self: *@This(), editor: *Editor) !void {
+        try editor.ecs.wakeEntity(self.id);
+        if (try editor.ecs.getOptPtr(self.id, .solid)) |solid| {
+            try solid.rebuild(self.id, editor);
+        }
+    }
+
     pub fn undo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
-            solid.removeFromMeshMap(self.id, editor) catch return;
+        switch (self.kind) {
+            .create => self.undoCreate(editor) catch return,
+            .destroy => self.redoCreate(editor) catch return,
         }
-        editor.ecs.sleepEntity(self.id) catch return;
     }
 
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        editor.ecs.wakeEntity(self.id) catch return;
-        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
-            solid.rebuild(self.id, editor) catch return;
+        switch (self.kind) {
+            .destroy => self.undoCreate(editor) catch return,
+            .create => self.redoCreate(editor) catch return,
         }
     }
 

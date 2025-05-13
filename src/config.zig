@@ -6,6 +6,7 @@ const StringStorage = @import("string.zig").StringStorage;
 // TODO all values should have a default value
 /// The user's 'config.vdf' maps directly into this structure
 pub const Config = struct {
+    const mask = graph.SDL.keycodes.Keymod.mask;
     autosave: struct {
         enable: bool = true,
         interval_min: u64 = 5,
@@ -23,12 +24,14 @@ pub const Config = struct {
 
         cam_slow: Keybind = .{ .b = SC(.LCTRL, 0) },
 
-        quit: Keybind,
-        focus_search: Keybind,
+        quit: Keybind = .{ .b = SC(.ESCAPE, mask(&.{.LCTRL})) },
+        focus_search: Keybind = .{ .b = KC(.f, mask(&.{.LCTRL})) },
 
         workspace: std.ArrayList(Keybind),
+        save: Keybind = .{ .b = KC(.s, mask(&.{.LCTRL})) },
 
         select: Keybind = .{ .b = SC(.E, 0) },
+        delete_selected: Keybind = .{ .b = SC(.X, 0) },
 
         duplicate: Keybind = .{ .b = SC(.Z, 0) },
 
