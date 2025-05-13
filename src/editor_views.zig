@@ -15,7 +15,7 @@ const fgd = @import("fgd.zig");
 const undo = @import("undo.zig");
 const tools = @import("tools.zig");
 
-pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, font: *graph.FontInterface) !void {
+pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, os9gui: *graph.Os9Gui) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
     // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
     // "draw" still has depth buffer
@@ -151,7 +151,8 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         cw * 2,
     ), 0xffffffff);
     { // text stuff
-        const fh = 20;
+        const font = os9gui.font;
+        const fh = os9gui.style.config.text_h;
         const col = 0xff_ff_ffff;
         var tpos = screen_area.pos();
         draw.rect(graph.Rec(tpos.x, tpos.y, fh * 100, fh * 4), 0x99);

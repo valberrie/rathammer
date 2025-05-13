@@ -34,11 +34,6 @@ pub const ResourceId = struct {
     vpk_id: vpk.VpkResId,
 };
 
-//typedef void (SDLCALL *SDL_DialogFileCallback)(void *userdata, const char * const *filelist, int filter);
-
-// expected type '?*const fn (?*anyopaque, [*c]const [*c]const u8, c_int) callconv(.C) void',
-// found '*const fn (*anyopaque,           [*c]const [*c]const u8, c_int) callconv(
-
 export fn saveFileCallback(udo: ?*anyopaque, filelist: [*c]const [*c]const u8, index: c_int) void {
     if (udo) |ud| {
         const editor: *Context = @alignCast(@ptrCast(ud));
@@ -52,6 +47,10 @@ export fn saveFileCallback(udo: ?*anyopaque, filelist: [*c]const [*c]const u8, i
         }
 
         const first = std.mem.span(filelist[0]);
+        if (first.len == 0) {
+            editor.file_selection.has_file = .failed;
+            return;
+        }
 
         editor.file_selection.file_buf.clearRetainingCapacity();
         editor.file_selection.file_buf.appendSlice(first) catch return;
@@ -1522,7 +1521,7 @@ pub const Context = struct {
         const out_file = try std.fs.cwd().createFile(name, .{});
         defer out_file.close();
         if (self.writeToJson(out_file)) {
-            try self.notifier.submitNotify("saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
+            try self.notifier.submitNotify(" saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
         } else |err| {
             log.err("writeToJson failed ! {}", .{err});
             try self.notifier.submitNotify("save failed!: {}", .{err}, 0xff0000ff);
@@ -1556,6 +1555,13 @@ pub const Context = struct {
                     self.file_selection.await_file = true;
                     graph.c.SDL_ShowSaveFileDialog(&saveFileCallback, self, null, null, 0, null);
                 }
+            }
+        }
+        if (win.isBindState(self.config.keys.save_new.b, .rising)) {
+            if (!self.file_selection.await_file) {
+                self.file_selection.reset();
+                self.file_selection.await_file = true;
+                graph.c.SDL_ShowSaveFileDialog(&saveFileCallback, self, null, null, 0, null);
             }
         }
         if (self.file_selection.await_file) {

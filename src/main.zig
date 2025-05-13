@@ -17,6 +17,7 @@ const editor_view = @import("editor_views.zig");
 const Conf = @import("config.zig");
 
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
+    const load_timer = try std.time.Timer.start();
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
     defer loaded_config.deinit();
     const config = loaded_config.config;
@@ -51,7 +52,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .splash = splash,
         .os9gui = &os9gui,
         .timer = try std.time.Timer.start(),
-        .gtimer = try std.time.Timer.start(),
+        .gtimer = load_timer,
         .expected_cb = 100,
     };
 
@@ -257,7 +258,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .main_3d_view => {
                     editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
                     editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
-                    try editor_view.draw3Dview(&editor, pane_area, &draw, &win, &font.font);
+                    try editor_view.draw3Dview(&editor, pane_area, &draw, &win, &os9gui);
                 },
                 .about => {
                     if (try os9gui.beginTlWindow(pane_area)) {

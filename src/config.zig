@@ -29,6 +29,7 @@ pub const Config = struct {
 
         workspace: std.ArrayList(Keybind),
         save: Keybind = .{ .b = KC(.s, mask(&.{.LCTRL})) },
+        save_new: Keybind = .{ .b = KC(.s, mask(&.{ .LCTRL, .LSHIFT })) },
 
         select: Keybind = .{ .b = SC(.E, 0) },
         delete_selected: Keybind = .{ .b = SC(.X, 0) },
