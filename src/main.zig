@@ -207,8 +207,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
         try os9gui.beginFrame(is, &win);
 
-        if (win.keyRising(.TAB))
-            editor.draw_state.tog.tools = !editor.draw_state.tog.tools;
         const cam_state = graph.ptypes.Camera3D.MoveState{
             .down = win.bindHigh(config.keys.cam_down.b),
             .up = win.bindHigh(config.keys.cam_up.b),

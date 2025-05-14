@@ -1,6 +1,85 @@
 This file outlines various tasks in the project.
 Lines with no indentation indicate the beginning of a topic
 
+Features
+    Add loose file capability to vpk.Context // Partially done
+    Save vmf file.
+        This requires first loading all fields in existing vmfs
+        Then serializing any state we have built up.
+        This should probably wait until after we have decided how all entities are stored.
+        Check if real Hammer will read vmf's with unix line endings
+
+        Okay, we will use our json format to store serialized maps.
+            Write a map.json -> vmf converter (harder)
+            Write a map.json -> obj converter (easy)
+
+        Support loading arbitrary kvs from vmf. 
+        create a vdf_map component and associate it with entities.
+
+
+    Multi select, multi op
+
+    Displacements
+        DONE Loading
+        Editing
+
+    DONE Undo/Redo stack
+    
+
+Interface # All the features for editing
+    Tool based (enum)?
+    2d editing?
+
+    Rotation gizmo
+    clipping tool
+    Scale gizmo
+    Texture application
+    Vertex tool
+    EXTRUDE Tool, create a new solid at face
+    Texture manipulation
+
+    DONE Face translation
+    DONE Model placement
+
+    MULTI SELECT
+
+    How to manage all the different window panes?
+        filebrowser
+        inspector
+        texture browser
+        material browser
+        save dialog?
+        primitive creator
+        keybinding cheatsheet
+        main 3d view
+        
+        What if it was entirely user defined? 
+            It could be specified via config.vdf.
+            Splits would be specified. 3d views can capture mice
+        Interface for user to create splits and assign panes to each section
+
+    Visgroups
+    Grouping of solids, 
+        a bigger part of this is entities owning a set of solids. displacments and func_detail
+    Generating primitives:
+        cube
+        sphere
+        arch
+        cylinder
+        cone
+        stairs
+        
+        Solids are specified by a set of vertices and sides whose polygon windings index into those vertices.
+        Arch shouldn't be too hard, with polar coordinates, each wedge solid is just a 6 sided solid d_theta wide and d_r thick
+
+FeatureCreep
+    DONE Drawing the 3d skybox
+    Model Animation
+    Lighting
+    Network transparent editing. Coop editing over tcp
+    Precedural model placement (draw a (pipe, fence, cable) path, gets filled with models)
+    Actual csg?
+
 Optimization
     Lowering frame rates when possible:
         By default the app updates at whatever frequency vsync sets.
@@ -37,71 +116,6 @@ Dependencies:
             could just be a widget
 
 
-Features
-    Add loose file capability to vpk.Context // Partially done
-    Save vmf file.
-        This requires first loading all fields in existing vmfs
-        Then serializing any state we have built up.
-        This should probably wait until after we have decided how all entities are stored.
-        Check if real Hammer will read vmf's with unix line endings
-
-        Okay, we will use our json format to store serialized maps.
-            Write a map.json -> vmf converter (harder)
-            Write a map.json -> obj converter (easy)
-
-        Support loading arbitrary kvs from vmf. 
-        create a vdf_map component and associate it with entities.
-
-    DONE Undo/Redo stack
-
-    Multi select, multi op
-
-    Displacements
-        DONE Loading
-        Editing
-    
-
-Interface
-    Tool based (enum)?
-    2d editing?
-
-    Rotation gizmo
-    Scale gizmo
-    DONE Model placement
-    Texture application
-    Vertex tool
-    DONE Face translation
-
-    EXTRUDE Tool, create a new solid at face
-
-    vmf loading and saving.
-        Could use gui.FileBrowser
-
-    Add texture manipulation
-
-    How to manage all the different window panes?
-        filebrowser
-        inspector
-        texture browser
-        material browser
-        save dialog?
-        primitive creator
-        keybinding cheatsheet
-        main 3d view
-        
-        What if it was entirely user defined? 
-            It could be specified via config.vdf.
-            Splits would be specified. 3d views can capture mice
-        Interface for user to create splits and assign panes to each section
-
-FeatureCreep
-    DONE Drawing the 3d skybox
-    Model Animation
-    Lighting
-    Network transparent editing. Coop editing over tcp
-    Precedural model placement (draw a (pipe, fence, cable) path, gets filled with models)
-    Actual csg?
-
 Utility
     Switch to the new ecs, vtable for each component
         deinit
@@ -111,20 +125,13 @@ Utility
     Export to obj
     Executing a build script for map compilation
     A lua api?
-    Visgroups
-    Generating primitives:
-        cube
-        sphere
-        arch
-        cylinder
-        cone
-        stairs
 
     DONE Auto saves
 
 Game support
     Portal 2's gameinfo txt doesn't specify vpk's
-    Portal 2's fgd crashes parser
+    Portal 2's fgd crashes parser, same with cstrike.fgd
+    Gmod.
     Write a game config for every offical source game on steam.
 
 Build
@@ -135,3 +142,6 @@ Build
         How to set a custom directory for dll search like LD_LIBRARY_PATH
     Linux
         Do linker paths need to be configurable for build scripts (aur).
+        author a linux .desktop file.
+        look into appimage building
+        Generate completion scripts for zsh and maybe other shells.

@@ -33,6 +33,7 @@ pub const Config = struct {
 
         select: Keybind = .{ .b = SC(.E, 0) },
         delete_selected: Keybind = .{ .b = SC(.X, 0) },
+        toggle_select_mode: Keybind = .{ .b = SC(.TAB, 0) },
 
         duplicate: Keybind = .{ .b = SC(.Z, 0) },
 

@@ -122,15 +122,15 @@ pub const SelectionUndo = struct {
     pub fn undo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @fieldParentPtr("vt", vt);
         switch (self.kind) {
-            .select => editor.edit_state.id = null,
-            .deselect => editor.edit_state.id = self.id,
+            .select => editor.selection.single_id = null,
+            .deselect => editor.selection.single_id = self.id,
         }
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @fieldParentPtr("vt", vt);
         switch (self.kind) {
-            .select => editor.edit_state.id = self.id,
-            .deselect => editor.edit_state.id = null,
+            .select => editor.selection.single_id = self.id,
+            .deselect => editor.selection.single_id = null,
         }
     }
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {

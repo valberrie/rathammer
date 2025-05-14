@@ -68,26 +68,32 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         self.undoctx.redo(self);
     }
 
+    if (win.isBindState(self.config.keys.toggle_select_mode.b, .rising))
+        self.selection.toggle();
+
     if (win.isBindState(self.config.keys.select.b, .rising)) {
         const pot = self.screenRay(screen_area, view_3d);
         if (pot.len > 0) {
-            const ustack = try self.undoctx.pushNew();
-            if (self.edit_state.id) |last_id| {
-                try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .deselect, last_id));
+            switch (self.selection.mode) {
+                .one => self.selection.single_id = pot[0].id,
+                .many => {
+                    try self.selection.append(pot[0].id);
+                },
             }
-            self.edit_state.id = pot[0].id;
-            try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .select, pot[0].id));
-            //try self.undoctx.push(try undo.SelectionUndo.create(self.undoctx.alloc, .select, pot[0].id));
+            //const ustack = try self.undoctx.pushNew();
+            //if (self.selection.single_id) |last_id| {
+            //    try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .deselect, last_id));
+            //}
+            //self.selection.single_id = pot[0].id;
+            //try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .select, pot[0].id));
         }
-        //var rcast_timer = try std.time.Timer.start();
-        //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
     }
     if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
-        if (self.edit_state.id) |id| {
+        if (self.selection.single_id) |id| {
             const ustack = try self.undoctx.pushNew();
             try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, id, .destroy));
             undo.applyRedo(ustack.items, self);
-            self.edit_state.id = null;
+            self.selection.single_id = null;
         }
     }
 
@@ -160,6 +166,8 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         tpos.y += fh;
         const p = self.draw_state.cam3d.pos;
         draw.textFmt(tpos, "pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, font, fh, col);
+        tpos.y += fh;
+        draw.textFmt(tpos, "select: {s}", .{@tagName(self.selection.mode)}, font, fh, col);
         {
             //TODO put an actual dt here
             const notify_slice = try self.notifier.getSlice(16);
@@ -193,7 +201,7 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                     if (tool.gui_fn) |gf| gf(tool, os9gui, self, scr.layout);
                 }
                 //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
-                if (self.edit_state.id) |id| {
+                if (self.selection.single_id) |id| {
                     if (try self.ecs.getOptPtr(id, .entity)) |ent| {
                         if (self.fgd_ctx.base.get(ent.class)) |base| {
                             os9gui.label("{s}", .{base.name});

@@ -27,6 +27,7 @@ const tool_def = @import("tools.zig");
 const util = @import("util.zig");
 const Autosaver = @import("autosave.zig").Autosaver;
 const NotifyCtx = @import("notify.zig").NotifyCtx;
+const Selection = @import("selection.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -717,7 +718,7 @@ pub const Context = struct {
         } = .{},
 
         basic_shader: graph.glID,
-        cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 50, .max_move_speed = 100, .fwd_back_kind = .planar },
+        cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 10, .max_move_speed = 100, .fwd_back_kind = .planar },
         cam_far_plane: f32 = 512 * 64,
 
         /// we keep our own so that we can do some draw calls with depth some without.
@@ -762,11 +763,13 @@ pub const Context = struct {
         }
     },
 
+    selection: Selection,
+
     edit_state: struct {
         tool_index: usize = 0,
         last_frame_tool_index: usize = 0,
 
-        id: ?EcsT.Id = null,
+        //id: ?EcsT.Id = null,
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
 
@@ -847,6 +850,7 @@ pub const Context = struct {
             .notifier = NotifyCtx.init(alloc, 4000),
             .autosaver = try Autosaver.init(config.autosave.interval_min * std.time.ms_per_min, config.autosave.max, config.autosave.enable, alloc),
             .rayctx = raycast.Ctx.init(alloc),
+            .selection = Selection.init(alloc),
             .frame_arena = std.heap.ArenaAllocator.init(alloc),
             .config = config,
             .alloc = alloc,
@@ -935,6 +939,7 @@ pub const Context = struct {
         self.notifier.deinit();
         self.icon_map.deinit();
         self.lower_buf.deinit();
+        self.selection.deinit();
         self.string_storage.deinit();
         self.rayctx.deinit();
         self.scratch_buf.deinit();
