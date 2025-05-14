@@ -423,11 +423,9 @@ pub const Translate = struct {
     }
 
     pub fn translate(tool: *Translate, self: *Editor, td: ToolData) !void {
-        //const id = self.selection.single_id orelse return;
         const draw_nd = &self.draw_state.ctx;
         const draw = td.draw;
         const dupe = td.win.isBindState(self.config.keys.duplicate.b, .high);
-        //const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse return;
         const COLOR_MOVE = 0xe8a130_ee;
         const COLOR_DUPE = 0xfc35ac_ee;
         const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;

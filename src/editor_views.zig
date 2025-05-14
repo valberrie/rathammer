@@ -89,11 +89,15 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         }
     }
     if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
-        if (self.selection.single_id) |id| {
+        const selection = self.selection.getSlice();
+        if (selection.len > 0) {
             const ustack = try self.undoctx.pushNew();
-            try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, id, .destroy));
+            for (selection) |id| {
+                std.debug.print("sleeping {d}\n", .{id});
+                try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, id, .destroy));
+            }
             undo.applyRedo(ustack.items, self);
-            self.selection.single_id = null;
+            self.selection.clear();
         }
     }
 
@@ -108,30 +112,6 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         const vt = self.tools.items[self.edit_state.tool_index];
         vt.runTool_fn(vt, td, self);
     }
-    //if (false) {
-    //    switch (self.edit_state.state) {
-    //        else => {},
-    //        .texture_apply => {
-    //            //BUG: we need to remove the side from its current batch
-    //            blk: {
-    //                const tid = self.asset_browser.selected_mat_vpk_id orelse break :blk;
-    //                //Raycast into world and apply texture to the face we hit
-    //                if (self.edit_state.rmouse == .high) {
-    //                    const pot = self.screenRay(screen_area, view_3d);
-    //                    if (pot.len == 0) break :blk;
-    //                    if (try self.ecs.getOptPtr(pot[0].id, .solid)) |solid| {
-    //                        if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
-    //                        const si = pot[0].side_id.?;
-    //                        solid.sides.items[si].tex_id = tid;
-    //                        //TODO this is slow, only rebuild the face
-    //                        try solid.rebuild(pot[0].id, self);
-    //                        try self.rebuildMeshesIfDirty();
-    //                    }
-    //                }
-    //            }
-    //        },
-    //    }
-    //}
     { //sky stuff
         const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
         const c = graph.c;

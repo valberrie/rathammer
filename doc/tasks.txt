@@ -17,5 +17,6 @@ don't raycast hidden items (tools, models)
 fix displacment uv calculation
 catch errors in tools and return them
 Stop the frame hitches when searching in asset browser
+Add option for next state after cube draw, either reset cube draw or go to translate or fast face
 
 DONE set correct bounding boxes of deferred model loads

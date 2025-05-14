@@ -32,15 +32,25 @@ pub fn getLast(self: *Self) ?Id {
     };
 }
 
+threadlocal var single_slice: [1]Id = undefined;
 pub fn getSlice(self: *Self) []const Id {
     switch (self.mode) {
         .one => {
-            if (self.single_id) |id|
-                return &.{id};
+            if (self.single_id) |id| {
+                single_slice[0] = id;
+                return &single_slice;
+            }
         },
         .many => return self.multi.items,
     }
     return &.{};
+}
+
+pub fn clear(self: *Self) void {
+    switch (self.mode) {
+        .one => self.single_id = null,
+        .many => self.multi.clearRetainingCapacity(),
+    }
 }
 
 pub fn deinit(self: *Self) void {
