@@ -1,6 +1,8 @@
 const std = @import("std");
 const edit = @import("editor.zig");
 const Id = edit.EcsT.Id;
+//TODO
+//allow tools to force single
 
 const Self = @This();
 const Mode = enum {
@@ -57,6 +59,15 @@ pub fn deinit(self: *Self) void {
     self.multi.deinit();
 }
 
-pub fn append(self: *Self, id: Id) !void {
-    try self.multi.append(id);
+pub fn put(self: *Self, id: Id) !void {
+    switch (self.mode) {
+        .one => self.single_id = id,
+        .many => {
+            if (std.mem.indexOfScalar(Id, self.multi.items, id)) |index| {
+                _ = self.multi.orderedRemove(index);
+            } else {
+                try self.multi.append(id);
+            }
+        },
+    }
 }

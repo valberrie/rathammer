@@ -74,26 +74,16 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     if (win.isBindState(self.config.keys.select.b, .rising)) {
         const pot = self.screenRay(screen_area, view_3d);
         if (pot.len > 0) {
-            switch (self.selection.mode) {
-                .one => self.selection.single_id = pot[0].id,
-                .many => {
-                    try self.selection.append(pot[0].id);
-                },
-            }
-            //const ustack = try self.undoctx.pushNew();
-            //if (self.selection.single_id) |last_id| {
-            //    try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .deselect, last_id));
-            //}
-            //self.selection.single_id = pot[0].id;
-            //try ustack.append(try undo.SelectionUndo.create(self.undoctx.alloc, .select, pot[0].id));
+            try self.selection.put(pot[0].id);
         }
     }
+    if (win.isBindState(self.config.keys.clear_selection.b, .rising))
+        self.selection.clear();
     if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
         const selection = self.selection.getSlice();
         if (selection.len > 0) {
             const ustack = try self.undoctx.pushNew();
             for (selection) |id| {
-                std.debug.print("sleeping {d}\n", .{id});
                 try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, id, .destroy));
             }
             undo.applyRedo(ustack.items, self);
