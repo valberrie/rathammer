@@ -49,17 +49,15 @@ Features
             Write a map.json -> vmf converter (harder)
             Write a map.json -> obj converter (easy)
 
-            Decide if we store floats as base64
-
         Support loading arbitrary kvs from vmf. 
         create a vdf_map component and associate it with entities.
 
-    Undo/Redo stack
+    DONE Undo/Redo stack
 
     Multi select, multi op
 
     Displacements
-        Loading
+        DONE Loading
         Editing
     
 
@@ -69,12 +67,12 @@ Interface
 
     Rotation gizmo
     Scale gizmo
-    Model placement
+    DONE Model placement
     Texture application
     Vertex tool
-    Face translation
+    DONE Face translation
 
-    EXTRUDE Tooll, create a new solid at face
+    EXTRUDE Tool, create a new solid at face
 
     vmf loading and saving.
         Could use gui.FileBrowser
@@ -113,6 +111,7 @@ Utility
     Export to obj
     Executing a build script for map compilation
     A lua api?
+    Visgroups
     Generating primitives:
         cube
         sphere

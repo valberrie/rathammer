@@ -21,7 +21,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
     defer loaded_config.deinit();
     const config = loaded_config.config;
-    var win = try graph.SDL.Window.createWindow("Rat Hammer - ラットハンマー", .{
+    //var win = try graph.SDL.Window.createWindow("Rat Hammer - ラットハンマー", .{
+    var win = try graph.SDL.Window.createWindow("Test", .{
         .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
     });
     defer win.destroyWindow();
@@ -265,7 +266,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         defer os9gui.endTlWindow();
                         _ = try os9gui.beginV();
                         defer os9gui.endL();
-                        os9gui.label("Hello this is the rat hammer 鼠", .{});
+                        os9gui.label("Hello this is the rat hammer", .{});
                         try os9gui.enumCombo(
                             "Select pane {s}",
                             .{@tagName(pane)},
@@ -300,7 +301,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         //try draw.flush(null, editor.draw_state.cam3d);
 
-        try loadctx.loadedSplash(win.keys.len > 0);
+        //try loadctx.loadedSplash(win.keys.len > 0);
         try os9gui.endFrame(&draw);
 
         //draw.rectTex(graph.Rec(0, 0, 100, 100), editor.asset.getRectFromName("translate.png").?, editor.asset_atlas);
