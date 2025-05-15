@@ -111,7 +111,8 @@ pub const CubeDraw = struct {
     vt: i3DTool,
 
     use_custom_height: bool = false,
-    custom_height: u32 = 16,
+    snap_height: bool = true,
+    custom_height: f32 = 16,
     state: enum { start, planar } = .start,
     start: Vec3 = undefined,
     end: Vec3 = undefined,
@@ -159,14 +160,15 @@ pub const CubeDraw = struct {
         vl.pushHeight(hl * 10);
         if (os9gui.textView(hl, 0xff)) |tvc| {
             var tv = tvc;
-            tv.text("AThis is the draw cube tool.", .{});
+            tv.text("This is the draw cube tool.", .{});
             tv.text("Left click to start drawing the cube.", .{});
             //os9gui.hr();
-            tv.text("To change the z, hold {s} and left click", .{editor.config.keys.cube_draw_plane_raycast.b.name()});
-            tv.text("Or, press {s} or {s} to move up and down", .{
+            tv.text("To change the z, hold {s} and left click against a surface", .{editor.config.keys.cube_draw_plane_raycast.b.name()});
+            tv.text("Or, press {s} or {s} to move the grid up and down", .{
                 editor.config.keys.cube_draw_plane_up.b.name(),
                 editor.config.keys.cube_draw_plane_down.b.name(),
             });
+            tv.text("Left click to finish the cube", .{});
         }
     }
 
@@ -183,11 +185,19 @@ pub const CubeDraw = struct {
 
             _ = os9gui.checkbox("Use custom height", &self.use_custom_height);
             if (self.use_custom_height) {
-                os9gui.sliderEx(&self.custom_height, 1, 512, "Height", .{});
-                self.custom_height = @intFromFloat(util3d.snap1(@floatFromInt(self.custom_height), editor.edit_state.grid_snap));
+                _ = os9gui.checkbox("Snap", &self.snap_height);
+                if (self.snap_height) {
+                    const gs: i64 = @intFromFloat(editor.edit_state.grid_snap);
+                    const ch: i64 = @intFromFloat(self.custom_height);
+                    var h: i64 = std.math.clamp(@divTrunc(ch, gs), 0, 16);
+                    os9gui.sliderEx(&h, 1, 16, "Height {d}", .{h * gs});
+                    self.custom_height = @floatFromInt(h * gs);
+                    //self.custom_height = @intFromFloat(util3d.snap1(@floatFromInt(self.custom_height), editor.edit_state.grid_snap));
+                } else {
+                    os9gui.sliderEx(&self.custom_height, 1, 1024, "Height", .{});
+                }
             }
             os9gui.enumCombo("Advance state to: {s}", .{@tagName(self.post_state)}, &self.post_state) catch return;
-            os9gui.label("This stuff doesn't actually work", .{});
         } else {
             os9gui.label("First select a texture by opening texture browser alt+t ", .{});
         }
@@ -258,13 +268,14 @@ pub const CubeDraw = struct {
             .planar => {
                 if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
                     helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
+                    const height = if (tool.use_custom_height) tool.custom_height else snap;
                     const in = snapV3(inter, snap);
-                    const cc = cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, snap)));
+                    const cc = cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, height)));
                     draw.cube(cc[0], cc[1], 0xffffff88);
 
                     if (self.edit_state.lmouse == .rising) {
                         tool.end = in;
-                        tool.end.data[2] += snap;
+                        tool.end.data[2] += height;
 
                         //Put it into the
                         const new = try self.ecs.createEntity();
