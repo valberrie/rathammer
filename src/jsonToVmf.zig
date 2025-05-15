@@ -64,10 +64,10 @@ pub fn main() !void {
         const parsed = try json_map.loadJson(jsonctx, slice, &loadctx, &ecs_p, &vpkmapper);
 
         {
-            try vr.writeComment("This vmf was created by RatHammer.\n", .{});
-            try vr.writeComment("It may not be compatible with official Valve tools.\n", .{});
-            try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
-            try vr.writeComment("rathammer_version  0.0.1\n", .{});
+            //try vr.writeComment("This vmf was created by RatHammer.\n", .{});
+            //try vr.writeComment("It may not be compatible with official Valve tools.\n", .{});
+            //try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
+            //try vr.writeComment("rathammer_version  0.0.1\n", .{});
             try vr.writeKv("versioninfo", vmf.VersionInfo{
                 .editorversion = 400,
                 .editorbuild = 2987,
@@ -97,7 +97,7 @@ pub fn main() !void {
                 .fogend = 7900,
                 .light = 0,
             });
-            var side_id_start = ecs_p.entities.items.len + 1;
+            var side_id_start: usize = 0;
 
             var solids = ecs_p.iterator(.solid);
             while (solids.next()) |solid| {
@@ -106,7 +106,7 @@ pub fn main() !void {
                 try vr.writeKey("solid");
                 try vr.beginObject();
                 {
-                    try vr.writeKv("id", solids.i + 1);
+                    try vr.writeKv("id", solids.i);
                     for (solid.sides.items) |side| {
                         try vr.writeKey("side");
                         try vr.beginObject();
@@ -157,7 +157,7 @@ pub fn main() !void {
                     try vr.writeKv("id", ents.i);
                     try vr.writeKey("origin");
                     try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.origin.x(), ent.origin.y(), ent.origin.z() });
-                    try vr.writeKey("angle");
+                    try vr.writeKey("angles");
                     try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.angle.x(), ent.angle.y(), ent.angle.z() });
 
                     try vr.writeKv("classname", ent.class);
