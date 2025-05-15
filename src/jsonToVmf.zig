@@ -62,15 +62,40 @@ pub fn main() !void {
 
         const jsonctx = json_map.InitFromJsonCtx{ .alloc = alloc, .str_store = &strings };
         const parsed = try json_map.loadJson(jsonctx, slice, &loadctx, &ecs_p, &vpkmapper);
-        _ = parsed;
 
         {
+            try vr.writeComment("This vmf was created by RatHammer.\n", .{});
+            try vr.writeComment("It may not be compatible with official Valve tools.\n", .{});
+            try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
+            try vr.writeComment("rathammer_version  0.0.1\n", .{});
             try vr.writeKv("versioninfo", vmf.VersionInfo{
                 .editorversion = 400,
                 .editorbuild = 2987,
                 .mapversion = 1,
                 .formatversion = 100,
                 .prefab = 0,
+            });
+            try vr.writeKey("world");
+            try vr.beginObject();
+            try vr.writeInnerStruct(.{
+                .id = 0,
+                .mapversion = 1,
+                .classname = @as([]const u8, "worldspawn"),
+                .skyname = parsed.value.sky_name,
+                .sound = 0,
+                .MaxRange = 20000,
+                .startdark = 0,
+                .gametitle = 0,
+                .newunit = 0,
+                .defaultteam = 0,
+                .fogenable = 1,
+                .fogblend = 0,
+                .fogcolor = @as([]const u8, "220 221 196"),
+                .fogcolor2 = @as([]const u8, "255 255 255"),
+                .fogdir = @as([]const u8, "1 0 0"),
+                .fogstart = 2048,
+                .fogend = 7900,
+                .light = 0,
             });
 
             var solids = ecs_p.iterator(.solid);
@@ -81,11 +106,13 @@ pub fn main() !void {
                 try vr.beginObject();
                 {
                     try vr.writeKv("id", solids.i);
-                    for (solid.sides.items) |side| {
+                    for (solid.sides.items, 0..) |side, i| {
                         try vr.writeKey("side");
                         try vr.beginObject();
                         {
                             try vr.writeKv("material", sanatizeMaterialName(vpkmapper.getResource(side.tex_id) orelse ""));
+                            const id = (i << 16) | solids.i;
+                            try vr.writeKv("id", id);
                             if (side.index.items.len >= 3) {
                                 const v1 = solid.verts.items[side.index.items[0]];
                                 const v2 = solid.verts.items[side.index.items[1]];
@@ -98,12 +125,21 @@ pub fn main() !void {
                                     v3.x(), v3.y(), v3.z(),
                                 });
                             }
+                            try vr.writeKv("rotation", @as(i32, 0));
+                            try vr.writeKv("smoothing_groups", @as(i32, 0));
+                            try vr.writeKv("lightmapscale", @as(i32, 16));
+                            try vr.writeKey("uaxis");
+                            const uvfmt = "\"[{d} {d} {d} {d}] {d}\"\n";
+                            try vr.printValue(uvfmt, .{ side.u.axis.x(), side.u.axis.y(), side.u.axis.z(), side.u.trans, side.u.scale });
+                            try vr.writeKey("vaxis");
+                            try vr.printValue(uvfmt, .{ side.v.axis.x(), side.v.axis.y(), side.v.axis.z(), side.v.trans, side.v.scale });
                         }
                         try vr.endObject();
                     }
                 }
                 try vr.endObject();
             }
+            try vr.endObject(); //world
             //try vr.beginObject();
             //{
             //    try vr.writeKv("editorversion", @as(i32, 400));

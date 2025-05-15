@@ -57,6 +57,12 @@ pub fn WriteVdf(out_stream_T: type) type {
             _ = try self.out_stream.writeBytesNTimes("    ", self.indendation);
         }
 
+        pub fn writeComment(self: *Self, comptime fmt: []const u8, args: anytype) !void {
+            if (self.state != .expecting_key)
+                return error.invalidState;
+            try self.out_stream.print("//" ++ fmt, args);
+        }
+
         pub fn writeKey(self: *Self, key: []const u8) !void {
             if (self.state != .expecting_key)
                 return error.invalidState;
@@ -103,22 +109,27 @@ pub fn WriteVdf(out_stream_T: type) type {
             self.state = .expecting_key;
         }
 
+        pub fn writeInnerStruct(self: *Self, value: anytype) !void {
+            const info = @typeInfo(@TypeOf(value));
+            inline for (info.Struct.fields) |field| {
+                try self.writeKv(field.name, @field(value, field.name));
+            }
+        }
+
         pub fn writeAnyValue(self: *Self, value: anytype) !void {
             const info = @typeInfo(@TypeOf(value));
             switch (info) {
-                .Int => try self.printValue("\"{d}\"\n", .{value}),
+                .Int, .ComptimeInt => try self.printValue("\"{d}\"\n", .{value}),
                 .Pointer => |p| {
-                    if (p.size == .Slice and p.child == u8) {
+                    if (p.child == u8) {
                         try self.printValue("\"{s}\"\n", .{value});
                         return;
                     }
-                    @compileError("not supported on pointers");
+                    @compileError("not supported on pointers " ++ @typeName(@TypeOf(value)) ++ " " ++ @typeName(p.child));
                 },
-                .Struct => |s| {
+                .Struct => {
                     try self.beginObject();
-                    inline for (s.fields) |field| {
-                        try self.writeKv(field.name, @field(value, field.name));
-                    }
+                    try self.writeInnerStruct(value);
                     try self.endObject();
                 },
                 else => @compileError("not supported " ++ @typeName(@TypeOf(value))),
