@@ -27,6 +27,10 @@ Features
     
 
 Interface # All the features for editing
+    Allow tools to declare bindings,
+        only send state (mouse clicks, bindings) to focused tool and window
+        when clicking in inspector, these can't be send to 3d view
+
     Tool based (enum)?
     2d editing?
 

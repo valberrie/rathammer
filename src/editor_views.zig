@@ -98,8 +98,8 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         .win = win,
         .is_first_frame = self.edit_state.last_frame_tool_index != self.edit_state.tool_index,
     };
-    if (self.edit_state.tool_index < self.tools.items.len) {
-        const vt = self.tools.items[self.edit_state.tool_index];
+    if (self.edit_state.tool_index < self.tools.tools.items.len) {
+        const vt = self.tools.tools.items[self.edit_state.tool_index];
         vt.runTool_fn(vt, td, self);
     }
     { //sky stuff
@@ -137,7 +137,12 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         const p = self.draw_state.cam3d.pos;
         draw.textFmt(tpos, "pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, font, fh, col);
         tpos.y += fh;
-        draw.textFmt(tpos, "select: {s}", .{@tagName(self.selection.mode)}, font, fh, col);
+        const SINGLE_COLOR = 0xfcc858ff;
+        const MANY_COLOR = 0xfc58d6ff;
+        draw.textFmt(tpos, "select: {s}", .{@tagName(self.selection.mode)}, font, fh, switch (self.selection.mode) {
+            .one => SINGLE_COLOR,
+            .many => MANY_COLOR,
+        });
         {
             //TODO put an actual dt here
             const notify_slice = try self.notifier.getSlice(16);

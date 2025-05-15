@@ -2,6 +2,21 @@ const std = @import("std");
 const graph = @import("graph");
 const V3f = graph.za.Vec3;
 const Vec3 = V3f;
+const Mat4 = graph.za.Mat4;
+
+/// This function is specific to the way angles are specified in VMF files.
+pub fn extrinsicEulerAnglesToMat4(angles: Vec3) Mat4 {
+    //I don't understand why the angles are mapped like this
+    //see https://developer.valvesoftware.com/wiki/QAngle
+    //x->y
+    //y->z
+    //z->x
+    const fr = Mat4.fromRotation;
+    const x1 = fr(angles.z(), Vec3.new(1, 0, 0));
+    const y1 = fr(angles.x(), Vec3.new(0, 1, 0));
+    const z1 = fr(angles.y(), Vec3.new(0, 0, 1));
+    return z1.mul(y1.mul(x1));
+}
 
 /// Returns {ray_origin, ray_direction}
 pub fn screenSpaceRay(win_dim: graph.Vec2f, screen_pos: graph.Vec2f, view: graph.za.Mat4) [2]Vec3 {

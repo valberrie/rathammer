@@ -34,6 +34,11 @@ pub fn getLast(self: *Self) ?Id {
     };
 }
 
+pub fn setToSingle(self: *Self, id: Id) void {
+    self.mode = .one;
+    self.single_id = id;
+}
+
 threadlocal var single_slice: [1]Id = undefined;
 pub fn getSlice(self: *Self) []const Id {
     switch (self.mode) {

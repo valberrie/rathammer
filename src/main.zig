@@ -238,7 +238,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
         {
             const state_btns = [_]graph.SDL.keycodes.Scancode{ ._1, ._2, ._3, ._4, ._5, ._6, ._7 };
-            const num_field = editor.tools.items.len;
+            const num_field = editor.tools.tools.items.len;
             //const num_field = @typeInfo(@TypeOf(editor.edit_state.state)).Enum.fields.len;
             for (state_btns, 0..) |sbtn, i| {
                 if (i >= num_field)

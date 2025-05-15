@@ -565,17 +565,7 @@ pub const Entity = struct {
                 if (editor.models.getPtr(m)) |o_mod| {
                     if (o_mod.mesh) |mod| {
                         const mat1 = Mat4.fromTranslate(ent.origin);
-                        const fr = Mat4.fromRotation;
-                        //I don't understand why they angles are mapped like this
-                        //see https://developer.valvesoftware.com/wiki/QAngle
-                        //x->y
-                        //y->z
-                        //z->x
-                        const x1 = fr(ent.angle.z(), Vec3.new(1, 0, 0));
-                        const y1 = fr(ent.angle.x(), Vec3.new(0, 1, 0));
-                        const z1 = fr(ent.angle.y(), Vec3.new(0, 0, 1));
-
-                        const mat3 = mat1.mul(z1.mul(y1.mul(x1)));
+                        const mat3 = mat1.mul(util3d.extrinsicEulerAnglesToMat4(ent.angle));
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
                         if (param.draw_model_bb) {
                             const cc = util3d.cubeFromBounds(mod.hull_min, mod.hull_max);
@@ -704,7 +694,7 @@ pub const Context = struct {
     texture_load_ctx: texture_load_thread.Context,
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
 
-    tools: std.ArrayList(*tool_def.i3DTool),
+    tools: tool_def.ToolRegistry,
 
     draw_state: struct {
         meshes_dirty: bool = false,
@@ -859,6 +849,7 @@ pub const Context = struct {
             .string_storage = StringStorage.init(alloc),
             .asset_browser = assetbrowse.AssetBrowserGui.init(alloc),
             .name_arena = std.heap.ArenaAllocator.init(alloc),
+            .tools = tool_def.ToolRegistry.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
             .meshmap = MeshMap.init(alloc),
@@ -871,7 +862,6 @@ pub const Context = struct {
             .skybox = try Skybox.init(alloc),
             .icon_map = std.StringHashMap(graph.Texture).init(alloc),
             .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
-            .tools = std.ArrayList(*tool_def.i3DTool).init(alloc),
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
@@ -917,19 +907,17 @@ pub const Context = struct {
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
 
-        try self.tools.append(try tool_def.Translate.create(self.alloc));
-        try self.tools.append(try tool_def.TranslateFace.create(self.alloc));
-        try self.tools.append(try tool_def.PlaceModel.create(self.alloc));
-        try self.tools.append(try tool_def.CubeDraw.create(self.alloc));
-        try self.tools.append(try tool_def.FastFaceManip.create(self.alloc));
-        try self.tools.append(try tool_def.TextureTool.create(self.alloc));
+        try self.tools.register("translate", tool_def.Translate);
+        try self.tools.register("translate_face", tool_def.TranslateFace);
+        try self.tools.register("place_model", tool_def.PlaceModel);
+        try self.tools.register("cube_draw", tool_def.CubeDraw);
+        try self.tools.register("fast_face", tool_def.FastFaceManip);
+        try self.tools.register("texture", tool_def.TextureTool);
     }
 
     pub fn deinit(self: *Self) void {
         self.asset.deinit();
 
-        for (self.tools.items) |item|
-            item.deinit_fn(item, self.alloc);
         self.tools.deinit();
         self.tool_res_map.deinit();
         self.file_selection.file_buf.deinit();
@@ -1257,9 +1245,9 @@ pub const Context = struct {
     }
 
     pub fn getCurrentTool(self: *Self) ?*tool_def.i3DTool {
-        if (self.edit_state.tool_index >= self.tools.items.len)
+        if (self.edit_state.tool_index >= self.tools.tools.items.len)
             return null;
-        return self.tools.items[self.edit_state.tool_index];
+        return self.tools.tools.items[self.edit_state.tool_index];
     }
 
     pub fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
@@ -1428,7 +1416,7 @@ pub const Context = struct {
         const start = area.pos();
         const w = 100;
         const tool_index = self.edit_state.tool_index;
-        for (self.tools.items, 0..) |tool, i| {
+        for (self.tools.tools.items, 0..) |tool, i| {
             const fi: f32 = @floatFromInt(i);
             const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
             tool.tool_icon_fn(tool, draw, self, rec);

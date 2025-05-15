@@ -23,12 +23,25 @@ const Gizmo = @import("gizmo.zig").Gizmo;
 //  click on a face twice
 //  if points lie on same plane, infer clipping normal to be perpendicular to that plane
 
+pub const ToolReg = ?usize;
+pub const initToolReg = null;
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
     guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
+};
+
+/// Everything required to be a tool:
+const ExampleTool = struct {
+    /// This field gets set when calling ToolRegistry.register(ExampleTool);
+    /// Allows code to reference tools by type at runtime.
+    pub threadlocal var tool_id: ToolReg = initToolReg;
+    vt: i3DTool,
+
+    pub fn create(_: std.mem.Allocator) *i3DTool {}
+    //implement functions to fill out all non optional fields of i3DTool
 };
 
 pub const ToolData = struct {
@@ -39,21 +52,78 @@ pub const ToolData = struct {
     is_first_frame: bool,
 };
 
-pub const TranslateInput = struct {
-    dupe: bool,
+pub const ToolRegistry = struct {
+    const Self = @This();
+
+    tools: std.ArrayList(*i3DTool),
+    alloc: std.mem.Allocator,
+    name_map: std.StringHashMap(usize),
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .alloc = alloc,
+            .tools = std.ArrayList(*i3DTool).init(alloc),
+            .name_map = std.StringHashMap(usize).init(alloc),
+        };
+    }
+
+    fn assertTool(comptime T: type) void {
+        if (!@hasDecl(T, "tool_id"))
+            @compileError("Tools must declare a: pub threadlocal var tool_id: ToolReg = initToolReg;");
+        if (@TypeOf(T.tool_id) != ToolReg)
+            @compileError("Invalid type for tool_id, should be ToolReg");
+    }
+
+    pub fn register(self: *Self, name: []const u8, comptime T: type) !void {
+        assertTool(T);
+
+        const alloc_name = try self.alloc.dupe(u8, name);
+        if (T.tool_id != null)
+            return error.toolAlreadyRegistered;
+
+        const id = self.tools.items.len;
+        try self.tools.append(try T.create(self.alloc));
+        T.tool_id = id;
+        try self.name_map.put(alloc_name, id);
+    }
+
+    pub fn getToolId(self: *Self, comptime T: type) !usize {
+        _ = self;
+        assertTool(T);
+        return T.tool_id orelse error.toolNotRegistered;
+    }
+
+    pub fn deinit(self: *Self) void {
+        var it = self.name_map.keyIterator();
+        while (it.next()) |item| {
+            self.alloc.free(item.*);
+        }
+        self.name_map.deinit();
+        for (self.tools.items) |item|
+            item.deinit_fn(item, self.alloc);
+        self.tools.deinit();
+    }
 };
 
+//TODO How do tools register keybindings?
 pub const CubeDraw = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
     use_custom_height: bool = false,
     custom_height: u32 = 16,
-    state: enum { start, planar, cubic } = .start,
+    state: enum { start, planar } = .start,
     start: Vec3 = undefined,
     end: Vec3 = undefined,
     z: f32 = 0,
 
     plane_z: f32 = 0,
+
+    post_state: enum {
+        reset,
+        switch_to_fast_face,
+        switch_to_translate,
+    } = .reset,
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -109,13 +179,14 @@ pub const CubeDraw = struct {
             vl.pushHeight(bound.w / 2);
             const tex = editor.getTexture(id) catch return;
             const area = os9gui.gui.getArea() orelse return;
-            os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
+            os9gui.gui.drawRectTextured(graph.Rec(area.x, area.y, area.h, area.h), 0xffffffff, tex.rect(), tex);
 
             _ = os9gui.checkbox("Use custom height", &self.use_custom_height);
             if (self.use_custom_height) {
                 os9gui.sliderEx(&self.custom_height, 1, 512, "Height", .{});
                 self.custom_height = @intFromFloat(util3d.snap1(@floatFromInt(self.custom_height), editor.edit_state.grid_snap));
             }
+            os9gui.enumCombo("Advance state to: {s}", .{@tagName(self.post_state)}, &self.post_state) catch return;
             os9gui.label("This stuff doesn't actually work", .{});
         } else {
             os9gui.label("First select a texture by opening texture browser alt+t ", .{});
@@ -192,7 +263,6 @@ pub const CubeDraw = struct {
                     draw.cube(cc[0], cc[1], 0xffffff88);
 
                     if (self.edit_state.lmouse == .rising) {
-                        tool.state = .cubic;
                         tool.end = in;
                         tool.end.data[2] += snap;
 
@@ -208,19 +278,34 @@ pub const CubeDraw = struct {
                             try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
                             undo.applyRedo(ustack.items, self);
                         }
+                        switch (tool.post_state) {
+                            .reset => tool.state = .start,
+                            .switch_to_fast_face => {
+                                const tid = try self.tools.getToolId(FastFaceManip);
+                                self.edit_state.tool_index = tid;
+                                self.selection.setToSingle(new);
+                            },
+                            .switch_to_translate => {
+                                const tid = try self.tools.getToolId(Translate);
+                                self.edit_state.tool_index = tid;
+                                self.selection.setToSingle(new);
+                            },
+                        }
                     }
                 }
-            },
-            .cubic => {
-                //const cc = cubeFromBounds(st.start, st.end);
-                //draw.cube(cc[0], cc[1], 0xffffff88);
-                //draw.cube(st.start, st.end.sub(st.start), 0xffffffee);
             },
         }
     }
 };
 
+//TODO for multi select, check all faces of selected,
+//if they have the same normal and they share an edge, add them to face manip
+//This will probably be a slow algorithm as n^2 checks must be made
+//
+//Alternativly, just having the same normal is enough.
+//Checking that they are coplanar could also be a checkbox option.
 pub const FastFaceManip = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
     state: enum {
@@ -357,6 +442,7 @@ pub const FastFaceManip = struct {
 };
 
 pub const Translate = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
     gizmo_rotation: gizmo2.Gizmo,
@@ -587,6 +673,7 @@ pub const Translate = struct {
 };
 
 pub const TextureTool = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
     id: ?edit.EcsT.Id = null,
     face_index: ?u32 = 0,
@@ -698,6 +785,7 @@ pub const TextureTool = struct {
 };
 
 pub const PlaceModel = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
@@ -730,6 +818,7 @@ pub const PlaceModel = struct {
 };
 
 pub const TranslateFace = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
     gizmo: Gizmo,
     face_id: ?usize = null,
@@ -883,9 +972,3 @@ pub fn modelPlace(self: *Editor, td: ToolData) !void {
         }
     }
 }
-
-pub const CubeDrawInput = struct {
-    plane_up: bool,
-    plane_down: bool,
-    send_raycast: bool,
-};
