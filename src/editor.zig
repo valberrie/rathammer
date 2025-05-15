@@ -827,8 +827,9 @@ pub const Context = struct {
         //self.loaded_map_name = try self.storeString(pruned);
     }
 
-    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config) !Self {
-        return .{
+    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config, args: anytype) !*Self {
+        var ret = try alloc.create(Context);
+        ret.* = .{
             //These are initilized in editor.postInit
             .dirs = undefined,
             .game_conf = undefined,
@@ -872,9 +873,14 @@ pub const Context = struct {
                 }),
             },
         };
+        //If an error occurs during initilization it is fatal so there is no reason to clean up resources.
+        //Thus we call, defer editor.deinit(); after all is initialized..
+        try ret.postInit(args);
+        return ret;
     }
 
-    pub fn postInit(self: *Self, args: anytype) !void {
+    /// Called by init
+    fn postInit(self: *Self, args: anytype) !void {
         if (self.config.default_game.len == 0) {
             std.debug.print("config.vdf must specify a default_game!\n", .{});
             return error.incompleteConfig;
@@ -953,6 +959,9 @@ pub const Context = struct {
         self.name_arena.deinit();
         self.draw_state.ctx.deinit();
         self.texture_load_ctx.deinit();
+
+        //destroy does not take a pointer to alloc, so this is safe.
+        self.alloc.destroy(self);
     }
 
     pub fn rebuildMeshesIfDirty(self: *Self) !void {

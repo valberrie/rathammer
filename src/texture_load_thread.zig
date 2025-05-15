@@ -6,8 +6,6 @@ const vdf = @import("vdf.zig");
 const vvd = @import("vvd.zig");
 const edit = @import("editor.zig");
 
-//TODO allow custom number of worker threads
-
 pub const ThreadState = struct {
     vtf_file_buffer: std.ArrayList(u8),
 
@@ -43,7 +41,6 @@ pub const Context = struct {
     completed_mutex: Mutex = .{},
 
     //TODO this pool should be global or this context should represent all worker thread operations
-    //TODO have a way to configure n_jobs at runtime. Maybe check number of threads
     pool: *std.Thread.Pool,
 
     texture_notify: std.AutoHashMap(vpk.VpkResId, std.ArrayList(*DeferredNotifyVtable)),
@@ -53,7 +50,6 @@ pub const Context = struct {
         const num_cpu = try std.Thread.getCpuCount();
         const count = worker_thread_count orelse @max(num_cpu, 2) - 1;
         const pool = try alloc.create(std.Thread.Pool);
-        //try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(@max(num_cpu, 2) - 1) });
         try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(count) });
         return .{
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),

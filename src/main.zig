@@ -16,6 +16,13 @@ const editor_view = @import("editor_views.zig");
 
 const Conf = @import("config.zig");
 
+pub fn dpiDetect(win: *graph.SDL.Window) !f32 {
+    const sc = graph.c.SDL_GetWindowDisplayScale(win.win);
+    if (sc == 0)
+        return error.sdl;
+    return sc;
+}
+
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const load_timer = try std.time.Timer.start();
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
@@ -27,23 +34,25 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     });
     defer win.destroyWindow();
 
+    const sc = try dpiDetect(&win);
+    const default_item_height = 30;
+    const default_text_height = 20;
+    const scaled_item_height = @trunc(default_item_height * sc);
+    const scaled_text_height = @trunc(default_text_height * sc);
+
     if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
 
-    //materials/concrete/concretewall008a
-    //const o = try vpkctx.getFileTemp("vtf", "materials/concrete", "concretewall008a");
-    //var my_tex = try vtf.loadTexture(o.?, alloc);
-    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config);
-    try editor.postInit(args);
-    defer editor.deinit(); //important to call this after postInit as some fields are not initilized yet
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args);
+    defer editor.deinit();
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
-    const splash = try graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{});
+    const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{}) catch edit.missingTexture();
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, .{
         .cache_dir = editor.dirs.pref,
-        .font_size_px = args.gui_font_size,
-        .item_height = args.gui_item_height,
+        .font_size_px = args.gui_font_size orelse scaled_text_height,
+        .item_height = args.gui_item_height orelse scaled_item_height,
     });
     defer os9gui.deinit();
     var loadctx = edit.LoadCtx{
@@ -261,7 +270,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .main_3d_view => {
                     editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
                     editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
-                    try editor_view.draw3Dview(&editor, pane_area, &draw, &win, &os9gui);
+                    try editor_view.draw3Dview(editor, pane_area, &draw, &win, &os9gui);
                 },
                 .about => {
                     if (try os9gui.beginTlWindow(pane_area)) {
@@ -276,18 +285,18 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         );
                     }
                 },
-                .model_browser => try editor.asset_browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .model),
+                .model_browser => try editor.asset_browser.drawEditWindow(pane_area, &os9gui, editor, &config, .model),
                 .asset_browser => {
-                    try editor.asset_browser.drawEditWindow(pane_area, &os9gui, &editor, &config, .texture);
+                    try editor.asset_browser.drawEditWindow(pane_area, &os9gui, editor, &config, .texture);
                 },
-                .inspector => try editor_view.drawInspector(&editor, pane_area, &os9gui),
+                .inspector => try editor_view.drawInspector(editor, pane_area, &os9gui),
                 .model_preview => {
                     try editor.asset_browser.drawModelPreview(
                         &win,
                         pane_area,
                         has_mouse,
                         cam_state,
-                        &editor,
+                        editor,
                         &draw,
                     );
                 },
