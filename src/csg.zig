@@ -10,6 +10,7 @@ const Vec2 = graph.za.Vec2;
 const vmf = @import("vmf.zig");
 const Side = vmf.Side;
 const editor = @import("editor.zig");
+const ecs = @import("ecs.zig");
 const StringStorage = @import("string.zig").StringStorage;
 // This is a direct implementation of the quake method outlined in:
 // https://github.com/jakgor471/vmf-files_webgl
@@ -72,10 +73,10 @@ pub const Context = struct {
         self.clip_winding_dists.deinit();
     }
 
-    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage, edit: *editor.Context) !editor.Solid {
+    pub fn genMesh(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage, edit: *editor.Context) !ecs.Solid {
         const MAPSIZE = std.math.maxInt(i32);
         var timer = try std.time.Timer.start();
-        var ret = editor.Solid.init(alloc);
+        var ret = ecs.Solid.init(alloc);
         try ret.sides.resize(sides.len);
         for (sides, 0..) |side, si| {
             const plane = Plane.fromTri(side.plane.tri);
@@ -141,10 +142,10 @@ pub const Context = struct {
         return ret;
     }
 
-    pub fn genMesh2(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage, edit: *editor.Context) !editor.Solid {
+    pub fn genMesh2(self: *Self, sides: []const Side, alloc: std.mem.Allocator, strstore: *StringStorage, edit: *editor.Context) !ecs.Solid {
         const MAPSIZE = std.math.maxInt(i32);
         var timer = try std.time.Timer.start();
-        var ret = editor.Solid.init(alloc);
+        var ret = ecs.Solid.init(alloc);
         try ret.sides.resize(sides.len);
 
         self.vecmap.clear();
@@ -281,7 +282,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn calcUVCoords(self: *Self, winding: []const Vec3_32, side: editor.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+    pub fn calcUVCoords(self: *Self, winding: []const Vec3_32, side: ecs.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
         self.uvs.clearRetainingCapacity();
         const uvs = &self.uvs;
         var umin: f32 = std.math.floatMax(f32);
@@ -307,7 +308,7 @@ pub const Context = struct {
         return uvs.items;
     }
 
-    pub fn calcUVCoordsIndexed(self: *Self, winding: []const Vec3_32, index: []const u32, side: editor.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+    pub fn calcUVCoordsIndexed(self: *Self, winding: []const Vec3_32, index: []const u32, side: ecs.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
         self.uvs.clearRetainingCapacity();
         const uvs = &self.uvs;
         var umin: f32 = std.math.floatMax(f32);
@@ -347,7 +348,7 @@ pub const Context = struct {
         return &self.base_winding;
     }
 
-    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, dispinfo: *const vmf.DispInfo, disp: *editor.Displacement) !void {
+    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, dispinfo: *const vmf.DispInfo, disp: *ecs.Displacement) !void {
         _ = self;
         if (side_winding.len != 4)
             return error.invalidSideWinding;

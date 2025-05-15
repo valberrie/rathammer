@@ -7,7 +7,6 @@ const Vec3 = graph.za.Vec3;
 const cubeFromBounds = util3d.cubeFromBounds;
 const ButtonState = graph.SDL.ButtonState;
 const snapV3 = util3d.snapV3;
-const Solid = edit.Solid;
 const vpk = @import("vpk.zig");
 const raycast = @import("raycast_solid.zig");
 const undo = @import("undo.zig");
@@ -16,6 +15,8 @@ const Gui = graph.Gui;
 const Os9Gui = graph.gui_app.Os9Gui;
 const gizmo2 = @import("gizmo2.zig");
 const Gizmo = @import("gizmo.zig").Gizmo;
+const ecs = @import("ecs.zig");
+const Solid = ecs.Solid;
 
 //todo
 //extrude tool
@@ -314,7 +315,7 @@ pub const FastFaceManip = struct {
 
     //TODO during the .start mode, do a sort on the raycast to determine nearest solid
     const Selected = struct {
-        id: edit.EcsT.Id,
+        id: ecs.EcsT.Id,
         face_id: u16,
     };
     vt: i3DTool,
@@ -326,7 +327,7 @@ pub const FastFaceManip = struct {
     face_id: i32 = -1,
     start: Vec3 = Vec3.zero(),
     right: bool = false,
-    main_id: ?edit.EcsT.Id = null,
+    main_id: ?ecs.EcsT.Id = null,
 
     selected: std.ArrayList(Selected),
 
@@ -746,7 +747,7 @@ pub const Translate = struct {
 pub const TextureTool = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
-    id: ?edit.EcsT.Id = null,
+    id: ?ecs.EcsT.Id = null,
     face_index: ?u32 = 0,
 
     //Left click to select a face,
@@ -792,7 +793,7 @@ pub const TextureTool = struct {
         }
     }
 
-    fn getCurrentlySelected(self: *TextureTool, editor: *Editor) !?struct { solid: *edit.Solid, side: *edit.Side } {
+    fn getCurrentlySelected(self: *TextureTool, editor: *Editor) !?struct { solid: *ecs.Solid, side: *ecs.Side } {
         const id = self.id orelse return null;
         const solid = try editor.ecs.getOptPtr(id, .solid) orelse return null;
         if (self.face_index == null or self.face_index.? >= solid.sides.items.len) return null;
@@ -937,7 +938,7 @@ pub const TranslateFace = struct {
             tv.text("Once you drag the gizmo, press right click to commit the change.", .{});
         }
     }
-    pub fn faceTranslate(tool: *@This(), self: *Editor, id: edit.EcsT.Id, td: ToolData) !void {
+    pub fn faceTranslate(tool: *@This(), self: *Editor, id: ecs.EcsT.Id, td: ToolData) !void {
         const draw_nd = &self.draw_state.ctx;
         if (try self.ecs.getOptPtr(id, .solid)) |solid| {
             var gizmo_is_active = false;
@@ -1021,7 +1022,7 @@ pub fn modelPlace(self: *Editor, td: ToolData) !void {
             //Draw the model at
             if (self.edit_state.lmouse == .rising) {
                 const new = try self.ecs.createEntity();
-                var bb = edit.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+                var bb = ecs.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
                 bb.origin_offset = mod.hull_min.scale(-1);
                 bb.a = mod.hull_min;
                 bb.b = mod.hull_max;

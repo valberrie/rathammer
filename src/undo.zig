@@ -5,6 +5,7 @@ const Id = edit.EcsT.Id;
 const graph = @import("graph");
 const vpk = @import("vpk.zig");
 const Vec3 = graph.za.Vec3;
+const ecs = @import("ecs.zig");
 
 //Stack based undo,
 //we push operations onto the stack.
@@ -330,8 +331,8 @@ pub const UndoCreateDestroy = struct {
 
 pub const UndoTextureManip = struct {
     pub const State = struct {
-        u: edit.Side.UVaxis,
-        v: edit.Side.UVaxis,
+        u: ecs.Side.UVaxis,
+        v: ecs.Side.UVaxis,
         tex_id: vpk.VpkResId,
     };
 

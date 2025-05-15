@@ -1,5 +1,5 @@
 const std = @import("std");
 
 pub fn main() !void {
-    std.debug.print("It ran!\n", .{});
+    std.debug.print("This is not implemented!\n", .{});
 }

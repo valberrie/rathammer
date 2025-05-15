@@ -4,13 +4,14 @@ const graph = @import("graph");
 const edit = @import("editor.zig");
 const Vec3 = graph.za.Vec3;
 const csg = @import("csg.zig");
+const ecs = @import("ecs.zig");
 
 const RaycastResult = struct {
     point: Vec3,
     side_index: usize,
 };
 threadlocal var RAYCAST_RESULT_BUFFER: [2]RaycastResult = undefined;
-pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const edit.Solid, csgctx: *csg.Context) ![]const RaycastResult {
+pub fn doesRayIntersectSolid(r_o: Vec3, r_d: Vec3, solid: *const ecs.Solid, csgctx: *csg.Context) ![]const RaycastResult {
     var count: usize = 0;
     for (solid.sides.items, 0..) |side, s_i| {
         if (side.index.items.len < 3) continue;
@@ -75,14 +76,14 @@ pub const Ctx = struct {
         self.pot_fine.deinit();
     }
 
-    pub fn findNearestSolid(self: *Self, ecs: *edit.EcsT, ray_o: Vec3, ray_d: Vec3, csgctx: *csg.Context, bb_only: bool) ![]const RcastItem {
+    pub fn findNearestSolid(self: *Self, ecs_p: *edit.EcsT, ray_o: Vec3, ray_d: Vec3, csgctx: *csg.Context, bb_only: bool) ![]const RcastItem {
         const vis_mask = edit.EcsT.getComponentMask(&.{ .invisible, .deleted });
         //var rcast_timer = try std.time.Timer.start();
         //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
         self.pot.clearRetainingCapacity();
-        var bbit = ecs.iterator(.bounding_box);
+        var bbit = ecs_p.iterator(.bounding_box);
         while (bbit.next()) |bb| {
-            if (ecs.intersects(bbit.i, vis_mask))
+            if (ecs_p.intersects(bbit.i, vis_mask))
                 continue;
             if (util3d.doesRayIntersectBBZ(ray_o, ray_d, bb.a, bb.b)) |inter| {
                 const len = inter.distance(ray_o);
@@ -92,7 +93,7 @@ pub const Ctx = struct {
         if (!bb_only) {
             self.pot_fine.clearRetainingCapacity();
             for (self.pot.items) |bp_rc| {
-                if (try ecs.getOptPtr(bp_rc.id, .solid)) |solid| {
+                if (try ecs_p.getOptPtr(bp_rc.id, .solid)) |solid| {
                     for (try doesRayIntersectSolid(ray_o, ray_d, solid, csgctx)) |in| {
                         const len = in.point.distance(ray_o);
                         try self.pot_fine.append(.{ .id = bp_rc.id, .dist = len, .point = in.point, .side_id = @intCast(in.side_index) });
