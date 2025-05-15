@@ -27,6 +27,7 @@ pub fn build(b: *std.Build) void {
     const ratdep = b.dependency("ratgraph", .{ .target = target, .optimize = optimize });
     const ratmod = ratdep.module("ratgraph");
     hammer_exe.root_module.addImport("graph", ratmod);
+    jsonToVmf.root_module.addImport("graph", ratmod);
 
     const opts = b.addOptions();
     opts.addOption(bool, "time_profile", b.option(bool, "profile", "profile the time loading takes") orelse false);

@@ -30,6 +30,7 @@ const NotifyCtx = @import("notify.zig").NotifyCtx;
 const Selection = @import("selection.zig");
 const VisGroups = @import("visgroup.zig");
 const ecs = @import("ecs.zig");
+const json_map = @import("json_map.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -743,67 +744,19 @@ pub const Context = struct {
 
         const slice = try infile.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
         defer self.alloc.free(slice);
-        var aa = std.heap.ArenaAllocator.init(self.alloc);
-        defer aa.deinit();
-        var parsed = try std.json.parseFromSlice(std.json.Value, self.alloc, slice, .{});
+
+        const jsonctx = json_map.InitFromJsonCtx{
+            .alloc = self.alloc,
+            .str_store = &self.string_storage,
+        };
+        var parsed = try json_map.loadJson(jsonctx, slice, loadctx, &self.ecs, &self.vpkctx);
         defer parsed.deinit();
+
         try self.setMapName(filename);
-        loadctx.cb("json parsed");
-        if (parsed.value != .object)
-            return error.invalidMap;
 
-        { //Sky stuff
-            if (parsed.value.object.get("sky_name")) |sky_name| {
-                if (sky_name == .string) {
-                    try self.skybox.loadSky(try self.storeString(sky_name.string), &self.vpkctx);
-                } else {
-                    return error.invalidSky;
-                }
-            }
-        }
-        {
-            if (parsed.value.object.get("editor")) |editor| {
-                const ed = try std.json.parseFromValueLeaky(JsonEditor, aa.allocator(), editor, .{});
-                ed.cam.setCam(&self.draw_state.cam3d);
-            }
-        }
+        try self.skybox.loadSky(try self.storeString(parsed.value.sky_name), &self.vpkctx);
+        parsed.value.editor.cam.setCam(&self.draw_state.cam3d);
 
-        const obj_o = parsed.value.object.get("objects") orelse return error.invalidMap;
-        if (obj_o != .array) return error.invalidMap;
-
-        loadctx.expected_cb = obj_o.array.items.len + 10;
-        for (obj_o.array.items, 0..) |val, i| {
-            if (val != .object) return error.invalidMap;
-            const id = (val.object.get("id") orelse return error.invalidMap).integer;
-            var it = val.object.iterator();
-            //TODO all entities have bounding boxes, add those
-            //TODO finally get that model loading thing to set bb's
-            var origin = Vec3.zero();
-            outer: while (it.next()) |data| {
-                if (std.mem.eql(u8, "id", data.key_ptr.*)) continue;
-                inline for (EcsT.Fields, 0..) |field, f_i| {
-                    if (std.mem.eql(u8, field.name, data.key_ptr.*)) {
-                        const comp = try self.readComponentFromJson(data.value_ptr.*, field.ftype);
-                        try self.ecs.attachComponentAndCreate(@intCast(id), @enumFromInt(f_i), comp);
-
-                        switch (field.ftype) {
-                            Entity => {
-                                origin = comp.origin;
-                            },
-                            else => {},
-                        }
-
-                        continue :outer;
-                    }
-                }
-
-                return error.invalidKey;
-            }
-            var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
-            bb.setFromOrigin(origin);
-            try self.ecs.attachComponentAndCreate(@intCast(id), .bounding_box, bb);
-            loadctx.printCb("Ent parsed {d} / {d}", .{ i, obj_o.array.items.len });
-        }
         loadctx.cb("Building meshes}");
         try self.rebuildAllMeshes();
     }
@@ -1165,6 +1118,10 @@ pub const LoadCtx = struct {
         var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
         fbs.writer().print(fmt, args) catch return;
         self.cb(fbs.getWritten());
+    }
+
+    pub fn addExpected(self: *@This(), addition: usize) void {
+        self.expected_cb += addition;
     }
 
     pub fn cb(self: *@This(), message: []const u8) void {

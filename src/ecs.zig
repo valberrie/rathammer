@@ -564,14 +564,14 @@ pub const KeyValues = struct {
         };
     }
 
-    pub fn initFromJson(v: std.json.Value, editor: *Editor) !@This() {
+    pub fn initFromJson(v: std.json.Value, ctx: anytype) !@This() {
         if (v != .object) return error.broken;
-        var ret = init(editor.alloc);
+        var ret = init(ctx.alloc);
 
         var it = v.object.iterator();
         while (it.next()) |item| {
             if (item.value_ptr.* != .string) return error.invalidKv;
-            try ret.map.put(try editor.storeString(item.key_ptr.*), try editor.storeString(item.value_ptr.string));
+            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), try ctx.str_store.store(item.value_ptr.string));
         }
 
         return ret;
