@@ -11,12 +11,13 @@ const StringStorage = @import("string.zig").StringStorage;
 pub const VpkMapper = struct {
     str_map: std.StringHashMap(vpk.VpkResId),
     arena: std.heap.ArenaAllocator,
-    id_counter: usize = 0,
+    strings: std.ArrayList([]const u8),
 
     pub fn init(alloc: std.mem.Allocator) @This() {
         return .{
             .str_map = std.StringHashMap(vpk.VpkResId).init(alloc),
             .arena = std.heap.ArenaAllocator.init(alloc),
+            .strings = std.ArrayList([]const u8).init(alloc),
         };
     }
     pub fn deinit(self: *@This()) void {
@@ -28,9 +29,16 @@ pub const VpkMapper = struct {
         if (self.str_map.get(str)) |id| return id;
 
         const duped = try self.arena.allocator().dupe(u8, str);
-        self.id_counter += 1;
-        try self.str_map.put(duped, self.id_counter);
-        return self.id_counter;
+
+        const id = self.strings.items.len;
+        try self.strings.append(duped);
+        try self.str_map.put(duped, id);
+        return id;
+    }
+
+    pub fn getResource(self: *@This(), id: vpk.VpkResId) ?[]const u8 {
+        if (id >= self.strings.items.len) return null;
+        return self.strings.items[id];
     }
 };
 

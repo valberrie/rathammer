@@ -89,6 +89,41 @@ pub fn WriteVdf(out_stream_T: type) type {
             _ = try self.out_stream.writeByte('\n');
             self.state = .expecting_key;
         }
+
+        pub fn writeKv(self: *Self, key: []const u8, value: anytype) !void {
+            try self.writeKey(key);
+            try self.writeAnyValue(value);
+        }
+
+        /// does not verify
+        pub fn printValue(self: *Self, comptime fmt: []const u8, args: anytype) !void {
+            if (self.state != .expecting_value)
+                return error.invalidState;
+            try self.out_stream.print(fmt, args);
+            self.state = .expecting_key;
+        }
+
+        pub fn writeAnyValue(self: *Self, value: anytype) !void {
+            const info = @typeInfo(@TypeOf(value));
+            switch (info) {
+                .Int => try self.printValue("\"{d}\"\n", .{value}),
+                .Pointer => |p| {
+                    if (p.size == .Slice and p.child == u8) {
+                        try self.printValue("\"{s}\"\n", .{value});
+                        return;
+                    }
+                    @compileError("not supported on pointers");
+                },
+                .Struct => |s| {
+                    try self.beginObject();
+                    inline for (s.fields) |field| {
+                        try self.writeKv(field.name, @field(value, field.name));
+                    }
+                    try self.endObject();
+                },
+                else => @compileError("not supported " ++ @typeName(@TypeOf(value))),
+            }
+        }
     };
 }
 
