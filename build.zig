@@ -11,7 +11,14 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
+    const jsonToVmf = b.addExecutable(.{
+        .name = "jsonmaptovmf",
+        .root_source_file = b.path("src/jsonToVmf.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const hammer_exe = b.addExecutable(.{
         .name = "zig-hammer",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -19,22 +26,23 @@ pub fn build(b: *std.Build) void {
     });
     const ratdep = b.dependency("ratgraph", .{ .target = target, .optimize = optimize });
     const ratmod = ratdep.module("ratgraph");
-    exe.root_module.addImport("graph", ratmod);
+    hammer_exe.root_module.addImport("graph", ratmod);
 
     const opts = b.addOptions();
     opts.addOption(bool, "time_profile", b.option(bool, "profile", "profile the time loading takes") orelse false);
     opts.addOption(bool, "dump_vpk", b.option(bool, "dumpvpk", "dump all vpk entries to text file") orelse false);
-    exe.root_module.addOptions("config", opts);
+    hammer_exe.root_module.addOptions("config", opts);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
-    b.installArtifact(exe);
+    b.installArtifact(hammer_exe);
+    b.installArtifact(jsonToVmf);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
-    const run_cmd = b.addRunArtifact(exe);
+    const run_cmd = b.addRunArtifact(hammer_exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
