@@ -209,22 +209,16 @@ pub const UndoDupe = struct {
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (editor.ecs.getOptPtr(self.parent_id, .solid) catch return) |solid| {
-            const duped = solid.dupe() catch return;
-            editor.ecs.attachComponentAndCreate(self.own_id, .solid, duped) catch return;
+        inline for (ecs.EcsT.Fields, 0..) |field, i| {
+            if (editor.ecs.getOptPtr(self.parent_id, @enumFromInt(i)) catch return) |comp| {
+                if (@hasDecl(field.ftype, "dupe")) {
+                    const duped = comp.dupe() catch return;
+                    editor.ecs.attachComponentAndCreate(self.own_id, @enumFromInt(i), duped) catch return;
+                } else {
+                    @compileError("must declare a dupe(self) function ! " ++ field.name);
+                }
+            }
         }
-        if (editor.ecs.getOptPtr(self.parent_id, .entity) catch return) |ent| {
-            const duped = ent.dupe();
-            editor.ecs.attachComponentAndCreate(self.own_id, .entity, duped) catch return;
-        }
-        if (editor.ecs.getOptPtr(self.parent_id, .bounding_box) catch return) |bb| {
-            const bb_copy = bb.*; //we must dupe, otherwise the pointer may become invalid
-            editor.ecs.attachComponentAndCreate(self.own_id, .bounding_box, bb_copy) catch return;
-        }
-        if (editor.ecs.getOptPtr(self.parent_id, .invisible) catch return) |_| {
-            editor.ecs.attachComponentAndCreate(self.own_id, .invisible, .{}) catch return;
-        }
-        //TODO displacament
     }
 
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {

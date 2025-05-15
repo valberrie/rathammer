@@ -144,11 +144,6 @@ pub fn main() !void {
             }
             try vr.endObject(); //world
 
-            //const classes = [_][]const u8{
-            //    "light",
-            //    "info_player_start",
-            //    "env_cubemap",
-            //};
             var ents = ecs_p.iterator(.entity);
             while (ents.next()) |ent| {
                 try vr.writeKey("entity");
@@ -159,6 +154,10 @@ pub fn main() !void {
                     try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.origin.x(), ent.origin.y(), ent.origin.z() });
                     try vr.writeKey("angles");
                     try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.angle.x(), ent.angle.y(), ent.angle.z() });
+
+                    if (ent.model_id) |mid| {
+                        try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
+                    }
 
                     try vr.writeKv("classname", ent.class);
 

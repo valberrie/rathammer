@@ -21,10 +21,16 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("key_values", KeyValues),
     Comp("invisible", struct {
         pub const ECS_NO_SERIAL = void;
+        pub fn dupe(_: *@This()) !@This() {
+            return .{};
+        }
     }),
     Comp("editor_info", EditorInfo),
     Comp("deleted", struct {
         pub const ECS_NO_SERIAL = void;
+        pub fn dupe(_: *@This()) !@This() {
+            return .{};
+        }
     }),
 });
 
@@ -102,6 +108,10 @@ pub const AABB = struct {
 
     origin_offset: Vec3 = Vec3.zero(),
 
+    pub fn dupe(self: *@This()) !AABB {
+        return self.*;
+    }
+
     pub fn setFromOrigin(self: *@This(), new_origin: Vec3) void {
         const delta = new_origin.sub(self.a.add(self.origin_offset));
         self.a = self.a.add(delta);
@@ -121,7 +131,7 @@ pub const Entity = struct {
     model_id: ?vpk.VpkResId = null,
     sprite: ?vpk.VpkResId = null,
 
-    pub fn dupe(self: *const @This()) @This() {
+    pub fn dupe(self: *const @This()) !@This() {
         return self.*;
     }
 
@@ -473,6 +483,15 @@ pub const Displacement = struct {
     parent_side_i: usize = 0,
     power: u32 = 0,
 
+    //TODO duping things with parents how
+    pub fn dupe(self: *Self) !Self {
+        var ret = self.*;
+        ret.verts = try self.verts.clone();
+        ret.index = try self.index.clone();
+
+        return ret;
+    }
+
     pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_: EcsT.Id, parent_s: usize, dispinfo: *const vmf.DispInfo) Self {
         return .{
             .verts = std.ArrayList(Vec3).init(alloc),
@@ -542,6 +561,10 @@ pub const EditorInfo = struct {
     //pub const ECS_NO_SERIAL = void;
     vis_mask: VisGroups.BitSetT = VisGroups.BitSetT.initEmpty(),
 
+    pub fn dupe(a: *@This()) !@This() {
+        return a.*;
+    }
+
     pub fn initFromJson(_: std.json.Value, _: anytype) !@This() {
         return .{ .vis_mask = VisGroups.BitSetT.initEmpty() };
     }
@@ -557,6 +580,12 @@ pub const KeyValues = struct {
     const Self = @This();
     const MapT = std.StringHashMap([]const u8);
     map: MapT,
+
+    pub fn dupe(self: *Self) !Self {
+        return .{
+            .map = try self.map.clone(),
+        };
+    }
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
