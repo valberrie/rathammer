@@ -582,8 +582,8 @@ pub const KeyValues = struct {
         {
             var it = self.map.iterator();
             while (it.next()) |item| {
-                try jw.objectField(item.value_ptr.*);
-                try jw.write(item.key_ptr.*);
+                try jw.objectField(item.key_ptr.*);
+                try jw.write(item.value_ptr.*);
             }
         }
         try jw.endObject();

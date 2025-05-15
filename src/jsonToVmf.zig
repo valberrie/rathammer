@@ -110,7 +110,6 @@ pub fn main() !void {
                         try vr.writeKey("side");
                         try vr.beginObject();
                         {
-                            try vr.writeKv("material", sanatizeMaterialName(vpkmapper.getResource(side.tex_id) orelse ""));
                             const id = (i << 16) | solids.i;
                             try vr.writeKv("id", id);
                             if (side.index.items.len >= 3) {
@@ -125,14 +124,15 @@ pub fn main() !void {
                                     v3.x(), v3.y(), v3.z(),
                                 });
                             }
-                            try vr.writeKv("rotation", @as(i32, 0));
-                            try vr.writeKv("smoothing_groups", @as(i32, 0));
-                            try vr.writeKv("lightmapscale", @as(i32, 16));
+                            try vr.writeKv("material", sanatizeMaterialName(vpkmapper.getResource(side.tex_id) orelse ""));
                             try vr.writeKey("uaxis");
                             const uvfmt = "\"[{d} {d} {d} {d}] {d}\"\n";
                             try vr.printValue(uvfmt, .{ side.u.axis.x(), side.u.axis.y(), side.u.axis.z(), side.u.trans, side.u.scale });
                             try vr.writeKey("vaxis");
                             try vr.printValue(uvfmt, .{ side.v.axis.x(), side.v.axis.y(), side.v.axis.z(), side.v.trans, side.v.scale });
+                            try vr.writeKv("rotation", @as(i32, 0));
+                            try vr.writeKv("lightmapscale", @as(i32, 16));
+                            try vr.writeKv("smoothing_groups", @as(i32, 0));
                         }
                         try vr.endObject();
                     }
@@ -140,15 +140,34 @@ pub fn main() !void {
                 try vr.endObject();
             }
             try vr.endObject(); //world
-            //try vr.beginObject();
-            //{
-            //    try vr.writeKv("editorversion", @as(i32, 400));
-            //    try vr.writeKv("editorbuild", @as(i32, 2987));
-            //    try vr.writeKv("mapversion", @as(i32, 5271));
-            //    try vr.writeKv("formatversion", @as(i32, 100));
-            //    try vr.writeKv("prefab", @as(i32, 0));
-            //}
-            //try vr.endObject();
+
+            //const classes = [_][]const u8{
+            //    "light",
+            //    "info_player_start",
+            //    "env_cubemap",
+            //};
+            var ents = ecs_p.iterator(.entity);
+            while (ents.next()) |ent| {
+                try vr.writeKey("entity");
+                try vr.beginObject();
+                {
+                    try vr.writeKv("id", ents.i);
+                    try vr.writeKey("origin");
+                    try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.origin.x(), ent.origin.y(), ent.origin.z() });
+                    try vr.writeKey("angle");
+                    try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.angle.x(), ent.angle.y(), ent.angle.z() });
+
+                    try vr.writeKv("classname", ent.class);
+
+                    if (try ecs_p.getOptPtr(ents.i, .key_values)) |kvs| {
+                        var it = kvs.map.iterator();
+                        while (it.next()) |kv| {
+                            try vr.writeKv(kv.key_ptr.*, kv.value_ptr.*);
+                        }
+                    }
+                }
+                try vr.endObject();
+            }
         }
     } else {
         std.debug.print("Please specify json file with --json\n", .{});
