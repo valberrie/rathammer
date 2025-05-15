@@ -97,6 +97,7 @@ pub fn main() !void {
                 .fogend = 7900,
                 .light = 0,
             });
+            var side_id_start = ecs_p.entities.items.len + 1;
 
             var solids = ecs_p.iterator(.solid);
             while (solids.next()) |solid| {
@@ -105,12 +106,14 @@ pub fn main() !void {
                 try vr.writeKey("solid");
                 try vr.beginObject();
                 {
-                    try vr.writeKv("id", solids.i);
-                    for (solid.sides.items, 0..) |side, i| {
+                    try vr.writeKv("id", solids.i + 1);
+                    for (solid.sides.items) |side| {
                         try vr.writeKey("side");
                         try vr.beginObject();
                         {
-                            const id = (i << 16) | solids.i;
+                            const id = side_id_start;
+                            side_id_start += 1;
+                            //const id = ((i + 1) << 12) | solids.i;
                             try vr.writeKv("id", id);
                             if (side.index.items.len >= 3) {
                                 const v1 = solid.verts.items[side.index.items[0]];
