@@ -217,7 +217,8 @@ pub const UndoDupe = struct {
             editor.ecs.attachComponentAndCreate(self.own_id, .entity, duped) catch return;
         }
         if (editor.ecs.getOptPtr(self.parent_id, .bounding_box) catch return) |bb| {
-            editor.ecs.attachComponentAndCreate(self.own_id, .bounding_box, bb.*) catch return;
+            const bb_copy = bb.*; //we must dupe, otherwise the pointer may become invalid
+            editor.ecs.attachComponentAndCreate(self.own_id, .bounding_box, bb_copy) catch return;
         }
         //TODO displacament
     }

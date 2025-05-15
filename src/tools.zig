@@ -309,14 +309,14 @@ pub const CubeDraw = struct {
     }
 };
 
-//TODO for multi select, check all faces of selected,
-//if they have the same normal and they share an edge, add them to face manip
-//This will probably be a slow algorithm as n^2 checks must be made
-//
-//Alternativly, just having the same normal is enough.
-//Checking that they are coplanar could also be a checkbox option.
 pub const FastFaceManip = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
+
+    //TODO during the .start mode, do a sort on the raycast to determine nearest solid
+    const Selected = struct {
+        id: edit.EcsT.Id,
+        face_id: u16,
+    };
     vt: i3DTool,
 
     state: enum {
@@ -326,11 +326,15 @@ pub const FastFaceManip = struct {
     face_id: i32 = -1,
     start: Vec3 = Vec3.zero(),
     right: bool = false,
+    main_id: ?edit.EcsT.Id = null,
+
+    selected: std.ArrayList(Selected),
 
     fn reset(self: *@This()) void {
         self.face_id = -1;
         self.state = .start;
         self.right = false;
+        self.selected.clearRetainingCapacity();
     }
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
@@ -342,6 +346,7 @@ pub const FastFaceManip = struct {
                 .tool_icon_fn = &@This().drawIcon,
                 .guiDoc_fn = &@This().guiDoc,
             },
+            .selected = std.ArrayList(Selected).init(alloc),
         };
         return &obj.vt;
     }
@@ -355,18 +360,29 @@ pub const FastFaceManip = struct {
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.selected.deinit();
         alloc.destroy(self);
     }
-
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.runToolErr(td, editor) catch return;
+    }
+
+    pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
         if (td.is_first_frame)
             self.reset();
 
-        const id = (editor.selection.single_id) orelse return;
-        const solid = editor.ecs.getOptPtr(id, .solid) catch return orelse return;
         const draw_nd = &editor.draw_state.ctx;
-        solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
+        const selected_slice = editor.selection.getSlice();
+        for (selected_slice) |sel| {
+            if (try editor.ecs.getOptPtr(sel, .solid)) |solid| {
+                solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
+            }
+        }
+
+        //const id = (editor.selection.single_id) orelse return;
+        //const solid = editor.ecs.getOptPtr(id, .solid) catch return orelse return;
+
         const rm = editor.edit_state.rmouse;
         const lm = editor.edit_state.lmouse;
         switch (self.state) {
@@ -374,65 +390,107 @@ pub const FastFaceManip = struct {
                 if (rm == .rising or lm == .rising) {
                     self.right = rm == .rising;
                     const r = editor.camRay(td.screen_area, td.view_3d.*);
-                    const rc = raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx) catch return;
-                    if (rc.len > 0) {
-                        const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
-                        self.face_id = @intCast(rc[rci].side_index);
-                        self.start = rc[rci].point;
-                        self.state = .active;
-                        solid.removeFromMeshMap(id, editor) catch return;
+                    for (selected_slice) |sel| {
+                        const solid = try editor.ecs.getOptPtr(sel, .solid) orelse continue;
+                        const rc = try raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx);
+                        if (rc.len > 0) {
+                            const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
+                            try self.selected.append(.{ .id = sel, .face_id = @intCast(rc[rci].side_index) });
+                            self.main_id = sel;
+
+                            self.face_id = @intCast(rc[rci].side_index);
+                            self.start = rc[rci].point;
+                            self.state = .active;
+                            try solid.removeFromMeshMap(sel, editor);
+
+                            const init_plane = solid.sides.items[@intCast(self.face_id)].normal(solid);
+                            for (selected_slice) |other| {
+                                if (other == sel)
+                                    continue;
+                                if (try editor.ecs.getOptPtr(other, .solid)) |o_solid| {
+                                    for (o_solid.sides.items, 0..) |*side, fi| {
+                                        if (init_plane.eql(side.normal(o_solid))) {
+                                            try self.selected.append(.{ .id = other, .face_id = @intCast(fi) });
+                                            try solid.removeFromMeshMap(other, editor);
+                                            break; //Only one side per solid can be coplanar
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
                     }
                 }
             },
             .active => {
-                for (solid.sides.items, 0..) |side, s_i| {
-                    if (self.face_id == s_i) {
-                        //Side_normal
-                        //self.start
-                        if (side.index.items.len < 3) return;
-                        const ind = side.index.items;
-                        const ver = solid.verts.items;
+                //for (self.selected.items) |id| {
+                if (self.main_id) |id| {
+                    if (try editor.ecs.getOptPtr(id, .solid)) |solid| {
+                        if (self.face_id >= 0 and self.face_id < solid.sides.items.len) {
+                            const s_i: usize = @intCast(self.face_id);
+                            const side = &solid.sides.items[s_i];
+                            //if (self.face_id == s_i) {
+                            //Side_normal
+                            //self.start
+                            if (side.index.items.len < 3) return;
+                            const ind = side.index.items;
+                            const ver = solid.verts.items;
 
-                        //The projection of a vector u onto a plane with normal n is given by:
-                        //v_proj = u - n.scale(u dot n), assuming n is normalized
-                        const plane_norm = util3d.trianglePlane([3]Vec3{ ver[ind[0]], ver[ind[1]], ver[ind[2]] });
-                        const ray = editor.camRay(td.screen_area, td.view_3d.*);
-                        const u = ray[1];
-                        const v_proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
-                        // By projecting the cam_norm onto the side's plane,
-                        // we can use the resulting vector as a normal for a plane to raycast against
-                        // The resulting plane's normal is as colinear with the cameras normal as we can get
-                        // while still having the side's normal perpendicular (in the raycast plane)
-                        //
-                        // If cam_norm and side_norm are colinear the projection is near zero, in the future discard vectors below a threshold as they cause explosions
+                            //The projection of a vector u onto a plane with normal n is given by:
+                            //v_proj = u - n.scale(u dot n), assuming n is normalized
+                            const plane_norm = util3d.trianglePlane([3]Vec3{ ver[ind[0]], ver[ind[1]], ver[ind[2]] });
+                            const ray = editor.camRay(td.screen_area, td.view_3d.*);
+                            const u = ray[1];
+                            const v_proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
+                            // By projecting the cam_norm onto the side's plane,
+                            // we can use the resulting vector as a normal for a plane to raycast against
+                            // The resulting plane's normal is as colinear with the cameras normal as we can get
+                            // while still having the side's normal perpendicular (in the raycast plane)
+                            //
+                            // If cam_norm and side_norm are colinear the projection is near zero, in the future discard vectors below a threshold as they cause explosions
 
-                        if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
-                            const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
-                            const acc = dist_n.dot(plane_norm);
-                            const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
+                            if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
+                                const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
+                                const acc = dist_n.dot(plane_norm);
+                                const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
 
-                            solid.drawImmediate(td.draw, editor, dist, s_i) catch return;
-                            draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{ .offset = dist });
+                                for (self.selected.items) |sel| {
+                                    const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
+                                    if (sel.face_id >= solid_o.sides.items.len) continue;
+                                    const s_io: usize = @intCast(sel.face_id);
+                                    const side_o = &solid_o.sides.items[s_io];
+                                    solid_o.drawImmediate(td.draw, editor, dist, s_io) catch return;
+                                    draw_nd.convexPolyIndexed(side_o.index.items, solid_o.verts.items, 0xff000088, .{ .offset = dist });
+                                }
 
-                            const commit_btn = if (self.right) lm else rm;
-                            if (commit_btn == .rising) {
-                                const ustack = editor.undoctx.pushNew() catch return;
-                                ustack.append(undo.UndoSolidFaceTranslate.create(
-                                    editor.undoctx.alloc,
-                                    id,
-                                    s_i,
-                                    dist,
-                                ) catch return) catch return;
-                                undo.applyRedo(ustack.items, editor);
+                                const commit_btn = if (self.right) lm else rm;
+                                if (commit_btn == .rising) {
+                                    const ustack = editor.undoctx.pushNew() catch return;
+                                    for (self.selected.items) |sel| {
+                                        const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
+                                        if (sel.face_id >= solid_o.sides.items.len) continue;
+                                        ustack.append(undo.UndoSolidFaceTranslate.create(
+                                            editor.undoctx.alloc,
+                                            sel.id,
+                                            sel.face_id,
+                                            dist,
+                                        ) catch return) catch return;
+                                    }
+                                    undo.applyRedo(ustack.items, editor);
+                                }
+                            } else {
+                                draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
                             }
-                        } else {
-                            draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
+                        }
+
+                        if (rm != .high and lm != .high) {
+                            for (self.selected.items) |sel| {
+                                const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
+                                try solid_o.rebuild(sel.id, editor);
+                            }
+                            self.reset();
                         }
                     }
-                }
-                if (rm != .high and lm != .high) {
-                    solid.rebuild(id, editor) catch return;
-                    self.reset();
                 }
             },
         }
@@ -446,6 +504,8 @@ pub const FastFaceManip = struct {
             tv.text("This is the Fast Face tool", .{});
             tv.text("Left click selects the near face, right click selects the far face.", .{});
             tv.text("Click and drag and click the opposite mouse button to commit changes", .{});
+            tv.text("", .{});
+            tv.text("If in multi select mode, faces with a common normal will be manipulated", .{});
             //tv.text("", .{});
         }
         _ = editor;

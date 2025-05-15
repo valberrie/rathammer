@@ -179,6 +179,13 @@ pub const Side = struct {
         self.index.deinit();
     }
 
+    pub fn normal(self: *@This(), solid: *Solid) Vec3 {
+        const ind = self.index.items;
+        if (ind.len < 3) return Vec3.zero();
+        const v = solid.verts.items;
+        return util3d.trianglePlane(.{ v[ind[0]], v[ind[1]], v[ind[2]] });
+    }
+
     pub fn rebuild(side: *@This(), solid: *Solid, batch: *MeshBatch, editor: *Context) !void {
         if (side.omit_from_batch)
             return;
@@ -658,7 +665,7 @@ const Model = struct {
     }
 };
 
-const log = std.log.scoped(.rathammer);
+pub const log = std.log.scoped(.rathammer);
 pub const Context = struct {
     const Self = @This();
     const ButtonState = graph.SDL.ButtonState;

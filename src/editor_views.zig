@@ -141,6 +141,8 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             .one => SINGLE_COLOR,
             .many => MANY_COLOR,
         });
+        if (self.selection.mode == .many)
+            mt.textFmt("Selected: {d}", .{self.selection.multi.items.len}, fh, col);
         {
             //TODO put an actual dt here
             const notify_slice = try self.notifier.getSlice(16);
