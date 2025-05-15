@@ -1,4 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const IS_DEBUG = builtin.mode == .Debug;
+
 const graph = @import("graph");
 const Rec = graph.Rec;
 const Vec2f = graph.Vec2f;
@@ -13,6 +16,7 @@ const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
+const VisGroup = @import("visgroup.zig");
 
 const Conf = @import("config.zig");
 
@@ -169,14 +173,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             try os9gui.beginFrame(is, &win);
             if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
                 defer os9gui.endTlWindow();
-                _ = try os9gui.beginV();
+                const vlayout = try os9gui.beginV();
                 defer os9gui.endL();
                 os9gui.label("You are paused", .{});
                 if (os9gui.button("Unpause"))
                     paused = false;
                 if (os9gui.button("Quit"))
                     break :main_loop;
-                if (os9gui.button("Write json"))
+                if (os9gui.button("Force autosave"))
                     editor.autosaver.force = true;
                 //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
                 const ds = &editor.draw_state;
@@ -188,6 +192,48 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 os9gui.label("num mesh {d}", .{editor.meshmap.count()});
 
                 try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
+
+                var needs_rebuild = false;
+                if (editor.visgroups.getRoot()) |vg_| {
+                    const Help = struct {
+                        fn recur(vs: *VisGroup, vg: *VisGroup.Group, depth: usize, os9g: *Os9Gui, vl: *Gui.VerticalLayout, rebuild_: *bool, cascade_down: ?bool) void {
+                            vl.padding.left = @floatFromInt(depth * 20);
+                            var the_bool = !vs.disabled.isSet(vg.id);
+                            const changed = os9g.checkbox(vg.name, &the_bool);
+                            rebuild_.* = rebuild_.* or changed;
+                            vs.disabled.setValue(vg.id, if (cascade_down) |cd| cd else !the_bool); //We invert the bool so the checkbox looks nice
+                            for (vg.children.items) |id| {
+                                recur(
+                                    vs,
+                                    &vs.groups.items[id],
+                                    depth + 2,
+                                    os9g,
+                                    vl,
+                                    rebuild_,
+                                    if (cascade_down) |cd| cd else (if (changed) !the_bool else null),
+                                );
+                                //_ = os9gui.buttonEx("{s} {d}", .{ group.name, group.id }, .{});
+                            }
+                        }
+                    };
+                    Help.recur(&editor.visgroups, vg_, 0, &os9gui, vlayout, &needs_rebuild, null);
+                }
+                if (needs_rebuild) {
+                    var it = editor.ecs.iterator(.editor_info);
+                    while (it.next()) |info| {
+                        var copy = editor.visgroups.disabled;
+                        copy.setIntersection(info.vis_mask);
+                        if (copy.findFirstSet() != null) {
+                            _ = try editor.ecs.removeComponentOpt(it.i, .is_visible);
+                            if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
+                                try solid.removeFromMeshMap(it.i, editor);
+                        } else {
+                            editor.ecs.attachComponent(it.i, .is_visible, .{}) catch {}; // We discard error incase it is already attached
+                            if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
+                                try solid.rebuild(it.i, editor);
+                        }
+                    }
+                }
             }
             try os9gui.endFrame(&draw);
             try draw.end(editor.draw_state.cam3d);
@@ -323,7 +369,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .stack_trace_frames = 4 }){};
+    var gpa = std.heap.GeneralPurposeAllocator(.{
+        .stack_trace_frames = if (IS_DEBUG) 4 else 0,
+    }){};
     const alloc = gpa.allocator();
     var arg_it = try std.process.argsWithAllocator(alloc);
     defer arg_it.deinit();
@@ -343,5 +391,9 @@ pub fn main() !void {
         Arg("custom_cwd", .string, "override the directory used for game"),
     }, &arg_it);
     try wrappedMain(alloc, args);
-    _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
+
+    // if the application is quit while items are being loaded in the thread pool, we get spammed with memory leaks.
+    // There is no benefit to ensuring those items are free'd
+    if (IS_DEBUG)
+        _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
 }

@@ -28,6 +28,7 @@ const util = @import("util.zig");
 const Autosaver = @import("autosave.zig").Autosaver;
 const NotifyCtx = @import("notify.zig").NotifyCtx;
 const Selection = @import("selection.zig");
+const VisGroups = @import("visgroup.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -86,6 +87,7 @@ const JsonCamera = struct {
 };
 
 const JsonEditor = struct {
+    map_json_version: []const u8,
     cam: JsonCamera,
 };
 
@@ -239,6 +241,7 @@ pub const Side = struct {
 };
 
 pub const AABB = struct {
+    pub const ECS_NO_SERIAL = void;
     a: Vec3 = Vec3.zero(),
     b: Vec3 = Vec3.zero(),
 
@@ -639,6 +642,16 @@ pub const KeyValues = struct {
     }
 };
 
+pub const EditorInfo = struct {
+    pub const ECS_NO_SERIAL = void;
+    vis_mask: VisGroups.BitSetT = VisGroups.BitSetT.initEmpty(),
+
+    pub fn initFromJson(_: std.json.Value, _: anytype) !@This() {
+        return .{ .vis_mask = VisGroups.BitSetT.initEmpty() };
+    }
+    pub fn serial(_: @This(), _: *Context, _: anytype) !void {}
+};
+
 const Comp = graph.Ecs.Component;
 pub const EcsT = graph.Ecs.Registry(&.{
     Comp("bounding_box", AABB),
@@ -646,7 +659,10 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("entity", Entity),
     Comp("displacement", Displacement),
     Comp("key_values", KeyValues),
-    //Comp("model"),
+    Comp("is_visible", struct {
+        pub const ECS_NO_SERIAL = void;
+    }),
+    Comp("editor_info", EditorInfo),
 });
 
 const Model = struct {
@@ -700,6 +716,7 @@ pub const Context = struct {
 
     texture_load_ctx: texture_load_thread.Context,
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
+    visgroups: VisGroups,
 
     tools: tool_def.ToolRegistry,
 
@@ -861,6 +878,7 @@ pub const Context = struct {
             .tools = tool_def.ToolRegistry.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
+            .visgroups = VisGroups.init(alloc),
             .meshmap = MeshMap.init(alloc),
             .ecs = try EcsT.init(alloc),
             .lower_buf = std.ArrayList(u8).init(alloc),
@@ -932,6 +950,7 @@ pub const Context = struct {
     pub fn deinit(self: *Self) void {
         self.asset.deinit();
 
+        self.visgroups.deinit();
         self.tools.deinit();
         self.tool_res_map.deinit();
         self.file_selection.file_buf.deinit();
@@ -971,6 +990,15 @@ pub const Context = struct {
         self.alloc.destroy(self);
     }
 
+    /// This is a wrapper around ecs.getOptPtr which only returns component if the visgroup component is attached.
+    pub fn getComponent(self: *Self, index: EcsT.Id, comptime comp: EcsT.Components) ?*EcsT.Fields[@intFromEnum(comp)].ftype {
+        const ent = self.ecs.getEntity(index) catch return null;
+        if (!ent.isSet(@intFromEnum(comp))) return null;
+        if (ent.isSet(@intFromEnum(EcsT.Components.is_visible)))
+            return self.ecs.getPtr(index, comp) catch null;
+        return null;
+    }
+
     pub fn rebuildMeshesIfDirty(self: *Self) !void {
         var it = self.meshmap.iterator();
         while (it.next()) |mesh| {
@@ -985,7 +1013,6 @@ pub const Context = struct {
     }
 
     pub fn writeToJson(self: *Self, outfile: std.fs.File) !void {
-        const to_omit = [_]usize{@intFromEnum(EcsT.Components.bounding_box)};
         const wr = outfile.writer();
         var bwr = std.io.bufferedWriter(wr);
         const bb = bwr.writer();
@@ -995,6 +1022,7 @@ pub const Context = struct {
             try jwr.objectField("editor");
             try jwr.write(.{
                 .cam = JsonCamera.fromCam(self.draw_state.cam3d),
+                .map_json_version = "0.0.1",
             });
             try jwr.objectField("sky_name");
             try jwr.write(self.skybox.sky_name);
@@ -1004,12 +1032,14 @@ pub const Context = struct {
                 for (self.ecs.entities.items, 0..) |ent, id| {
                     if (ent.isSet(EcsT.Types.tombstone_bit))
                         continue;
+                    //TODO Check slept
+                    //or just use a component to indicate deletion
                     try jwr.beginObject();
                     {
                         try jwr.objectField("id");
                         try jwr.write(id);
                         inline for (EcsT.Fields, 0..) |field, f_i| {
-                            if (std.mem.indexOfScalar(usize, &to_omit, f_i) == null) {
+                            if (!@hasDecl(field.ftype, "ECS_NO_SERIAL")) {
                                 if (ent.isSet(f_i)) {
                                     try jwr.objectField(field.name);
                                     const ptr = try self.ecs.getPtr(@intCast(id), @enumFromInt(f_i));
@@ -1198,6 +1228,8 @@ pub const Context = struct {
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid, parent_id: ?EcsT.Id) !void {
         const new = try self.ecs.createEntity();
+        try self.ecs.attach(new, .is_visible, .{});
+        try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&solid.editor) });
         var newsolid = try self.csgctx.genMesh2(
             solid.side,
             self.alloc,
@@ -1334,6 +1366,7 @@ pub const Context = struct {
             var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
             bb.setFromOrigin(origin);
             try self.ecs.attachComponentAndCreate(@intCast(id), .bounding_box, bb);
+            try self.ecs.attachComponentAndCreate(@intCast(id), .is_visible, .{});
             loadctx.printCb("Ent parsed {d} / {d}", .{ i, obj_o.array.items.len });
         }
         loadctx.cb("Building meshes}");
@@ -1354,6 +1387,7 @@ pub const Context = struct {
         loadctx.cb("vmf parsed");
         try self.setMapName(filename);
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
+        try self.visgroups.buildMappingFromVmf(vmf_.visgroups, null);
         try self.skybox.loadSky(try self.storeString(vmf_.world.skyname), &self.vpkctx);
         {
             loadctx.expected_cb = vmf_.world.solid.len + vmf_.entity.len + 10;
@@ -1365,6 +1399,8 @@ pub const Context = struct {
             for (vmf_.entity, 0..) |ent, ei| {
                 loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
                 const new = try self.ecs.createEntity();
+                try self.ecs.attach(new, .is_visible, .{});
+                try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&ent.editor) });
                 for (ent.solid) |solid|
                     try self.putSolidFromVmf(solid, new);
                 {

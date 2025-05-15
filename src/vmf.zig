@@ -4,34 +4,38 @@ const vdf = @import("vdf.zig");
 const graph = @import("graph");
 
 pub const Vmf = struct {
-    world: World,
-    entity: []const Entity,
-    viewsettings: ViewSettings,
+    world: World = .{},
+    entity: []const Entity = &.{},
+    viewsettings: ViewSettings = .{},
+    visgroups: []const VisGroup = &.{},
 };
 
 pub const VersionInfo = struct {
-    editorversion: u32,
-    editorbuild: u32,
-    mapversion: u32,
-    formatversion: u32,
-    prefab: u32,
+    editorversion: u32 = 0,
+    editorbuild: u32 = 0,
+    mapversion: u32 = 0,
+    formatversion: u32 = 0,
+    prefab: u32 = 0,
 };
 
-//TODO are these fully recursive
-pub const VisGroups = struct {
-    //visgroup
+pub const VisGroup = struct {
+    name: []const u8 = "",
+    visgroupid: i32 = -1,
+    color: StringVec = .{},
+
+    visgroup: []const VisGroup = &.{},
 };
 
 pub const ViewSettings = struct {
-    bSnapToGrid: i32,
-    bShowGrid: i32,
-    nGridSpacing: i32,
-    bShow3DGrid: i32,
+    bSnapToGrid: i32 = 0,
+    bShowGrid: i32 = 0,
+    nGridSpacing: i32 = 0,
+    bShow3DGrid: i32 = 0,
 };
 
 pub const EditorInfo = struct {
-    color: StringVec,
-    visgroupid: i32 = -1,
+    color: StringVec = .{},
+    visgroupid: []const i32 = &.{},
     groupid: i32 = -1,
     visgroupshown: i8 = 1,
     visgroupautoshown: i8 = 1,
@@ -39,12 +43,12 @@ pub const EditorInfo = struct {
 };
 
 pub const Connection = struct {
-    listen_event: []const u8,
-    target: []const u8,
-    input: []const u8,
-    value: []const u8,
-    delay: f32,
-    fire_count: i32,
+    listen_event: []const u8 = "",
+    target: []const u8 = "",
+    input: []const u8 = "",
+    value: []const u8 = "",
+    delay: f32 = 0,
+    fire_count: i32 = 0,
 };
 
 pub const Connections = struct {
@@ -72,36 +76,36 @@ pub const Connections = struct {
 };
 
 pub const World = struct {
-    id: u32,
-    mapversion: u32,
-    skyname: []const u8,
-    solid: []const Solid,
-    classname: []const u8,
-    sounds: []const u8,
-    MaxRange: []const u8,
-    startdark: []const u8,
-    gametitle: []const u8,
-    newunit: []const u8,
-    defaultteam: []const u8,
-    fogenable: []const u8,
-    fogblend: []const u8,
-    fogcolor: []const u8,
-    fogcolor2: []const u8,
-    fogdir: []const u8,
-    fogstart: []const u8,
-    fogend: []const u8,
-    light: []const u8,
-    ResponseContext: []const u8,
-    maxpropscreenwidth: []const u8,
+    id: u32 = 0,
+    mapversion: u32 = 0,
+    skyname: []const u8 = "",
+    solid: []const Solid = &.{},
+    classname: []const u8 = "",
+    sounds: []const u8 = "",
+    MaxRange: []const u8 = "",
+    startdark: []const u8 = "",
+    gametitle: []const u8 = "",
+    newunit: []const u8 = "",
+    defaultteam: []const u8 = "",
+    fogenable: []const u8 = "",
+    fogblend: []const u8 = "",
+    fogcolor: []const u8 = "",
+    fogcolor2: []const u8 = "",
+    fogdir: []const u8 = "",
+    fogstart: []const u8 = "",
+    fogend: []const u8 = "",
+    light: []const u8 = "",
+    ResponseContext: []const u8 = "",
+    maxpropscreenwidth: []const u8 = "",
 
-    editor: EditorInfo,
+    editor: EditorInfo = .{},
 };
 
 pub const Solid = struct {
-    id: u32,
-    side: []const Side,
+    id: u32 = 0,
+    side: []const Side = &.{},
 
-    editor: EditorInfo,
+    editor: EditorInfo = .{},
 };
 
 pub const DispInfo = struct {
@@ -193,13 +197,13 @@ pub const DispVectorRow = struct {
 };
 
 pub const Entity = struct {
-    id: u32,
-    classname: []const u8,
+    id: u32 = 0,
+    classname: []const u8 = "",
     model: []const u8 = "",
-    solid: []const Solid,
-    origin: StringVec,
-    angles: StringVec,
-    editor: EditorInfo,
+    solid: []const Solid = &.{},
+    origin: StringVec = .{},
+    angles: StringVec = .{},
+    editor: EditorInfo = .{},
     connections: Connections = .{},
 
     rest_kvs: vdf.KVMap,
@@ -311,7 +315,7 @@ fn parseVec(
 
 /// Parse a vector "0.0 1.0 2"
 const StringVec = struct {
-    v: graph.za.Vec3,
+    v: graph.za.Vec3 = graph.za.Vec3.zero(),
 
     pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
         if (val.* != .literal)

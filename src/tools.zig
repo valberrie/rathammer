@@ -282,6 +282,7 @@ pub const CubeDraw = struct {
                         const newsolid = try Solid.initFromCube(self.alloc, tool.start, tool.end, self.asset_browser.selected_mat_vpk_id orelse 0);
                         try self.ecs.attach(new, .solid, newsolid);
                         try self.ecs.attach(new, .bounding_box, .{});
+                        try self.ecs.attach(new, .is_visible, .{});
                         const solid_ptr = try self.ecs.getPtr(new, .solid);
                         try solid_ptr.translate(new, Vec3.zero(), self);
                         {

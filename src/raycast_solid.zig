@@ -76,11 +76,14 @@ pub const Ctx = struct {
     }
 
     pub fn findNearestSolid(self: *Self, ecs: *edit.EcsT, ray_o: Vec3, ray_d: Vec3, csgctx: *csg.Context, bb_only: bool) ![]const RcastItem {
+        const vis_mask = edit.EcsT.getComponentMask(&.{.is_visible});
         //var rcast_timer = try std.time.Timer.start();
         //defer std.debug.print("Rcast took {d} us\n", .{rcast_timer.read() / std.time.ns_per_us});
         self.pot.clearRetainingCapacity();
         var bbit = ecs.iterator(.bounding_box);
         while (bbit.next()) |bb| {
+            if (!ecs.superSetOf(bbit.i, vis_mask))
+                continue;
             if (util3d.doesRayIntersectBBZ(ray_o, ray_d, bb.a, bb.b)) |inter| {
                 const len = inter.distance(ray_o);
                 try self.pot.append(.{ .id = bbit.i, .dist = len, .side_id = null });
