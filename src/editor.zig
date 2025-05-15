@@ -697,6 +697,7 @@ pub const Context = struct {
     tools: tool_def.ToolRegistry,
 
     draw_state: struct {
+        text_bg_height: f32 = 0,
         meshes_dirty: bool = false,
         tog: struct {
             wireframe: bool = false,

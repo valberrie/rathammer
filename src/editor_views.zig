@@ -127,19 +127,17 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         cw * 2,
     ), 0xffffffff);
     { // text stuff
-        const font = os9gui.font;
         const fh = os9gui.style.config.text_h;
         const col = 0xff_ff_ffff;
-        var tpos = screen_area.pos();
-        draw.rect(graph.Rec(tpos.x, tpos.y, fh * 100, fh * 4), 0x99);
-        draw.textFmt(tpos, "grid: {d:.2}", .{self.edit_state.grid_snap}, font, fh, col);
-        tpos.y += fh;
         const p = self.draw_state.cam3d.pos;
-        draw.textFmt(tpos, "pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, font, fh, col);
-        tpos.y += fh;
+
         const SINGLE_COLOR = 0xfcc858ff;
         const MANY_COLOR = 0xfc58d6ff;
-        draw.textFmt(tpos, "select: {s}", .{@tagName(self.selection.mode)}, font, fh, switch (self.selection.mode) {
+
+        var mt = graph.MultiLineText.start(draw, screen_area.pos(), os9gui.font);
+        mt.textFmt("grid: {d:.2}", .{self.edit_state.grid_snap}, fh, col);
+        mt.textFmt("pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, fh, col);
+        mt.textFmt("select: {s}", .{@tagName(self.selection.mode)}, fh, switch (self.selection.mode) {
             .one => SINGLE_COLOR,
             .many => MANY_COLOR,
         });
@@ -147,11 +145,10 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
             //TODO put an actual dt here
             const notify_slice = try self.notifier.getSlice(16);
             for (notify_slice) |n| {
-                tpos.y += fh;
-                draw.text(tpos, n.msg, font, fh, n.color);
+                mt.text(n.msg, fh, n.color);
             }
         }
-        //draw.textFmt(tpos, "tool: {s}", .{@tagName(self.edit_state.state)}, font, fh, col);
+        mt.drawBgRect(0x99, fh * 30);
     }
     try draw_nd.flush(null, self.draw_state.cam3d);
     self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw);

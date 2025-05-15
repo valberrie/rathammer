@@ -201,8 +201,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
         editor.edit_state.lmouse = win.mouse.left;
         editor.edit_state.rmouse = win.mouse.right;
-        if (editor.edit_state.lmouse == .rising) {}
         editor.edit_state.mpos = win.mouse.pos;
+        if (os9gui.gui.window_index_grabbed_mouse != null) {
+            //HACKY
+            editor.edit_state.lmouse = .low;
+            editor.edit_state.rmouse = .low;
+        }
 
         const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
         try os9gui.beginFrame(is, &win);

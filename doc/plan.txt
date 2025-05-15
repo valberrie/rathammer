@@ -31,6 +31,7 @@ Interface # All the features for editing
         only send state (mouse clicks, bindings) to focused tool and window
         when clicking in inspector, these can't be send to 3d view
 
+
     Tool based (enum)?
     2d editing?
 
@@ -77,6 +78,8 @@ Interface # All the features for editing
         Arch shouldn't be too hard, with polar coordinates, each wedge solid is just a 6 sided solid d_theta wide and d_r thick
 
 FeatureCreep
+    F1 should display a help page, draw a keyboard with all bindings
+    rat hammer needs a mascot. a rat with a hammer.
     DONE Drawing the 3d skybox
     Model Animation
     Lighting
