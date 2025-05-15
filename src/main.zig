@@ -219,6 +219,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                     Help.recur(&editor.visgroups, vg_, 0, &os9gui, vlayout, &needs_rebuild, null);
                 }
                 if (needs_rebuild) {
+                    std.debug.print("Rebild\n", .{});
                     var it = editor.ecs.iterator(.editor_info);
                     while (it.next()) |info| {
                         var copy = editor.visgroups.disabled;

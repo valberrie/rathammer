@@ -220,6 +220,9 @@ pub const UndoDupe = struct {
             const bb_copy = bb.*; //we must dupe, otherwise the pointer may become invalid
             editor.ecs.attachComponentAndCreate(self.own_id, .bounding_box, bb_copy) catch return;
         }
+        if (editor.ecs.getOptPtr(self.parent_id, .is_visible) catch return) |_| {
+            editor.ecs.attachComponentAndCreate(self.own_id, .is_visible, .{}) catch return;
+        }
         //TODO displacament
     }
 

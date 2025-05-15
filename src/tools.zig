@@ -412,7 +412,7 @@ pub const FastFaceManip = struct {
                                     for (o_solid.sides.items, 0..) |*side, fi| {
                                         if (init_plane.eql(side.normal(o_solid))) {
                                             try self.selected.append(.{ .id = other, .face_id = @intCast(fi) });
-                                            try solid.removeFromMeshMap(other, editor);
+                                            try o_solid.removeFromMeshMap(other, editor);
                                             break; //Only one side per solid can be coplanar
                                         }
                                     }
@@ -1027,6 +1027,7 @@ pub fn modelPlace(self: *Editor, td: ToolData) !void {
                 bb.a = mod.hull_min;
                 bb.b = mod.hull_max;
                 bb.setFromOrigin(point);
+                try self.ecs.attach(new, .is_visible, .{});
                 try self.ecs.attach(new, .entity, .{
                     .origin = point,
                     .angle = Vec3.zero(),
