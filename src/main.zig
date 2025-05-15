@@ -225,11 +225,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         var copy = editor.visgroups.disabled;
                         copy.setIntersection(info.vis_mask);
                         if (copy.findFirstSet() != null) {
-                            _ = try editor.ecs.removeComponentOpt(it.i, .is_visible);
+                            editor.ecs.attachComponent(it.i, .invisible, .{}) catch {}; // We discard error incase it is already attached
                             if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
                                 try solid.removeFromMeshMap(it.i, editor);
                         } else {
-                            editor.ecs.attachComponent(it.i, .is_visible, .{}) catch {}; // We discard error incase it is already attached
+                            _ = try editor.ecs.removeComponentOpt(it.i, .invisible);
                             if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
                                 try solid.rebuild(it.i, editor);
                         }

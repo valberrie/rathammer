@@ -643,13 +643,18 @@ pub const KeyValues = struct {
 };
 
 pub const EditorInfo = struct {
-    pub const ECS_NO_SERIAL = void;
+    //pub const ECS_NO_SERIAL = void;
     vis_mask: VisGroups.BitSetT = VisGroups.BitSetT.initEmpty(),
 
     pub fn initFromJson(_: std.json.Value, _: anytype) !@This() {
         return .{ .vis_mask = VisGroups.BitSetT.initEmpty() };
     }
-    pub fn serial(_: @This(), _: *Context, _: anytype) !void {}
+    pub fn serial(self: @This(), _: *Context, jw: anytype) !void {
+        const mask_count = self.vis_mask.masks.len;
+        if (mask_count != 2)
+            @compileError("fix this lol");
+        try jw.print("\"{x}_{x}\"", .{ self.vis_mask.masks[0], self.vis_mask.masks[1] });
+    }
 };
 
 const Comp = graph.Ecs.Component;
@@ -659,10 +664,13 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("entity", Entity),
     Comp("displacement", Displacement),
     Comp("key_values", KeyValues),
-    Comp("is_visible", struct {
+    Comp("invisible", struct {
         pub const ECS_NO_SERIAL = void;
     }),
     Comp("editor_info", EditorInfo),
+    Comp("deleted", struct {
+        pub const ECS_NO_SERIAL = void;
+    }),
 });
 
 const Model = struct {
@@ -994,9 +1002,9 @@ pub const Context = struct {
     pub fn getComponent(self: *Self, index: EcsT.Id, comptime comp: EcsT.Components) ?*EcsT.Fields[@intFromEnum(comp)].ftype {
         const ent = self.ecs.getEntity(index) catch return null;
         if (!ent.isSet(@intFromEnum(comp))) return null;
-        if (ent.isSet(@intFromEnum(EcsT.Components.is_visible)))
-            return self.ecs.getPtr(index, comp) catch null;
-        return null;
+        if (ent.isSet(@intFromEnum(EcsT.Components.invisible)))
+            return null;
+        return self.ecs.getPtr(index, comp) catch null;
     }
 
     pub fn rebuildMeshesIfDirty(self: *Self) !void {
@@ -1031,6 +1039,8 @@ pub const Context = struct {
             {
                 for (self.ecs.entities.items, 0..) |ent, id| {
                     if (ent.isSet(EcsT.Types.tombstone_bit))
+                        continue;
+                    if (ent.isSet(@intFromEnum(EcsT.Components.deleted)))
                         continue;
                     //TODO Check slept
                     //or just use a component to indicate deletion
@@ -1228,7 +1238,6 @@ pub const Context = struct {
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid, parent_id: ?EcsT.Id) !void {
         const new = try self.ecs.createEntity();
-        try self.ecs.attach(new, .is_visible, .{});
         try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&solid.editor) });
         var newsolid = try self.csgctx.genMesh2(
             solid.side,
@@ -1366,7 +1375,6 @@ pub const Context = struct {
             var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
             bb.setFromOrigin(origin);
             try self.ecs.attachComponentAndCreate(@intCast(id), .bounding_box, bb);
-            try self.ecs.attachComponentAndCreate(@intCast(id), .is_visible, .{});
             loadctx.printCb("Ent parsed {d} / {d}", .{ i, obj_o.array.items.len });
         }
         loadctx.cb("Building meshes}");
@@ -1399,7 +1407,6 @@ pub const Context = struct {
             for (vmf_.entity, 0..) |ent, ei| {
                 loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
                 const new = try self.ecs.createEntity();
-                try self.ecs.attach(new, .is_visible, .{});
                 try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&ent.editor) });
                 for (ent.solid) |solid|
                     try self.putSolidFromVmf(solid, new);

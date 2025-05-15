@@ -54,11 +54,11 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     }
 
     try draw.flush(null, self.draw_state.cam3d);
-    const vis_mask = Editor.EcsT.getComponentMask(&.{.is_visible});
+    const vis_mask = Editor.EcsT.getComponentMask(&.{ .invisible, .deleted });
     {
         var ent_it = self.ecs.iterator(.entity);
         while (ent_it.next()) |ent| {
-            if (!self.ecs.superSetOf(ent_it.i, vis_mask))
+            if (self.ecs.intersects(ent_it.i, vis_mask))
                 continue;
             try ent.drawEnt(self, view_3d, draw, draw_nd, .{});
         }

@@ -220,8 +220,8 @@ pub const UndoDupe = struct {
             const bb_copy = bb.*; //we must dupe, otherwise the pointer may become invalid
             editor.ecs.attachComponentAndCreate(self.own_id, .bounding_box, bb_copy) catch return;
         }
-        if (editor.ecs.getOptPtr(self.parent_id, .is_visible) catch return) |_| {
-            editor.ecs.attachComponentAndCreate(self.own_id, .is_visible, .{}) catch return;
+        if (editor.ecs.getOptPtr(self.parent_id, .invisible) catch return) |_| {
+            editor.ecs.attachComponentAndCreate(self.own_id, .invisible, .{}) catch return;
         }
         //TODO displacament
     }
@@ -294,11 +294,13 @@ pub const UndoCreateDestroy = struct {
         if (try editor.ecs.getOptPtr(self.id, .solid)) |solid| {
             try solid.removeFromMeshMap(self.id, editor);
         }
-        try editor.ecs.sleepEntity(self.id);
+        editor.ecs.attach(self.id, .deleted, .{}) catch {};
+        //try editor.ecs.sleepEntity(self.id);
     }
 
     fn redoCreate(self: *@This(), editor: *Editor) !void {
-        try editor.ecs.wakeEntity(self.id);
+        _ = editor.ecs.removeComponentOpt(self.id, .deleted) catch {};
+        //editor.ecs.attach(self.id, .deleted, .{}) catch {};
         if (try editor.ecs.getOptPtr(self.id, .solid)) |solid| {
             try solid.rebuild(self.id, editor);
         }
