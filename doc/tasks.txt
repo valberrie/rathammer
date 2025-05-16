@@ -12,11 +12,10 @@ allow rebinding of lmouse and rmouse functions
 toggle texture lock when translating
 don't snap translation when rotating, same for rotation when translating
 load all the body parts of mdl's, not just the first.
-remove the unchecked access' from vvd.zig
 don't raycast hidden items (tools, models)
 fix displacment uv calculation
-catch errors in tools and return them
 Stop the frame hitches when searching in asset browser
-Add option for next state after cube draw, either reset cube draw or go to translate or fast face
+    Why do they happen?
 
 DONE set correct bounding boxes of deferred model loads
+DONE catch errors in tools and return them

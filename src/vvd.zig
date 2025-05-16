@@ -145,7 +145,6 @@ pub const MeshDeferred = struct {
 
 //it sucks but it works
 //there is very little version checking.
-//offsets are not bounds checked so this can crash at anytime
 pub fn loadModelCrappy(
     pool_state: *load_pool.Context,
     res_id: vpk.VpkResId,

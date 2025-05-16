@@ -104,7 +104,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     };
     if (self.edit_state.tool_index < self.tools.tools.items.len) {
         const vt = self.tools.tools.items[self.edit_state.tool_index];
-        vt.runTool_fn(vt, td, self);
+        try vt.runTool_fn(vt, td, self);
     }
     { //sky stuff
         const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);

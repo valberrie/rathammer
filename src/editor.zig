@@ -31,6 +31,7 @@ const Selection = @import("selection.zig");
 const VisGroups = @import("visgroup.zig");
 const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
+const DISABLE_SPLASH = true;
 
 const util3d = @import("util_3d.zig");
 
@@ -1142,6 +1143,8 @@ pub const LoadCtx = struct {
     }
 
     pub fn drawSplash(self: *@This(), perc: f32, message: []const u8) void {
+        if (DISABLE_SPLASH)
+            return;
         const cx = self.draw.screen_dimensions.x / 2;
         const cy = self.draw.screen_dimensions.y / 2;
         const w: f32 = @floatFromInt(self.splash.w);

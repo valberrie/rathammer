@@ -28,10 +28,15 @@ pub const ToolReg = ?usize;
 pub const initToolReg = null;
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
-    runTool_fn: *const fn (*@This(), ToolData, *Editor) void,
+    runTool_fn: *const fn (*@This(), ToolData, *Editor) ToolError!void,
     guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
+};
+
+const ToolError = error{
+    fatal,
+    nonfatal,
 };
 
 /// Everything required to be a tool:
@@ -151,9 +156,9 @@ pub const CubeDraw = struct {
         alloc.destroy(self);
     }
 
-    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        cubeDraw(self, editor, td) catch return;
+        cubeDraw(self, editor, td) catch return error.fatal;
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
@@ -364,9 +369,9 @@ pub const FastFaceManip = struct {
         self.selected.deinit();
         alloc.destroy(self);
     }
-    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.runToolErr(td, editor) catch return;
+        self.runToolErr(td, editor) catch return error.fatal;
     }
 
     pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
@@ -558,12 +563,12 @@ pub const Translate = struct {
         alloc.destroy(self);
     }
 
-    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (td.is_first_frame)
             self.gizmo_rotation.reset();
 
-        translate(self, editor, td) catch return;
+        translate(self, editor, td) catch return error.fatal;
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
@@ -775,9 +780,9 @@ pub const TextureTool = struct {
         alloc.destroy(self);
     }
 
-    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.run(td, editor) catch return;
+        self.run(td, editor) catch return error.fatal;
     }
 
     pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
@@ -882,10 +887,10 @@ pub const PlaceModel = struct {
         alloc.destroy(self);
     }
 
-    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         _ = self;
-        modelPlace(editor, td) catch return;
+        modelPlace(editor, td) catch return error.fatal;
     }
 };
 
@@ -919,10 +924,10 @@ pub const TranslateFace = struct {
         alloc.destroy(self);
     }
 
-    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) void {
+    pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (editor.selection.single_id) |id| {
-            faceTranslate(self, editor, id, td) catch return;
+            faceTranslate(self, editor, id, td) catch return error.fatal;
         }
     }
 
