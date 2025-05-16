@@ -137,7 +137,8 @@ Utility
 
 Game support
     Portal 2's gameinfo txt doesn't specify vpk's
-    Portal 2's fgd crashes parser, same with cstrike.fgd
+    Portal 2's fgd crashes parser, 
+    cstrike.fgd is fixed, the parser is horrible.
     Gmod.
     Write a game config for every offical source game on steam.
 

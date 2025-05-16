@@ -53,7 +53,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", 40, .{});
     defer font.deinit();
-    const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{}) catch edit.missingTexture();
+    const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small1.png", .{}) catch edit.missingTexture();
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, .{
         .cache_dir = editor.dirs.pref,
         .font_size_px = args.gui_font_size orelse scaled_text_height,

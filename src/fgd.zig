@@ -10,6 +10,7 @@ const eql = std.mem.eql;
 const Allocator = std.mem.Allocator;
 const stringToEnum = std.meta.stringToEnum;
 
+//TODO this parser sucks
 pub const Tag = enum {
     comma,
     colon,
@@ -33,6 +34,10 @@ pub const Token = struct {
     };
     tag: Tag,
     pos: Pos,
+
+    fn debugPrint(self: @This(), slice: []const u8) void {
+        std.debug.print("Token: {s} \"{s}\"\n", .{ @tagName(self.tag), slice[self.pos.start..self.pos.end] });
+    }
 
     pub fn orderedTokenIterator(delim: Tag, slice: []const Token) struct {
         delim: Tag,
@@ -107,8 +112,10 @@ pub const FgdTokenizer = struct {
 
     pub fn expectNext(self: *@This(), tag: Tag) !Token {
         const n = try self.next() orelse return error.eos;
-        if (n.tag != tag)
+        if (n.tag != tag) {
+            n.debugPrint(self.slice);
             return error.unexpectedTag;
+        }
 
         return n;
     }
@@ -138,8 +145,10 @@ pub const FgdTokenizer = struct {
         if (tag == .newline) @compileError("impossible");
         while (try self.next()) |t| {
             if (t.tag != .newline) {
-                if (t.tag != tag)
+                if (t.tag != tag) {
+                    t.debugPrint(self.slice);
                     return error.wrongTag;
+                }
                 return t;
             }
         }
@@ -327,11 +336,15 @@ const AtDirective = enum {
 };
 
 test {
-    const alloc = std.testing.allocator;
-    const base_dir = try std.fs.cwd().openDir("Half-Life 2/bin", .{});
+    const alloc_ = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(alloc_);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const base_dir = try std.fs.cwd().openDir("/home/rat/.local/share/Steam/steamapps/common/Portal 2/bin", .{});
 
     //const in = try base_dir.openFile("base.fgd", .{});
-    const in = try base_dir.openFile("halflife2.fgd", .{});
+    const in = try base_dir.openFile("portal.fgd", .{});
     defer in.close();
 
     const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
@@ -547,10 +560,13 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                         new_class.name = try ctx.dupeString(tkz.getSlice(class_name));
                         //std.debug.print("Decl {s}\n", .{tkz.getSlice(class_name)});
 
+                        //@directive base1(arg) base2(arg) = class_name
+
+                        try tkz.eatNewline();
                         const n = try tkz.peek() orelse return error.syntax;
                         switch (n.tag) {
                             .colon => { //Parse docstring
-                                _ = try tkz.next();
+                                _ = try tkz.next(); //peeked
                                 try tkz.eatNewline();
                                 try tkz.expectMultilineString();
                             },
@@ -558,6 +574,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                             .l_bracket => {},
                             else => return error.syntax,
                         }
+                        //BUG, sometimes the colon is on next line
                         _ = try tkz.expectNextEatNewline(.l_bracket);
 
                         { //Parse all the fields
