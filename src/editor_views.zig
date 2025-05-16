@@ -188,11 +188,44 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                                     break :blk try self.ecs.getPtr(id, .key_values);
                                 };
                                 for (base.fields.items) |field| {
-                                    try kvs.map.put(field.name, field.default);
+                                    var new_list = std.ArrayList(u8).init(self.alloc);
+                                    try new_list.appendSlice(field.default);
+                                    try kvs.map.put(field.name, new_list);
                                 }
                             }
                         }
-                        //if (self.fgd_ctx.base.get(ent.class)) |base| {
+                        const kvs = if (try self.ecs.getOptPtr(id, .key_values)) |kv| kv else blk: {
+                            try self.ecs.attach(id, .key_values, ecs.KeyValues.init(self.alloc));
+                            break :blk try self.ecs.getPtr(id, .key_values);
+                        };
+                        {
+                            os9gui.hr();
+                            scr.layout.pushHeight(400);
+                            _ = try os9gui.beginL(Gui.TableLayout{
+                                .columns = 2,
+
+                                .item_height = os9gui.style.config.default_item_h,
+                            });
+                            if (self.fgd_ctx.base.get(ent.class)) |base| {
+                                for (base.fields.items) |req_field| {
+                                    const res = try kvs.map.getOrPut(req_field.name);
+                                    if (!res.found_existing) {
+                                        var new_list = std.ArrayList(u8).init(self.alloc);
+                                        try new_list.appendSlice(req_field.default);
+                                        res.value_ptr.* = new_list;
+                                    }
+                                    os9gui.label("{s}", .{res.key_ptr.*});
+                                    os9gui.label("{s}", .{res.value_ptr.items});
+                                }
+                            }
+
+                            //var it = kvs.map.iterator();
+                            //while (it.next()) |item| {
+                            //    os9gui.label("{s}", .{item.key_ptr.*});
+                            //    os9gui.label("{s}", .{item.value_ptr.items});
+                            //}
+                            os9gui.endL();
+                        }
                         //    os9gui.label("{s}", .{base.name});
                         //    scr.layout.pushHeight(400);
                         //    _ = try os9gui.beginL(Gui.TableLayout{
@@ -237,21 +270,6 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                         //    }
                         //    os9gui.endL();
                         //}
-                    }
-                    if (try self.ecs.getOptPtr(id, .key_values)) |kvs| {
-                        os9gui.hr();
-                        var it = kvs.map.iterator();
-                        scr.layout.pushHeight(400);
-                        _ = try os9gui.beginL(Gui.TableLayout{
-                            .columns = 2,
-
-                            .item_height = os9gui.style.config.default_item_h,
-                        });
-                        while (it.next()) |item| {
-                            os9gui.label("{s}", .{item.key_ptr.*});
-                            os9gui.label("{s}", .{item.value_ptr.*});
-                        }
-                        os9gui.endL();
                     }
                     if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                         os9gui.label("Solid with {d} sides", .{solid.sides.items.len});

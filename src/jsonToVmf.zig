@@ -164,7 +164,7 @@ pub fn main() !void {
                     if (try ecs_p.getOptPtr(ents.i, .key_values)) |kvs| {
                         var it = kvs.map.iterator();
                         while (it.next()) |kv| {
-                            try vr.writeKv(kv.key_ptr.*, kv.value_ptr.*);
+                            try vr.writeKv(kv.key_ptr.*, kv.value_ptr.items);
                         }
                     }
                 }

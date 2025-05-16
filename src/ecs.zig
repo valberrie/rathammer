@@ -576,15 +576,25 @@ pub const EditorInfo = struct {
     }
 };
 
+//TODO Storing the damn strings
+//having hundreds of arraylists is probably slow.,
+//most kvs are small < 16bytes
+//on x64 an array list is 40bytes
+//for now just use array list
 pub const KeyValues = struct {
     const Self = @This();
-    const MapT = std.StringHashMap([]const u8);
+    const MapT = std.StringHashMap(std.ArrayList(u8));
     map: MapT,
 
     pub fn dupe(self: *Self) !Self {
-        return .{
+        var ret = Self{
             .map = try self.map.clone(),
         };
+        var it = ret.map.valueIterator();
+        while (it.next()) |item| {
+            item.* = try item.clone();
+        }
+        return ret;
     }
 
     pub fn init(alloc: std.mem.Allocator) Self {
@@ -600,7 +610,9 @@ pub const KeyValues = struct {
         var it = v.object.iterator();
         while (it.next()) |item| {
             if (item.value_ptr.* != .string) return error.invalidKv;
-            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), try ctx.str_store.store(item.value_ptr.string));
+            var new_list = std.ArrayList(u8).init(ctx.alloc);
+            try new_list.appendSlice(item.value_ptr.string);
+            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), new_list);
         }
 
         return ret;
@@ -612,13 +624,16 @@ pub const KeyValues = struct {
             var it = self.map.iterator();
             while (it.next()) |item| {
                 try jw.objectField(item.key_ptr.*);
-                try jw.write(item.value_ptr.*);
+                try jw.write(item.value_ptr.items);
             }
         }
         try jw.endObject();
     }
 
     pub fn deinit(self: *Self) void {
+        var it = self.map.valueIterator();
+        while (it.next()) |item|
+            item.deinit();
         self.map.deinit();
     }
 };

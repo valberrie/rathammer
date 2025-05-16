@@ -834,8 +834,11 @@ pub const Context = struct {
                 if (ent.rest_kvs.count() > 0) {
                     var kvs = KeyValues.init(self.alloc);
                     var it = ent.rest_kvs.iterator();
-                    while (it.next()) |item|
-                        try kvs.map.put(try self.storeString(item.key_ptr.*), try self.storeString(item.value_ptr.*));
+                    while (it.next()) |item| {
+                        var new_list = std.ArrayList(u8).init(self.alloc);
+                        try new_list.appendSlice(item.value_ptr.*);
+                        try kvs.map.put(try self.storeString(item.key_ptr.*), new_list);
+                    }
 
                     try self.ecs.attach(new, .key_values, kvs);
                 }
