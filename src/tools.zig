@@ -755,6 +755,8 @@ pub const TextureTool = struct {
     id: ?ecs.EcsT.Id = null,
     face_index: ?u32 = 0,
 
+    state: enum { pick, apply } = .apply,
+
     //Left click to select a face,
     //right click to apply texture to any face
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
@@ -823,26 +825,35 @@ pub const TextureTool = struct {
                 const solid = try editor.ecs.getOptPtr(pot[0].id, .solid) orelse break :blk;
                 if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
                 const side = &solid.sides.items[pot[0].side_id.?];
-                const source = src: {
-                    if (dupe) {
-                        if (try self.getCurrentlySelected(editor)) |f| {
-                            var duped = side.*;
-                            duped.u.trans = f.side.u.trans;
-                            duped.v.trans = f.side.v.trans;
-                            duped.u.scale = f.side.u.scale;
-                            duped.v.scale = f.side.v.scale;
-                            break :src duped;
-                        }
-                    }
-                    break :src side.*;
-                };
+                const pick = td.win.isBindState(editor.config.keys.cube_draw_plane_raycast.b, .high);
+                self.state = if (pick) .pick else .apply;
+                switch (self.state) {
+                    .apply => {
+                        const source = src: {
+                            if (dupe) {
+                                if (try self.getCurrentlySelected(editor)) |f| {
+                                    var duped = side.*;
+                                    duped.u.trans = f.side.u.trans;
+                                    duped.v.trans = f.side.v.trans;
+                                    duped.u.scale = f.side.u.scale;
+                                    duped.v.scale = f.side.v.scale;
+                                    break :src duped;
+                                }
+                            }
+                            break :src side.*;
+                        };
 
-                const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id };
-                const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id };
+                        const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id };
+                        const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id };
 
-                const ustack = try editor.undoctx.pushNew();
-                try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
-                undo.applyRedo(ustack.items, editor);
+                        const ustack = try editor.undoctx.pushNew();
+                        try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
+                        undo.applyRedo(ustack.items, editor);
+                    },
+                    .pick => {
+                        editor.asset_browser.selected_mat_vpk_id = side.tex_id;
+                    },
+                }
             }
         }
 
@@ -865,14 +876,26 @@ pub const PlaceModel = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
+    ent_class: enum {
+        prop_static,
+        prop_dynamic,
+        prop_physics, //TODO load mdl metadata and set this field Automatically
+    } = .prop_static,
+
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
         obj.* = .{ .vt = .{
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
+            .gui_fn = &@This().doGui,
         } };
         return &obj.vt;
+    }
+
+    pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, _: *Editor, _: *Gui.VerticalLayout) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        os9gui.enumCombo("New class: {s}", .{@tagName(self.ent_class)}, &self.ent_class) catch return;
     }
 
     pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
@@ -889,8 +912,46 @@ pub const PlaceModel = struct {
 
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
-        modelPlace(editor, td) catch return error.fatal;
+        self.modelPlace(editor, td) catch return error.fatal;
+    }
+
+    pub fn modelPlace(tool: *@This(), self: *Editor, td: ToolData) !void {
+        const model_id = self.asset_browser.selected_model_vpk_id orelse return;
+        const omod = self.models.get(model_id);
+        if (omod != null and omod.?.mesh != null) {
+            const mod = omod.?.mesh.?;
+            const pot = self.screenRay(td.screen_area, td.view_3d.*);
+            if (pot.len > 0) {
+                const p = pot[0];
+                const point = snapV3(p.point, self.edit_state.grid_snap);
+                const mat1 = graph.za.Mat4.fromTranslate(point);
+                //zyx
+                //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+                mod.drawSimple(td.view_3d.*, mat1, self.draw_state.basic_shader);
+                //Draw the model at
+                if (self.edit_state.lmouse == .rising) {
+                    const new = try self.ecs.createEntity();
+                    var bb = ecs.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+                    bb.origin_offset = mod.hull_min.scale(-1);
+                    bb.a = mod.hull_min;
+                    bb.b = mod.hull_max;
+                    bb.setFromOrigin(point);
+                    try self.ecs.attach(new, .entity, .{
+                        .origin = point,
+                        .angle = Vec3.zero(),
+                        .class = try self.storeString(@tagName(tool.ent_class)),
+                        .model = null,
+                        //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
+                        .model_id = model_id,
+                        .sprite = null,
+                    });
+                    try self.ecs.attach(new, .bounding_box, bb);
+                    const ustack = try self.undoctx.pushNew();
+                    try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
+                    undo.applyRedo(ustack.items, self);
+                }
+            }
+        }
     }
 };
 
@@ -1010,42 +1071,3 @@ pub const TranslateFace = struct {
         }
     }
 };
-
-pub fn modelPlace(self: *Editor, td: ToolData) !void {
-    const model_id = self.asset_browser.selected_model_vpk_id orelse return;
-    const omod = self.models.get(model_id);
-    if (omod != null and omod.?.mesh != null) {
-        const mod = omod.?.mesh.?;
-        const pot = self.screenRay(td.screen_area, td.view_3d.*);
-        if (pot.len > 0) {
-            const p = pot[0];
-            const point = snapV3(p.point, self.edit_state.grid_snap);
-            const mat1 = graph.za.Mat4.fromTranslate(point);
-            //zyx
-            //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-            mod.drawSimple(td.view_3d.*, mat1, self.draw_state.basic_shader);
-            //Draw the model at
-            if (self.edit_state.lmouse == .rising) {
-                const new = try self.ecs.createEntity();
-                var bb = ecs.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
-                bb.origin_offset = mod.hull_min.scale(-1);
-                bb.a = mod.hull_min;
-                bb.b = mod.hull_max;
-                bb.setFromOrigin(point);
-                try self.ecs.attach(new, .entity, .{
-                    .origin = point,
-                    .angle = Vec3.zero(),
-                    .class = try self.storeString("prop_static"),
-                    .model = null,
-                    //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
-                    .model_id = model_id,
-                    .sprite = null,
-                });
-                try self.ecs.attach(new, .bounding_box, bb);
-                const ustack = try self.undoctx.pushNew();
-                try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
-                undo.applyRedo(ustack.items, self);
-            }
-        }
-    }
-}
