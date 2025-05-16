@@ -15,6 +15,7 @@ const fgd = @import("fgd.zig");
 const undo = @import("undo.zig");
 const tools = @import("tools.zig");
 const ecs = @import("ecs.zig");
+const eql = std.mem.eql;
 
 pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, os9gui: *graph.Os9Gui) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
@@ -215,7 +216,55 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                                         res.value_ptr.* = new_list;
                                     }
                                     os9gui.label("{s}", .{res.key_ptr.*});
-                                    os9gui.label("{s}", .{res.value_ptr.items});
+                                    //os9gui.label("{s}", .{res.value_ptr.items});
+                                    switch (req_field.type) {
+                                        .choices => |ch| {
+                                            if (ch.items.len == 2 and std.mem.eql(u8, ch.items[0][0], "0")) {
+                                                var chekd: bool = false;
+                                                _ = os9gui.checkbox("", &chekd);
+
+                                                continue;
+                                            }
+                                            const Ctx = struct {
+                                                kvs: []const fgd.EntClass.Field.Type.KV,
+                                                index: usize = 0,
+                                                pub fn next(ctx: *@This()) ?struct { usize, []const u8 } {
+                                                    if (ctx.index >= ctx.kvs.len)
+                                                        return null;
+                                                    defer ctx.index += 1;
+                                                    return .{ ctx.index, ctx.kvs[ctx.index][1] };
+                                                }
+                                            };
+
+                                            var index: usize = 0;
+                                            for (ch.items, 0..) |kv, i| {
+                                                if (eql(u8, kv[0], res.value_ptr.items)) {
+                                                    index = i;
+                                                    break;
+                                                }
+                                            }
+                                            var ctx = Ctx{
+                                                .kvs = ch.items,
+                                            };
+                                            const old_i = index;
+                                            //TODO Check kvs is > 0
+                                            try os9gui.combo(
+                                                "{s}",
+                                                .{ch.items[old_i][1]},
+                                                &index,
+                                                ch.items.len,
+                                                &ctx,
+                                                Ctx.next,
+                                            );
+                                            if (old_i != index) {
+                                                res.value_ptr.clearRetainingCapacity();
+                                                try res.value_ptr.appendSlice(ch.items[index][0]);
+                                                //std.debug.print("Index changed new {s} -> {any}\n", .{ res.value_ptr.items, ch.items[index] });
+                                            }
+                                        },
+                                        else => try os9gui.textbox(res.value_ptr),
+                                        //else => os9gui.label("{s}", .{res.value_ptr.items}),
+                                    }
                                 }
                             }
 
