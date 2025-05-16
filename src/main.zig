@@ -17,6 +17,7 @@ const Gui = graph.Gui;
 const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
 const VisGroup = @import("visgroup.zig");
+const inspector = @import("inspector.zig");
 
 const Conf = @import("config.zig");
 
@@ -337,7 +338,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .asset_browser => {
                     try editor.asset_browser.drawEditWindow(pane_area, &os9gui, editor, &config, .texture);
                 },
-                .inspector => try editor_view.drawInspector(editor, pane_area, &os9gui),
+                .inspector => try inspector.drawInspector(editor, pane_area, &os9gui),
                 .model_preview => {
                     try editor.asset_browser.drawModelPreview(
                         &win,
