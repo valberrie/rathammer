@@ -14,6 +14,7 @@ const Gui = graph.Gui;
 const fgd = @import("fgd.zig");
 const undo = @import("undo.zig");
 const tools = @import("tools.zig");
+const ecs = @import("ecs.zig");
 
 pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, os9gui: *graph.Os9Gui) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
@@ -180,51 +181,62 @@ pub fn drawInspector(self: *Context, screen_area: graph.Rect, os9gui: *graph.Os9
                 //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
                 if (self.selection.single_id) |id| {
                     if (try self.ecs.getOptPtr(id, .entity)) |ent| {
-                        if (self.fgd_ctx.base.get(ent.class)) |base| {
-                            os9gui.label("{s}", .{base.name});
-                            scr.layout.pushHeight(400);
-                            _ = try os9gui.beginL(Gui.TableLayout{
-                                .columns = 2,
-                                .item_height = os9gui.style.config.default_item_h,
-                            });
-                            for (base.fields.items) |f| {
-                                os9gui.label("{s}", .{f.name});
-                                switch (f.type) {
-                                    .choices => |ch| {
-                                        if (ch.items.len == 2 and std.mem.eql(u8, ch.items[0][0], "0")) {
-                                            var chekd: bool = false;
-                                            _ = os9gui.checkbox("", &chekd);
-
-                                            continue;
-                                        }
-                                        const Ctx = struct {
-                                            kvs: []const fgd.EntClass.Field.Type.KV,
-                                            index: usize = 0,
-                                            pub fn next(ctx: *@This()) ?struct { usize, []const u8 } {
-                                                if (ctx.index >= ctx.kvs.len)
-                                                    return null;
-                                                defer ctx.index += 1;
-                                                return .{ ctx.index, ctx.kvs[ctx.index][1] };
-                                            }
-                                        };
-                                        var index: usize = 0;
-                                        var ctx = Ctx{
-                                            .kvs = ch.items,
-                                        };
-                                        try os9gui.combo(
-                                            "{s}",
-                                            .{ch.items[0][1]},
-                                            &index,
-                                            ch.items.len,
-                                            &ctx,
-                                            Ctx.next,
-                                        );
-                                    },
-                                    else => os9gui.label("{s}", .{f.default}),
+                        if (os9gui.button("force populate kvs")) {
+                            if (self.fgd_ctx.base.get(ent.class)) |base| {
+                                const kvs = if (try self.ecs.getOptPtr(id, .key_values)) |kv| kv else blk: {
+                                    try self.ecs.attach(id, .key_values, ecs.KeyValues.init(self.alloc));
+                                    break :blk try self.ecs.getPtr(id, .key_values);
+                                };
+                                for (base.fields.items) |field| {
+                                    try kvs.map.put(field.name, field.default);
                                 }
                             }
-                            os9gui.endL();
                         }
+                        //if (self.fgd_ctx.base.get(ent.class)) |base| {
+                        //    os9gui.label("{s}", .{base.name});
+                        //    scr.layout.pushHeight(400);
+                        //    _ = try os9gui.beginL(Gui.TableLayout{
+                        //        .columns = 2,
+                        //        .item_height = os9gui.style.config.default_item_h,
+                        //    });
+                        //    for (base.fields.items) |f| {
+                        //        os9gui.label("{s}", .{f.name});
+                        //        switch (f.type) {
+                        //            .choices => |ch| {
+                        //                if (ch.items.len == 2 and std.mem.eql(u8, ch.items[0][0], "0")) {
+                        //                    var chekd: bool = false;
+                        //                    _ = os9gui.checkbox("", &chekd);
+
+                        //                    continue;
+                        //                }
+                        //                const Ctx = struct {
+                        //                    kvs: []const fgd.EntClass.Field.Type.KV,
+                        //                    index: usize = 0,
+                        //                    pub fn next(ctx: *@This()) ?struct { usize, []const u8 } {
+                        //                        if (ctx.index >= ctx.kvs.len)
+                        //                            return null;
+                        //                        defer ctx.index += 1;
+                        //                        return .{ ctx.index, ctx.kvs[ctx.index][1] };
+                        //                    }
+                        //                };
+                        //                var index: usize = 0;
+                        //                var ctx = Ctx{
+                        //                    .kvs = ch.items,
+                        //                };
+                        //                try os9gui.combo(
+                        //                    "{s}",
+                        //                    .{ch.items[0][1]},
+                        //                    &index,
+                        //                    ch.items.len,
+                        //                    &ctx,
+                        //                    Ctx.next,
+                        //                );
+                        //            },
+                        //            else => os9gui.label("{s}", .{f.default}),
+                        //        }
+                        //    }
+                        //    os9gui.endL();
+                        //}
                     }
                     if (try self.ecs.getOptPtr(id, .key_values)) |kvs| {
                         os9gui.hr();

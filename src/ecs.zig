@@ -164,7 +164,7 @@ pub const Entity = struct {
         //TODO set the model size of entities hitbox thingy
         if (editor.draw_state.tog.sprite) {
             if (ent.sprite) |spr| {
-                draw_nd.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
+                draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
                 const isp = try editor.getTexture(spr);
                 draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
             }
