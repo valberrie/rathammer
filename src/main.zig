@@ -40,7 +40,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer win.destroyWindow();
 
     const sc = try dpiDetect(&win);
-    const default_item_height = 24;
+    const default_item_height = 25;
     const default_text_height = 20;
     const scaled_item_height = @trunc(default_item_height * sc);
     const scaled_text_height = @trunc(default_text_height * sc);

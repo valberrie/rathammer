@@ -19,7 +19,7 @@ const Skybox = @import("skybox.zig").Skybox;
 const Gizmo = @import("gizmo.zig").Gizmo;
 const raycast = @import("raycast_solid.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
-const texture_load_thread = @import("texture_load_thread.zig");
+const thread_pool = @import("thread_pool.zig");
 const assetbrowse = @import("asset_browser.zig");
 const Conf = @import("config.zig");
 const undo = @import("undo.zig");
@@ -123,20 +123,30 @@ pub const Context = struct {
     const Self = @This();
     const ButtonState = graph.SDL.ButtonState;
 
+    /// Only real state is a timer, has helper functions for naming and pruning autosaves.
     autosaver: Autosaver,
+
+    /// These two have no real state, just exist to prevent excessive memory allocation.
     rayctx: raycast.Ctx,
     csgctx: csg.Context,
+
+    /// Manages mounting of vpks and assigning a unique id to all resource string paths.
     vpkctx: vpk.Context,
-    meshmap: ecs.MeshMap,
-    lower_buf: std.ArrayList(u8),
+
     scratch_buf: std.ArrayList(u8),
     alloc: std.mem.Allocator,
-    name_arena: std.heap.ArenaAllocator,
+
+    /// Stores all the mesh data for solids.
+    meshmap: ecs.MeshMap,
+
+    /// Store static strings for the lifetime of application
     string_storage: StringStorage,
+
+    /// Stores undo state, most changes to world state (ecs) should be done through a undo vtable
     undoctx: undo.UndoContext,
 
+    /// This sucks, clean it up
     fgd_ctx: fgd.EntCtx,
-    icon_map: std.StringHashMap(graph.Texture),
 
     /// These maps map vpkids to their respective resource,
     /// when fetching a resource with getTexture, etc. Something is always returned. If an entry does not exist,
@@ -145,21 +155,27 @@ pub const Context = struct {
     models: std.AutoHashMap(vpk.VpkResId, Model),
 
     skybox: Skybox,
+
+    /// Draw colored text messages to the screen for a short time
     notifier: NotifyCtx,
 
+    /// Gui widget
     asset_browser: assetbrowse.AssetBrowserGui,
 
+    /// Stores all the world state, solids, entities, disp, etc.
     ecs: EcsT,
 
-    texture_load_ctx: texture_load_thread.Context,
+    async_asset_load: thread_pool.Context,
+    /// Used to track tool txtures, so we can easily disable drawing, remove once visgroups are good.
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
     visgroups: VisGroups,
 
     tools: tool_def.ToolRegistry,
 
     draw_state: struct {
-        text_bg_height: f32 = 0,
         meshes_dirty: bool = false,
+
+        /// This should be replaced with visgroups, for the most part.
         tog: struct {
             wireframe: bool = false,
             tools: bool = true,
@@ -201,6 +217,7 @@ pub const Context = struct {
         } = .{},
     },
 
+    /// When we open a file dialog, this is the structure that gets passed as user context
     file_selection: struct {
         mutex: std.Thread.Mutex = .{},
         has_file: enum { waiting, failed, has } = .waiting,
@@ -219,17 +236,17 @@ pub const Context = struct {
 
     edit_state: struct {
         tool_index: usize = 0,
+        /// used to determine if the tool has changed
         last_frame_tool_index: usize = 0,
 
-        //id: ?EcsT.Id = null,
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
+        mpos: graph.Vec2f = undefined,
 
         grid_snap: f32 = 16,
-
-        mpos: graph.Vec2f = undefined,
     } = .{},
 
+    //TODO this is inspector state
     misc_gui_state: struct {
         scroll_a: graph.Vec2f = .{ .x = 0, .y = 0 },
     } = .{},
@@ -248,10 +265,11 @@ pub const Context = struct {
 
     asset: graph.AssetBake.AssetMap,
     asset_atlas: graph.Texture,
+    /// This arena is reset every frame
     frame_arena: std.heap.ArenaAllocator,
-    // basename of map, without extension or path
+    /// basename of map, without extension or path
     loaded_map_name: ?[]const u8 = null,
-    //This is always relative to cwd
+    /// This is always relative to cwd
     loaded_map_path: ?[]const u8 = null,
 
     fn setMapName(self: *Self, filename: []const u8) !void {
@@ -311,20 +329,17 @@ pub const Context = struct {
             .undoctx = undo.UndoContext.init(alloc),
             .string_storage = StringStorage.init(alloc),
             .asset_browser = assetbrowse.AssetBrowserGui.init(alloc),
-            .name_arena = std.heap.ArenaAllocator.init(alloc),
             .tools = tool_def.ToolRegistry.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
             .visgroups = VisGroups.init(alloc),
             .meshmap = ecs.MeshMap.init(alloc),
             .ecs = try EcsT.init(alloc),
-            .lower_buf = std.ArrayList(u8).init(alloc),
             .scratch_buf = std.ArrayList(u8).init(alloc),
             .models = std.AutoHashMap(vpk.VpkResId, Model).init(alloc),
-            .texture_load_ctx = try texture_load_thread.Context.init(alloc, num_threads),
+            .async_asset_load = try thread_pool.Context.init(alloc, num_threads),
             .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
-            .icon_map = std.StringHashMap(graph.Texture).init(alloc),
             .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
 
             .draw_state = .{
@@ -395,8 +410,6 @@ pub const Context = struct {
         self.ecs.deinit();
         self.fgd_ctx.deinit();
         self.notifier.deinit();
-        self.icon_map.deinit();
-        self.lower_buf.deinit();
         self.selection.deinit();
         self.string_storage.deinit();
         self.rayctx.deinit();
@@ -419,9 +432,8 @@ pub const Context = struct {
             self.alloc.destroy(item.value_ptr.*);
         }
         self.meshmap.deinit();
-        self.name_arena.deinit();
         self.draw_state.ctx.deinit();
-        self.texture_load_ctx.deinit();
+        self.async_asset_load.deinit();
 
         //destroy does not take a pointer to alloc, so this is safe.
         self.alloc.destroy(self);
@@ -659,7 +671,7 @@ pub const Context = struct {
             };
             res.value_ptr.*.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.*.tex.id);
 
-            try self.texture_load_ctx.addNotify(res_id, &res.value_ptr.*.notify_vt);
+            try self.async_asset_load.addNotify(res_id, &res.value_ptr.*.notify_vt);
         }
         return res.value_ptr.*;
     }
@@ -885,19 +897,17 @@ pub const Context = struct {
         const res_id = try self.modelIdFromName(mod) orelse return error.noMdl;
         if (self.models.get(res_id)) |_| return res_id; //Don't load model twice!
         try self.models.put(res_id, Model.initEmpty(self.alloc));
-        try self.texture_load_ctx.loadModel(res_id, mod, &self.vpkctx);
+        try self.async_asset_load.loadModel(res_id, mod, &self.vpkctx);
         return res_id;
     }
 
     pub fn loadModelFromId(self: *Self, res_id: vpk.VpkResId) !void {
         if (self.models.get(res_id)) |_| return; //Don't load model twice!
         if (self.vpkctx.namesFromId(res_id)) |names| {
-            self.scratch_buf.clearRetainingCapacity();
-            try self.scratch_buf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
-            const mod = try self.storeString(self.scratch_buf.items);
+            const mod = try self.storeString(try self.printScratch("{s}/{s}.{s}", .{ names.path, names.name, names.ext }));
             try self.models.put(res_id, Model.initEmpty(self.alloc));
 
-            try self.texture_load_ctx.loadModel(res_id, mod, &self.vpkctx);
+            try self.async_asset_load.loadModel(res_id, mod, &self.vpkctx);
         }
     }
 
@@ -925,7 +935,7 @@ pub const Context = struct {
         }
 
         try self.textures.put(res_id, missingTexture());
-        try self.texture_load_ctx.loadTexture(res_id, &self.vpkctx);
+        try self.async_asset_load.loadTexture(res_id, &self.vpkctx);
     }
 
     pub fn loadTextureFromVpk(self: *Self, material: []const u8) !struct { tex: graph.Texture, res_id: vpk.VpkResId } {
@@ -1026,14 +1036,14 @@ pub const Context = struct {
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
         var tcount: usize = 0;
         {
-            self.texture_load_ctx.completed_mutex.lock();
-            defer self.texture_load_ctx.completed_mutex.unlock();
-            tcount = self.texture_load_ctx.completed.items.len;
+            self.async_asset_load.completed_mutex.lock();
+            defer self.async_asset_load.completed_mutex.unlock();
+            tcount = self.async_asset_load.completed.items.len;
             var num_rm_tex: usize = 0;
-            for (self.texture_load_ctx.completed.items) |*completed| {
-                if (completed.data.deinitToTexture(self.texture_load_ctx.alloc)) |texture| {
+            for (self.async_asset_load.completed.items) |*completed| {
+                if (completed.data.deinitToTexture(self.async_asset_load.alloc)) |texture| {
                     try self.textures.put(completed.vpk_res_id, texture);
-                    self.texture_load_ctx.notifyTexture(completed.vpk_res_id, self);
+                    self.async_asset_load.notifyTexture(completed.vpk_res_id, self);
                 } else |err| {
                     log.err("texture init failed with : {}", .{err});
                 }
@@ -1044,16 +1054,16 @@ pub const Context = struct {
                     break;
             }
             for (0..num_rm_tex) |_|
-                _ = self.texture_load_ctx.completed.orderedRemove(0);
+                _ = self.async_asset_load.completed.orderedRemove(0);
 
             var completed_ids = std.ArrayList(vpk.VpkResId).init(self.frame_arena.allocator());
             var num_removed: usize = 0;
-            for (self.texture_load_ctx.completed_models.items) |*completed| {
+            for (self.async_asset_load.completed_models.items) |*completed| {
                 var model = completed.mesh;
                 model.initGl();
                 try self.models.put(completed.res_id, .{ .mesh = model });
                 for (completed.texture_ids.items) |tid| {
-                    try self.texture_load_ctx.addNotify(tid, &completed.mesh.notify_vt);
+                    try self.async_asset_load.addNotify(tid, &completed.mesh.notify_vt);
                 }
                 for (model.meshes.items) |*mesh| {
                     const t = try self.getTexture(mesh.tex_res_id);
@@ -1068,7 +1078,7 @@ pub const Context = struct {
                     break;
             }
             for (0..num_removed) |_|
-                _ = self.texture_load_ctx.completed_models.orderedRemove(0);
+                _ = self.async_asset_load.completed_models.orderedRemove(0);
 
             var m_it = self.ecs.iterator(.entity);
             while (m_it.next()) |ent| {

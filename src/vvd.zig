@@ -6,7 +6,7 @@ const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const vpk = @import("vpk.zig");
 const edit = @import("editor.zig");
-const load_pool = @import("texture_load_thread.zig");
+const load_pool = @import("thread_pool.zig");
 
 const VVD_MAGIC_STRING = "IDSV";
 const MAX_LODS = 8;

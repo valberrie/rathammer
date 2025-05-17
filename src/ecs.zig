@@ -7,7 +7,7 @@ const vpk = @import("vpk.zig");
 const vmf = @import("vmf.zig");
 const util3d = @import("util_3d.zig");
 const meshutil = graph.meshutil;
-const texture_load_thread = @import("texture_load_thread.zig");
+const thread_pool = @import("thread_pool.zig");
 const Editor = @import("editor.zig").Context;
 const DrawCtx = graph.ImmediateDrawingContext;
 const VisGroups = @import("visgroup.zig");
@@ -51,7 +51,7 @@ pub const MeshBatch = struct {
     contains: std.AutoHashMap(EcsT.Id, void),
     is_dirty: bool = false,
 
-    notify_vt: texture_load_thread.DeferredNotifyVtable,
+    notify_vt: thread_pool.DeferredNotifyVtable,
     // Each batch needs to keep track of:
     // needs_rebuild
     // contained_solids:ent_id
@@ -69,7 +69,7 @@ pub const MeshBatch = struct {
         }
     }
 
-    pub fn notify(vt: *texture_load_thread.DeferredNotifyVtable, id: vpk.VpkResId, editor: *Editor) void {
+    pub fn notify(vt: *thread_pool.DeferredNotifyVtable, id: vpk.VpkResId, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("notify_vt", vt));
         if (id == self.tex_res_id) {
             self.tex = (editor.textures.get(id) orelse return);
