@@ -851,7 +851,7 @@ pub const Context = struct {
                     while (it.next()) |item| {
                         var new_list = std.ArrayList(u8).init(self.alloc);
                         try new_list.appendSlice(item.value_ptr.*);
-                        try kvs.map.put(try self.storeString(item.key_ptr.*), new_list);
+                        try kvs.map.put(try self.storeString(item.key_ptr.*), .{ .string = new_list });
                     }
 
                     try self.ecs.attach(new, .key_values, kvs);

@@ -341,10 +341,10 @@ test {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const base_dir = try std.fs.cwd().openDir("/home/rat/.local/share/Steam/steamapps/common/Portal 2/bin", .{});
+    const base_dir = try std.fs.cwd().openDir("Half-Life 2/bin", .{});
 
-    //const in = try base_dir.openFile("base.fgd", .{});
-    const in = try base_dir.openFile("portal.fgd", .{});
+    const in = try base_dir.openFile("base.fgd", .{});
+    //const in = try base_dir.openFile("portal.fgd", .{});
     defer in.close();
 
     const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
@@ -422,6 +422,8 @@ pub const EntClass = struct {
             };
             choices: std.ArrayList(KV),
             flags: std.ArrayList(Flag),
+            color255: void,
+            angle: void,
             generic: void,
         };
         name: []const u8,
@@ -677,6 +679,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         float,
                                         integer,
                                         boolean,
+                                        color255,
+                                        angle,
                                     };
                                     var new_type = EntClass.Field.Type{ .generic = {} };
                                     if (stringToEnum(TypeStr, tkz.getSlice(type_tok))) |st| {
@@ -719,6 +723,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                                     }
                                                 }
                                             },
+                                            .color255 => new_type = .{ .color255 = {} },
+                                            .angle => new_type = .{ .angle = {} },
                                             else => {},
                                         }
                                     } else {

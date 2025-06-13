@@ -9,6 +9,7 @@ pub fn WriteVdf(out_stream_T: type) type {
         state: enum {
             expecting_key,
             expecting_value,
+            in_value,
         } = .expecting_key,
         strbuf: std.ArrayList(u8),
 
@@ -106,6 +107,27 @@ pub fn WriteVdf(out_stream_T: type) type {
             if (self.state != .expecting_value)
                 return error.invalidState;
             try self.out_stream.print(fmt, args);
+            self.state = .expecting_key;
+        }
+
+        pub fn beginValue(self: *Self) !void {
+            if (self.state != .expecting_value)
+                return error.invalidState;
+            try self.out_stream.writeByte('\"');
+            self.state = .in_value;
+        }
+
+        pub fn printInnerValue(self: *Self, comptime fmt: []const u8, args: anytype) !void {
+            if (self.state != .in_value)
+                return error.invalidState;
+
+            try self.out_stream.print(fmt, args);
+        }
+
+        pub fn endValue(self: *Self) !void {
+            if (self.state != .in_value)
+                return error.invalidState;
+            _ = try self.out_stream.write("\"\n");
             self.state = .expecting_key;
         }
 

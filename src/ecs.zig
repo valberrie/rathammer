@@ -163,8 +163,8 @@ pub const Entity = struct {
             return;
         //TODO set the model size of entities hitbox thingy
         if (editor.draw_state.tog.sprite) {
+            draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
             if (ent.sprite) |spr| {
-                draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
                 const isp = try editor.getTexture(spr);
                 draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
             }
@@ -582,8 +582,49 @@ pub const EditorInfo = struct {
 //on x64 an array list is 40bytes
 //for now just use array list
 pub const KeyValues = struct {
+    const Value = union(enum) {
+        const MAX_FLOAT = 8;
+        string: std.ArrayList(u8),
+        floats: struct { count: u8, d: [MAX_FLOAT]f32 },
+        //float4: [4]f32,
+
+        pub fn toFloats(self: *@This(), comptime count: u8) !void {
+            if (count >= MAX_FLOAT)
+                @compileError("not enough floats");
+            switch (self.*) {
+                .floats => {
+                    self.floats.count = count;
+                    //TODO zero out new floats
+                    return;
+                },
+                .string => {
+                    var it = std.mem.splitScalar(u8, self.string.items, ' ');
+                    var ret: [MAX_FLOAT]f32 = undefined;
+                    for (0..count) |i| {
+                        ret[i] = std.fmt.parseFloat(f32, it.next() orelse "0") catch 0;
+                    }
+                    self.string.deinit();
+                    self.* = .{ .floats = .{ .count = count, .d = ret } };
+                },
+            }
+        }
+
+        pub fn clone(self: *@This()) !@This() {
+            switch (self.*) {
+                .string => return .{ .string = try self.string.clone() },
+                else => return self.*,
+            }
+        }
+
+        pub fn deinit(self: *@This()) void {
+            switch (self.*) {
+                .string => |str| str.deinit(),
+                else => {},
+            }
+        }
+    };
     const Self = @This();
-    const MapT = std.StringHashMap(std.ArrayList(u8));
+    const MapT = std.StringHashMap(Value);
     map: MapT,
 
     pub fn dupe(self: *Self) !Self {
@@ -612,19 +653,30 @@ pub const KeyValues = struct {
             if (item.value_ptr.* != .string) return error.invalidKv;
             var new_list = std.ArrayList(u8).init(ctx.alloc);
             try new_list.appendSlice(item.value_ptr.string);
-            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), new_list);
+            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), .{ .string = new_list });
         }
 
         return ret;
     }
 
-    pub fn serial(self: @This(), _: *Editor, jw: anytype) !void {
+    pub fn serial(self: @This(), edit: *Editor, jw: anytype) !void {
         try jw.beginObject();
         {
             var it = self.map.iterator();
             while (it.next()) |item| {
                 try jw.objectField(item.key_ptr.*);
-                try jw.write(item.value_ptr.items);
+                switch (item.value_ptr.*) {
+                    .string => |str| try jw.write(str.items),
+                    .floats => |c| {
+                        edit.scratch_buf.clearRetainingCapacity();
+                        for (c.d[0..c.count]) |cc|
+                            try edit.scratch_buf.writer().print("{d} ", .{cc});
+
+                        try jw.write(edit.scratch_buf.items);
+                        //try jw.print("\"{d} {d} {d}\"", .{ c[0], c[1], c[2] }),
+                    },
+                    //else => try jw.write(""), //TODO store type data
+                }
             }
         }
         try jw.endObject();

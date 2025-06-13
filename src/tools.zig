@@ -918,40 +918,48 @@ pub const PlaceModel = struct {
     }
 
     pub fn modelPlace(tool: *@This(), self: *Editor, td: ToolData) !void {
-        const model_id = self.asset_browser.selected_model_vpk_id orelse return;
-        const omod = self.models.get(model_id);
-        if (omod != null and omod.?.mesh != null) {
-            const mod = omod.?.mesh.?;
-            const pot = self.screenRay(td.screen_area, td.view_3d.*);
-            if (pot.len > 0) {
-                const p = pot[0];
-                const point = snapV3(p.point, self.edit_state.grid_snap);
-                const mat1 = graph.za.Mat4.fromTranslate(point);
-                //zyx
-                //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
-                mod.drawSimple(td.view_3d.*, mat1, self.draw_state.basic_shader);
-                //Draw the model at
-                if (self.edit_state.lmouse == .rising) {
-                    const new = try self.ecs.createEntity();
-                    var bb = ecs.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
-                    bb.origin_offset = mod.hull_min.scale(-1);
-                    bb.a = mod.hull_min;
-                    bb.b = mod.hull_max;
-                    bb.setFromOrigin(point);
-                    try self.ecs.attach(new, .entity, .{
-                        .origin = point,
-                        .angle = Vec3.zero(),
-                        .class = try self.storeString(@tagName(tool.ent_class)),
-                        .model = null,
-                        //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
-                        .model_id = model_id,
-                        .sprite = null,
-                    });
-                    try self.ecs.attach(new, .bounding_box, bb);
-                    const ustack = try self.undoctx.pushNew();
-                    try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
-                    undo.applyRedo(ustack.items, self);
+        const pot = self.screenRay(td.screen_area, td.view_3d.*);
+        if (pot.len > 0) {
+            const p = pot[0];
+            const point = snapV3(p.point, self.edit_state.grid_snap);
+            const mat1 = graph.za.Mat4.fromTranslate(point);
+            const model_id = self.asset_browser.selected_model_vpk_id;
+            const mod = blk: {
+                const omod = self.models.get(model_id orelse break :blk null);
+                if (omod != null and omod.?.mesh != null) {
+                    const mod = omod.?.mesh.?;
+                    break :blk mod;
                 }
+                break :blk null;
+            };
+            //zyx
+            //const mat3 = mat1.mul(y1.mul(x1.mul(z)));
+            if (mod) |m|
+                m.drawSimple(td.view_3d.*, mat1, self.draw_state.basic_shader);
+            //Draw the model at
+            var bb = ecs.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+            if (mod) |m| {
+                bb.a = m.hull_min;
+                bb.b = m.hull_max;
+                bb.origin_offset = m.hull_min.scale(-1);
+            }
+            bb.setFromOrigin(point);
+            const COLOR_FRAME = 0xe8a130_ee;
+            self.draw_state.ctx.cubeFrame(bb.a, bb.b.sub(bb.a), COLOR_FRAME);
+            if (self.edit_state.lmouse == .rising) {
+                const new = try self.ecs.createEntity();
+                try self.ecs.attach(new, .entity, .{
+                    .origin = point,
+                    .angle = Vec3.zero(),
+                    .class = try self.storeString(@tagName(tool.ent_class)),
+                    .model = null,
+                    .model_id = model_id,
+                    .sprite = null,
+                });
+                try self.ecs.attach(new, .bounding_box, bb);
+                const ustack = try self.undoctx.pushNew();
+                try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
+                undo.applyRedo(ustack.items, self);
             }
         }
     }

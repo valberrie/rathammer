@@ -70,7 +70,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                     try new_list.appendSlice(field.default);
                                     if (kvs.map.getPtr(field.name)) |old|
                                         old.deinit();
-                                    try kvs.map.put(field.name, new_list);
+                                    try kvs.map.put(field.name, .{ .string = new_list });
                                 }
                             }
                         }
@@ -94,12 +94,55 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                     if (!res.found_existing) {
                                         var new_list = std.ArrayList(u8).init(self.alloc);
                                         try new_list.appendSlice(req_field.default);
-                                        res.value_ptr.* = new_list;
+                                        res.value_ptr.* = .{ .string = new_list };
                                     }
                                     os9gui.label("{s}", .{res.key_ptr.*});
                                     switch (req_field.type) {
-                                        .choices => |ch| try doChoices(ch, os9gui, res.value_ptr),
-                                        else => try os9gui.textbox(res.value_ptr),
+                                        .choices => |ch| {
+                                            if (res.value_ptr.* == .string)
+                                                try doChoices(ch, os9gui, &res.value_ptr.string);
+                                        },
+                                        .angle => {
+                                            try res.value_ptr.toFloats(3);
+                                            _ = try os9gui.beginH(3);
+                                            defer os9gui.endL();
+
+                                            const a = &res.value_ptr.floats;
+
+                                            try os9gui.textboxNumber(&a.d[0]);
+                                            try os9gui.textboxNumber(&a.d[1]);
+                                            try os9gui.textboxNumber(&a.d[2]);
+                                        },
+                                        .color255 => {
+                                            _ = try os9gui.beginH(2);
+                                            defer os9gui.endL();
+                                            try res.value_ptr.toFloats(4);
+                                            const color = &res.value_ptr.floats.d;
+                                            const old_hsva = graph.ptypes.colorToHsva(
+                                                .{
+                                                    .r = @intFromFloat(color[0]),
+                                                    .g = @intFromFloat(color[1]),
+                                                    .b = @intFromFloat(color[2]),
+                                                    .a = 255,
+                                                },
+                                            );
+                                            var hsva = old_hsva;
+                                            try os9gui.colorPicker(&hsva);
+                                            if (!std.mem.eql(u8, std.mem.asBytes(&old_hsva), std.mem.asBytes(&hsva))) {
+                                                const col = graph.ptypes.hsvaToColor(hsva);
+                                                color[0] = @floatFromInt(col.r);
+                                                color[1] = @floatFromInt(col.g);
+                                                color[2] = @floatFromInt(col.b);
+                                            }
+
+                                            try os9gui.textboxNumber(&color[3]);
+                                        },
+                                        else => {
+                                            switch (res.value_ptr.*) {
+                                                .string => try os9gui.textbox(&res.value_ptr.string),
+                                                else => os9gui.label("", .{}),
+                                            }
+                                        },
                                     }
                                 }
                             }
