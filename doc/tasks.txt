@@ -11,6 +11,7 @@ toggle texture lock when translating
 load all the body parts of mdl's, not just the first.
 don't raycast hidden items (tools, models)
 fix displacment uv calculation
+properly set gl_line thickness
 Stop the frame hitches when searching in asset browser
     Why do they happen?
 
@@ -25,3 +26,4 @@ ensure things get set and loaded
 
 DONE set correct bounding boxes of deferred model loads
 DONE catch errors in tools and return them
+

@@ -368,14 +368,14 @@ pub const EntCtx = struct {
     alloc: Allocator,
     ents: std.ArrayList(EntClass),
 
-    base: std.StringHashMap(EntClass),
+    base: std.StringHashMap(usize), // classname -> ents.items[index]
 
     pub fn init(alloc: Allocator) Self {
         return .{
             .string_alloc = std.heap.ArenaAllocator.init(alloc),
             .alloc = alloc,
             .ents = std.ArrayList(EntClass).init(alloc),
-            .base = std.StringHashMap(EntClass).init(alloc),
+            .base = std.StringHashMap(usize).init(alloc),
         };
     }
 
@@ -384,12 +384,29 @@ pub const EntCtx = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        var it = self.base.valueIterator();
-        while (it.next()) |item|
+        for (self.ents.items) |*item| {
             item.deinit();
+        }
         self.base.deinit();
         self.ents.deinit();
         self.string_alloc.deinit();
+    }
+
+    pub fn getId(self: *Self, class_name: []const u8) ?usize {
+        return self.base.get(class_name);
+    }
+
+    pub fn getPtr(self: *Self, class_name: []const u8) ?*EntClass {
+        const index = self.base.get(class_name) orelse return null;
+        if (index >= self.ents.items.len)
+            return null;
+        return &self.ents.items[index];
+    }
+
+    pub fn nameFromId(self: *Self, id: usize) ?[]const u8 {
+        if (id < self.ents.items.len)
+            return self.ents.items[id].name;
+        return null;
     }
 };
 
@@ -541,7 +558,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                             .base => {
                                                 var it = Token.orderedTokenIterator(.comma, ps);
                                                 while (it.next()) |tt| {
-                                                    const base = ctx.base.getPtr(tkz.getSlice(tt)) orelse {
+                                                    const base = ctx.getPtr(tkz.getSlice(tt)) orelse {
                                                         std.debug.print("INVALID CLASS {s}\n", .{tkz.getSlice(tt)});
                                                         continue;
                                                     };
@@ -718,8 +735,11 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                             }
                         }
                         switch (ct) {
-                            else => try ctx.base.put(new_class.name, new_class),
-                            //else => try ctx.ents.append(new_class),
+                            else => {
+                                const index = ctx.ents.items.len;
+                                try ctx.ents.append(new_class);
+                                try ctx.base.put(new_class.name, index);
+                            },
                         }
                     },
                 }

@@ -29,9 +29,9 @@ pub const initToolReg = null;
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) ToolError!void,
-    guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
+    guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
 };
 
 const ToolError = error{
@@ -46,6 +46,7 @@ const ExampleTool = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
+    /// Called when ToolRegistry.register(@This()) is called
     pub fn create(_: std.mem.Allocator) *i3DTool {}
     //implement functions to fill out all non optional fields of i3DTool
 };
@@ -872,6 +873,7 @@ pub const TextureTool = struct {
     }
 };
 
+//TODO change this to PlaceEntity
 pub const PlaceModel = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,

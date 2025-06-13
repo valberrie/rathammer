@@ -31,7 +31,7 @@ const Selection = @import("selection.zig");
 const VisGroups = @import("visgroup.zig");
 const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
-const DISABLE_SPLASH = true;
+const DISABLE_SPLASH = false;
 
 const util3d = @import("util_3d.zig");
 
@@ -263,8 +263,10 @@ pub const Context = struct {
         autosave: Dir,
     },
 
+    /// These are currently only used for baking all tool icons into an atlas.
     asset: graph.AssetBake.AssetMap,
     asset_atlas: graph.Texture,
+
     /// This arena is reset every frame
     frame_arena: std.heap.ArenaAllocator,
     /// basename of map, without extension or path
@@ -819,7 +821,7 @@ pub const Context = struct {
                     }
                     var sprite_tex: ?vpk.VpkResId = null;
                     { //Fgd stuff
-                        if (self.fgd_ctx.base.get(ent.classname)) |base| {
+                        if (self.fgd_ctx.getPtr(ent.classname)) |base| {
                             var sl = base.iconsprite;
                             if (sl.len > 0) {
                                 if (std.mem.endsWith(u8, base.iconsprite, ".vmt"))
@@ -1108,6 +1110,10 @@ pub const Context = struct {
 
 pub const LoadCtx = struct {
     const builtin = @import("builtin");
+
+    //No need for high fps when loading. Only repaint this often.
+    refresh_period_ms: usize = 66,
+
     buffer: [256]u8 = undefined,
     timer: std.time.Timer,
     draw: *graph.ImmediateDrawingContext,
@@ -1124,8 +1130,7 @@ pub const LoadCtx = struct {
 
     pub fn printCb(self: *@This(), comptime fmt: []const u8, args: anytype) void {
         self.cb_count += 1;
-        //No need for high fps when loading, this is 15fps
-        if (self.timer.read() / std.time.ns_per_ms < 66) {
+        if (self.timer.read() / std.time.ns_per_ms < self.refresh_period_ms) {
             return;
         }
         self.cb_count -= 1;
@@ -1140,7 +1145,7 @@ pub const LoadCtx = struct {
 
     pub fn cb(self: *@This(), message: []const u8) void {
         self.cb_count += 1;
-        if (self.timer.read() / std.time.ns_per_ms < 8) {
+        if (self.timer.read() / std.time.ns_per_ms < self.refresh_period_ms) {
             return;
         }
         self.timer.reset();
@@ -1173,24 +1178,17 @@ pub const LoadCtx = struct {
             .{message},
             tbox,
             20,
-            //tbox.h,
             0xff,
             .{},
             self.os9gui.font,
         );
         const p = @min(1, perc);
         self.os9gui.gui.drawRectFilled(pbar.split(.vertical, pbar.w * p)[0], 0xf7a41dff);
-        //self.draw.rectTex(sr, self.splash.rect(), self.splash);
-        //self.draw.text(
-        //    tbox.pos(),
-        //    message,
-        //    &self.font.font,
-        //    tbox.h,
-        //    0xff,
-        //);
     }
 
     pub fn loadedSplash(self: *@This(), end: bool) !void {
+        if (DISABLE_SPLASH)
+            return;
         if (self.draw_splash) {
             var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
             try fbs.writer().print("v0.0.1 Loaded in {d:.2} ms. {s}.{s}.{s}", .{
@@ -1208,12 +1206,12 @@ pub const LoadCtx = struct {
     }
 };
 
+/// Returns the infamous pink and black checker texture.
 pub fn missingTexture() graph.Texture {
     const static = struct {
         const m = [3]u8{ 0xfc, 0x05, 0xbe };
         const b = [3]u8{ 0x0, 0x0, 0x0 };
         const data = m ++ b ++ b ++ m;
-        //const data = [_]u8{ 0xfc, 0x05, 0xbe, b,b,b, };
         var texture: ?graph.Texture = null;
     };
 

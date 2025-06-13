@@ -272,7 +272,7 @@ pub const UndoCreateDestroy = struct {
     vt: iUndo,
 
     id: Id,
-    /// area we undoing a creation, or a destruction
+    /// are we undoing a creation, or a destruction
     kind: Kind,
 
     pub fn create(alloc: std.mem.Allocator, id: Id, kind: Kind) !*iUndo {

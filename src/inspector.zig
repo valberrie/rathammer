@@ -7,6 +7,36 @@ const Editor = @import("editor.zig").Context;
 const Os9Gui = graph.Os9Gui;
 const eql = std.mem.eql;
 
+pub fn classCombo(os9gui: *Os9Gui, class_name: *[]const u8, fgdctx: *fgd.EntCtx) !void {
+    const Ctx = struct {
+        fgdctx: *fgd.EntCtx,
+        index: usize = 0,
+
+        pub fn next(ctx: *@This()) ?struct { usize, []const u8 } {
+            if (ctx.index >= ctx.fgdctx.ents.items.len)
+                return null;
+            defer ctx.index += 1;
+            return .{ ctx.index, ctx.fgdctx.ents.items[ctx.index].name };
+        }
+    };
+    const old_i = fgdctx.getId(class_name.*) orelse 0;
+    if (old_i >= fgdctx.ents.items.len)
+        return;
+    var index = old_i;
+    var ctx = Ctx{ .fgdctx = fgdctx };
+    try os9gui.combo(
+        "{s}",
+        .{class_name.*},
+        &index,
+        fgdctx.ents.items.len,
+        &ctx,
+        Ctx.next,
+    );
+    if (index != old_i) {
+        class_name.* = fgdctx.nameFromId(index) orelse class_name.*;
+    }
+}
+
 pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {
     if (try os9gui.beginTlWindow(screen_area)) {
         defer os9gui.endTlWindow();
@@ -27,8 +57,10 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                 //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
                 if (self.selection.single_id) |id| {
                     if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+                        try classCombo(os9gui, &ent.class, &self.fgd_ctx);
+
                         if (os9gui.button("force populate kvs")) {
-                            if (self.fgd_ctx.base.get(ent.class)) |base| {
+                            if (self.fgd_ctx.getPtr(ent.class)) |base| {
                                 const kvs = if (try self.ecs.getOptPtr(id, .key_values)) |kv| kv else blk: {
                                     try self.ecs.attach(id, .key_values, ecs.KeyValues.init(self.alloc));
                                     break :blk try self.ecs.getPtr(id, .key_values);
@@ -48,7 +80,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                         };
                         {
                             os9gui.hr();
-                            if (self.fgd_ctx.base.get(ent.class)) |base| {
+                            if (self.fgd_ctx.getPtr(ent.class)) |base| {
                                 const ITEM_HEIGHT = os9gui.style.config.default_item_h;
                                 scr.layout.pushHeight(ITEM_HEIGHT * @as(f32, @floatFromInt(base.fields.items.len)));
 
