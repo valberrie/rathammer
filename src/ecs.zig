@@ -581,6 +581,17 @@ pub const EditorInfo = struct {
 //most kvs are small < 16bytes
 //on x64 an array list is 40bytes
 //for now just use array list
+//
+// Storing everything as a string keeps storage simple and makes direct copy and paste possible.
+// Manipulating strings as arrays of numbers is annoying however.
+// we need to make the gui have some keyboard input stuff.
+// selecting a widget using keyboard.
+// pasting into a widget
+//
+// user selects kv "_light"
+// a red box is drawn around widget to indicate focus.
+// user press ctrl-v with the string "255 255 255 800" in clipboard.
+// the relevant get filled out.
 pub const KeyValues = struct {
     const Value = union(enum) {
         const MAX_FLOAT = 8;

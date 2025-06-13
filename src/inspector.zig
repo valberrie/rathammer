@@ -114,6 +114,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                             try os9gui.textboxNumber(&a.d[2]);
                                         },
                                         .color255 => {
+                                            _ = os9gui.gui.isFocused();
                                             _ = try os9gui.beginH(2);
                                             defer os9gui.endL();
                                             try res.value_ptr.toFloats(4);
