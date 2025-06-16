@@ -148,7 +148,14 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                         .model => {
                                             _ = try os9gui.beginH(2);
                                             defer os9gui.endL();
-                                            if (os9gui.button("Select")) {}
+                                            if (os9gui.button("Select")) {
+                                                self.asset_browser.dialog_state = .{
+                                                    .target_id = id,
+                                                    .previous_pane_index = self.draw_state.tab_index,
+                                                    .kind = .model,
+                                                };
+                                                self.draw_state.tab_index = self.draw_state.model_browser_tab_index;
+                                            }
                                             try os9gui.textbox(&res.value_ptr.string);
                                         },
                                         .generic, .flags => {

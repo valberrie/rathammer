@@ -10,14 +10,10 @@ const vpk = @import("vpk.zig");
 const edit = @import("editor.zig");
 const Editor = @import("editor.zig").Context;
 const Vec3 = V3f;
-const util3d = @import("util_3d.zig");
 const Os9Gui = graph.gui_app.Os9Gui;
-const guiutil = graph.gui_app;
 const Gui = graph.Gui;
 const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
-const VisGroup = @import("visgroup.zig");
-const inspector = @import("inspector.zig");
 
 const Conf = @import("config.zig");
 
@@ -105,39 +101,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
 
-    const Pane = enum {
-        main_3d_view,
-        asset_browser,
-        inspector,
-        model_preview,
-        model_browser,
-        file_browser,
-        about,
-    };
     var areas_buf: [10]graph.Rect = undefined;
-    var fb = try guiutil.FileBrowser.init(alloc, std.fs.cwd());
-    defer fb.deinit();
 
+    //TODO rewrite the tab system to allow for full control over splitting
     var splits: [256]Split.Op = undefined;
-    var panes: [256]Pane = undefined;
+    var panes: [256]editor_view.Pane = undefined;
     var SI: usize = 0;
     var PI: usize = 0;
-    const Tab = struct {
-        split: []Split.Op,
-        panes: []Pane,
-
-        fn newSplit(s: []Split.Op, i: *usize, sp: []const Split.Op) []Split.Op {
-            @memcpy(s[i.* .. i.* + sp.len], sp);
-            defer i.* += sp.len;
-            return s[i.* .. i.* + sp.len];
-        }
-
-        fn newPane(p: []Pane, pi: *usize, ps: []const Pane) []Pane {
-            @memcpy(p[pi.* .. pi.* + ps.len], ps);
-            defer pi.* += ps.len;
-            return p[pi.* .. pi.* + ps.len];
-        }
-    };
+    const Tab = editor_view.Tab;
     const tabs = [_]Tab{
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
@@ -156,7 +127,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .panes = Tab.newPane(&panes, &PI, &.{.main_3d_view}),
         },
     };
-    var tab_index: usize = tabs.len - 1;
     var paused = false;
 
     win.grabMouse(true);
@@ -172,70 +142,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
             const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
             try os9gui.beginFrame(is, &win);
-            if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
-                defer os9gui.endTlWindow();
-                const vlayout = try os9gui.beginV();
-                defer os9gui.endL();
-                os9gui.label("You are paused", .{});
-                if (os9gui.button("Unpause"))
-                    paused = false;
-                if (os9gui.button("Quit"))
-                    break :main_loop;
-                if (os9gui.button("Force autosave"))
-                    editor.autosaver.force = true;
-                //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
-                const ds = &editor.draw_state;
-                _ = os9gui.checkbox("draw tools", &ds.tog.tools);
-                _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
-                _ = os9gui.checkbox("draw model", &ds.tog.models);
-                _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
-                os9gui.label("num model {d}", .{editor.models.count()});
-                os9gui.label("num mesh {d}", .{editor.meshmap.count()});
-
-                try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
-
-                var needs_rebuild = false;
-                if (editor.visgroups.getRoot()) |vg_| {
-                    const Help = struct {
-                        fn recur(vs: *VisGroup, vg: *VisGroup.Group, depth: usize, os9g: *Os9Gui, vl: *Gui.VerticalLayout, rebuild_: *bool, cascade_down: ?bool) void {
-                            vl.padding.left = @floatFromInt(depth * 20);
-                            var the_bool = !vs.disabled.isSet(vg.id);
-                            const changed = os9g.checkbox(vg.name, &the_bool);
-                            rebuild_.* = rebuild_.* or changed;
-                            vs.disabled.setValue(vg.id, if (cascade_down) |cd| cd else !the_bool); //We invert the bool so the checkbox looks nice
-                            for (vg.children.items) |id| {
-                                recur(
-                                    vs,
-                                    &vs.groups.items[id],
-                                    depth + 2,
-                                    os9g,
-                                    vl,
-                                    rebuild_,
-                                    if (cascade_down) |cd| cd else (if (changed) !the_bool else null),
-                                );
-                                //_ = os9gui.buttonEx("{s} {d}", .{ group.name, group.id }, .{});
-                            }
-                        }
-                    };
-                    Help.recur(&editor.visgroups, vg_, 0, &os9gui, vlayout, &needs_rebuild, null);
-                }
-                if (needs_rebuild) {
-                    std.debug.print("Rebild\n", .{});
-                    var it = editor.ecs.iterator(.editor_info);
-                    while (it.next()) |info| {
-                        var copy = editor.visgroups.disabled;
-                        copy.setIntersection(info.vis_mask);
-                        if (copy.findFirstSet() != null) {
-                            editor.ecs.attachComponent(it.i, .invisible, .{}) catch {}; // We discard error incase it is already attached
-                            if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
-                                try solid.removeFromMeshMap(it.i, editor);
-                        } else {
-                            _ = try editor.ecs.removeComponentOpt(it.i, .invisible);
-                            if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
-                                try solid.rebuild(it.i, editor);
-                        }
-                    }
-                }
+            switch (try editor_view.drawPauseMenu(editor, &os9gui, &draw, &paused)) {
+                .quit => break :main_loop,
+                .nothing => {},
             }
             try os9gui.endFrame(&draw);
             try draw.end(editor.draw_state.cam3d);
@@ -286,7 +195,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
         for (config.keys.workspace.items, 0..) |b, i| {
             if (win.isBindState(b.b, .rising))
-                tab_index = i;
+                editor.draw_state.tab_index = i;
         }
 
         if (win.isBindState(config.keys.grid_inc.b, .rising))
@@ -294,9 +203,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         if (win.isBindState(config.keys.grid_dec.b, .rising))
             editor.edit_state.grid_snap /= 2;
         editor.edit_state.grid_snap = std.math.clamp(editor.edit_state.grid_snap, 1, 4096);
-        tab_index = @min(tab_index, tabs.len - 1);
+        editor.draw_state.tab_index = @min(editor.draw_state.tab_index, tabs.len - 1);
 
-        const tab = tabs[tab_index];
+        const tab = tabs[editor.draw_state.tab_index];
         const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
         {
             const state_btns = [_]graph.SDL.keycodes.Scancode{ ._1, ._2, ._3, ._4, ._5, ._6, ._7 };
@@ -315,47 +224,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             const has_mouse = pane_area.containsPoint(win.mouse.pos);
-            switch (pane) {
-                .main_3d_view => {
-                    editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
-                    editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), &win, pane_area.center());
-                    try editor_view.draw3Dview(editor, pane_area, &draw, &win, &os9gui);
-                },
-                .about => {
-                    if (try os9gui.beginTlWindow(pane_area)) {
-                        defer os9gui.endTlWindow();
-                        _ = try os9gui.beginV();
-                        defer os9gui.endL();
-                        os9gui.label("Hello this is the rat hammer", .{});
-                        try os9gui.enumCombo(
-                            "Select pane {s}",
-                            .{@tagName(pane)},
-                            &tabs[tab_index].panes[p_i],
-                        );
-                    }
-                },
-                .model_browser => try editor.asset_browser.drawEditWindow(pane_area, &os9gui, editor, &config, .model),
-                .asset_browser => {
-                    try editor.asset_browser.drawEditWindow(pane_area, &os9gui, editor, &config, .texture);
-                },
-                .inspector => try inspector.drawInspector(editor, pane_area, &os9gui),
-                .model_preview => {
-                    try editor.asset_browser.drawModelPreview(
-                        &win,
-                        pane_area,
-                        has_mouse,
-                        cam_state,
-                        editor,
-                        &draw,
-                    );
-                },
-                .file_browser => {
-                    if (try os9gui.beginTlWindow(pane_area)) {
-                        defer os9gui.endTlWindow();
-                        try fb.update(&os9gui);
-                    }
-                },
-            }
+            try editor_view.drawPane(editor, pane, has_mouse, cam_state, &win, pane_area, &draw, &os9gui);
         }
         editor.draw_state.grab.endFrame();
 

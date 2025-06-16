@@ -14,8 +14,25 @@ const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
 //if res_id is not found in self.entries, we instead search through self.loose_dirs
 //for each loose_dir:
 //  fs.tryOpen(path)
+//
+//Rather than do a search, at mounting, walk the directories and add all files, if this takes a long time,
+//create a cache file consisting of:
+//  mtimes of all directories, recursive
+//  vpk index data
+//
+//Add a flag to force rebuild
 
 pub const VpkResId = u64;
+
+pub const IdOrName = union(enum) {
+    id: VpkResId,
+    name: []const u8,
+};
+
+pub const IdAndName = struct {
+    id: VpkResId,
+    name: []const u8,
+};
 ///16 bits: extension_index
 ///16 bits: path_index
 ///32 bits: entry_index
@@ -154,6 +171,7 @@ pub const Context = struct {
 
     /// Scratch buffers
     strbuf: std.ArrayList(u8),
+    name_buf: std.ArrayList(u8),
     split_buf: std.ArrayList(u8),
     filebuf: std.ArrayList(u8),
 
@@ -169,6 +187,7 @@ pub const Context = struct {
             .res_map = IdMap.init(alloc),
             .entries = IdEntryMap.init(alloc),
             .loose_dirs = std.ArrayList(std.fs.Dir).init(alloc),
+            .name_buf = std.ArrayList(u8).init(alloc),
 
             .strbuf = std.ArrayList(u8).init(alloc),
             .split_buf = std.ArrayList(u8).init(alloc),
@@ -195,6 +214,7 @@ pub const Context = struct {
             dir.close();
         self.loose_dirs.deinit();
 
+        self.name_buf.deinit();
         self.extension_map.deinit();
         self.path_map.deinit();
         self.res_map.deinit();
@@ -226,6 +246,30 @@ pub const Context = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
         return self.namesFromId_(id);
+    }
+
+    /// clobbers and returns memory from namebuf
+    pub fn resolveId(self: *Self, id: IdOrName) !?IdAndName {
+        self.name_buf.clearRetainingCapacity();
+        switch (id) {
+            .id => |idd| {
+                const names = self.namesFromId(idd) orelse return null;
+                try self.name_buf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
+                return .{
+                    .id = idd,
+                    .name = self.name_buf.items,
+                };
+            },
+            .name => |name| {
+                const idd = try self.getResourceIdString(name) orelse return null;
+
+                try self.name_buf.appendSlice(name);
+                return .{
+                    .id = idd,
+                    .name = self.name_buf.items,
+                };
+            },
+        }
     }
 
     fn writeDump(self: *Self, comptime fmt: []const u8, args: anytype) void {

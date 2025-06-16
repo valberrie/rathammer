@@ -15,7 +15,79 @@ const fgd = @import("fgd.zig");
 const undo = @import("undo.zig");
 const tools = @import("tools.zig");
 const ecs = @import("ecs.zig");
+const inspector = @import("inspector.zig");
 const eql = std.mem.eql;
+const VisGroup = @import("visgroup.zig");
+const Os9Gui = graph.Os9Gui;
+
+pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.ImmediateDrawingContext, paused: *bool) !enum { quit, nothing } {
+    if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
+        defer os9gui.endTlWindow();
+        const vlayout = try os9gui.beginV();
+        defer os9gui.endL();
+        os9gui.label("You are paused", .{});
+        if (os9gui.button("Unpause"))
+            paused.* = false;
+        if (os9gui.button("Quit"))
+            return .quit;
+        if (os9gui.button("Force autosave"))
+            editor.autosaver.force = true;
+        //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
+        const ds = &editor.draw_state;
+        _ = os9gui.checkbox("draw tools", &ds.tog.tools);
+        _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
+        _ = os9gui.checkbox("draw model", &ds.tog.models);
+        _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
+        os9gui.label("num model {d}", .{editor.models.count()});
+        os9gui.label("num mesh {d}", .{editor.meshmap.count()});
+
+        try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
+
+        var needs_rebuild = false;
+        if (editor.visgroups.getRoot()) |vg_| {
+            const Help = struct {
+                fn recur(vs: *VisGroup, vg: *VisGroup.Group, depth: usize, os9g: *Os9Gui, vl: *Gui.VerticalLayout, rebuild_: *bool, cascade_down: ?bool) void {
+                    vl.padding.left = @floatFromInt(depth * 20);
+                    var the_bool = !vs.disabled.isSet(vg.id);
+                    const changed = os9g.checkbox(vg.name, &the_bool);
+                    rebuild_.* = rebuild_.* or changed;
+                    vs.disabled.setValue(vg.id, if (cascade_down) |cd| cd else !the_bool); //We invert the bool so the checkbox looks nice
+                    for (vg.children.items) |id| {
+                        recur(
+                            vs,
+                            &vs.groups.items[id],
+                            depth + 2,
+                            os9g,
+                            vl,
+                            rebuild_,
+                            if (cascade_down) |cd| cd else (if (changed) !the_bool else null),
+                        );
+                        //_ = os9gui.buttonEx("{s} {d}", .{ group.name, group.id }, .{});
+                    }
+                }
+            };
+            Help.recur(&editor.visgroups, vg_, 0, os9gui, vlayout, &needs_rebuild, null);
+        }
+        if (needs_rebuild) {
+            std.debug.print("Rebild\n", .{});
+            var it = editor.ecs.iterator(.editor_info);
+            while (it.next()) |info| {
+                var copy = editor.visgroups.disabled;
+                copy.setIntersection(info.vis_mask);
+                if (copy.findFirstSet() != null) {
+                    editor.ecs.attachComponent(it.i, .invisible, .{}) catch {}; // We discard error incase it is already attached
+                    if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
+                        try solid.removeFromMeshMap(it.i, editor);
+                } else {
+                    _ = try editor.ecs.removeComponentOpt(it.i, .invisible);
+                    if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
+                        try solid.rebuild(it.i, editor);
+                }
+            }
+        }
+    }
+    return .nothing;
+}
 
 pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, os9gui: *graph.Os9Gui) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
@@ -160,4 +232,73 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     try draw_nd.flush(null, self.draw_state.cam3d);
     self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw);
     try draw.flush(null, null);
+}
+
+pub const Pane = enum {
+    main_3d_view,
+    asset_browser,
+    inspector,
+    model_preview,
+    model_browser,
+    about,
+};
+const Split = @import("splitter.zig");
+pub const Tab = struct {
+    split: []Split.Op,
+    panes: []Pane,
+
+    pub fn newSplit(s: []Split.Op, i: *usize, sp: []const Split.Op) []Split.Op {
+        @memcpy(s[i.* .. i.* + sp.len], sp);
+        defer i.* += sp.len;
+        return s[i.* .. i.* + sp.len];
+    }
+
+    pub fn newPane(p: []Pane, pi: *usize, ps: []const Pane) []Pane {
+        @memcpy(p[pi.* .. pi.* + ps.len], ps);
+        defer pi.* += ps.len;
+        return p[pi.* .. pi.* + ps.len];
+    }
+};
+
+const CamState = graph.ptypes.Camera3D.MoveState;
+pub fn drawPane(
+    editor: *Context,
+    pane: Pane,
+    has_mouse: bool,
+    cam_state: CamState,
+    win: *graph.SDL.Window,
+    pane_area: graph.Rect,
+    draw: *graph.ImmediateDrawingContext,
+    os9gui: *graph.Os9Gui,
+) !void {
+    switch (pane) {
+        .main_3d_view => {
+            editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
+            editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), win, pane_area.center());
+            try draw3Dview(editor, pane_area, draw, win, os9gui);
+        },
+        .about => {
+            if (try os9gui.beginTlWindow(pane_area)) {
+                defer os9gui.endTlWindow();
+                _ = try os9gui.beginV();
+                defer os9gui.endL();
+                os9gui.label("Hello this is the rat hammer", .{});
+            }
+        },
+        .model_browser => try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .model),
+        .asset_browser => {
+            try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .texture);
+        },
+        .inspector => try inspector.drawInspector(editor, pane_area, os9gui),
+        .model_preview => {
+            try editor.asset_browser.drawModelPreview(
+                win,
+                pane_area,
+                has_mouse,
+                cam_state,
+                editor,
+                draw,
+            );
+        },
+    }
 }

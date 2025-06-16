@@ -173,7 +173,13 @@ pub const Context = struct {
     tools: tool_def.ToolRegistry,
 
     draw_state: struct {
+        tab_index: usize = 0,
         meshes_dirty: bool = false,
+
+        //TODO remove this once we have a decent split system
+        //Used by inspector when clicking select on a texture or model kv
+        texture_browser_tab_index: usize = 1,
+        model_browser_tab_index: usize = 2,
 
         /// This should be replaced with visgroups, for the most part.
         tog: struct {
@@ -467,7 +473,7 @@ pub const Context = struct {
         const wr = outfile.writer();
         var bwr = std.io.bufferedWriter(wr);
         const bb = bwr.writer();
-        var jwr = std.json.writeStream(bb, .{});
+        var jwr = std.json.writeStream(bb, .{ .whitespace = .indent_1 });
         try jwr.beginObject();
         {
             try jwr.objectField("editor");
@@ -667,6 +673,7 @@ pub const Context = struct {
                         ent._model_id = self.modelIdFromName(model) catch null;
                     }
                 }
+                try ent.setClass(self, ent.class);
             }
         }
         mesh_build_time.end();
@@ -790,6 +797,8 @@ pub const Context = struct {
         try self.rebuildAllMeshes();
     }
 
+    //TODO write a vmf -> json utility like jsonToVmf.zig
+    //Then, only have a single function to load serialized data into engine "loadJson"
     pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         var timer = try std.time.Timer.start();
         const infile = util.openFileFatal(path, filename, .{}, "");
@@ -836,42 +845,28 @@ pub const Context = struct {
                                 model_id = self.modelIdFromName(model) catch null;
                                 if (self.loadModel(model)) |m| {
                                     _ = m;
-                                    //bb.origin_offset = m.hull_min.scale(-1);
-                                    //bb.a = m.hull_min;
-                                    //bb.b = m.hull_max;
                                 } else |err| {
                                     log.err("Load model failed with {}", .{err});
                                 }
-                                //TODO update the bb when the models has loaded
-                                //we need to keep a list of vtables
                             }
                         }
 
                         try self.ecs.attach(new, .key_values, kvs);
-                    }
-                    var sprite_tex: ?vpk.VpkResId = null;
-                    { //Fgd stuff
-                        if (self.fgd_ctx.getPtr(ent.classname)) |base| {
-                            var sl = base.iconsprite;
-                            if (sl.len > 0) {
-                                if (std.mem.endsWith(u8, base.iconsprite, ".vmt"))
-                                    sl = base.iconsprite[0 .. base.iconsprite.len - 4];
-                                const sprite_tex_ = try self.loadTextureFromVpk(sl);
-                                if (sprite_tex_.res_id != 0)
-                                    sprite_tex = sprite_tex_.res_id;
-                            }
-                        }
                     }
                     bb.setFromOrigin(ent.origin.v);
                     try self.ecs.attach(new, .entity, .{
                         .origin = ent.origin.v,
                         .angle = ent.angles.v,
                         .class = try self.storeString(ent.classname),
-                        //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
                         ._model_id = model_id,
-                        .sprite = sprite_tex,
+                        ._sprite = null,
                     });
                     try self.ecs.attach(new, .bounding_box, bb);
+
+                    {
+                        var new_ent = try self.ecs.getPtr(new, .entity);
+                        try new_ent.setClass(self, ent.classname);
+                    }
                 }
 
                 //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);

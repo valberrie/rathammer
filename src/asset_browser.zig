@@ -6,8 +6,17 @@ const guiutil = graph.gui_app;
 const Vec3 = graph.za.Vec3;
 const edit = @import("editor.zig");
 const Config = @import("config.zig");
+const ecs = @import("ecs.zig");
 const Gui = graph.Gui;
 //TODO center camera view on model on new model load
+
+pub const DialogState = struct {
+    target_id: ecs.EcsT.Id,
+
+    previous_pane_index: usize,
+
+    kind: enum { texture, model },
+};
 
 const log = std.log.scoped(.asset_browser);
 pub const AssetBrowserGui = struct {
@@ -31,6 +40,7 @@ pub const AssetBrowserGui = struct {
     model_needs_rebuild: bool = true,
     mat_needs_rebuild: bool = true,
 
+    //TODO when narrowing a search, make sure selected index lies within it
     selected_model_vpk_id: ?vpk.VpkResId = null,
     selected_index_model: usize = 0,
     selected_index_mat: usize = 0,
@@ -43,6 +53,8 @@ pub const AssetBrowserGui = struct {
     hide_missing: bool = false,
 
     model_cam: graph.Camera3D = .{ .pos = Vec3.new(0, -100, 0), .up = .z, .move_speed = 20 },
+
+    dialog_state: ?DialogState = null,
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
@@ -64,6 +76,25 @@ pub const AssetBrowserGui = struct {
         self.model_search.deinit();
         self.mat_search.deinit();
         self.name_buf.deinit();
+    }
+
+    pub fn applyDialogState(self: *Self, editor: *edit.Context) !void {
+        defer self.dialog_state = null;
+        if (self.dialog_state) |ds| {
+            switch (ds.kind) {
+                .model => {
+                    const mid = self.selected_model_vpk_id orelse return;
+                    if (try editor.ecs.getOptPtr(ds.target_id, .entity)) |ent| {
+                        try ent.setModel(editor, ds.target_id, .{ .id = mid });
+                    }
+                    //To set the model, first change the kv,
+                    //then set ent._model_id
+                },
+                .texture => {},
+            }
+
+            editor.draw_state.tab_index = ds.previous_pane_index;
+        }
     }
 
     pub fn populate(
@@ -154,10 +185,9 @@ pub const AssetBrowserGui = struct {
         screen_area: graph.Rect,
         os9gui: *Os9Gui,
         editor: *edit.Context,
-        config: *const Config.Config,
         tab: enum { model, texture },
     ) !void {
-        const should_focus_tb = os9gui.gui.isBindState(config.keys.focus_search.b, .rising);
+        const should_focus_tb = os9gui.gui.isBindState(editor.config.keys.focus_search.b, .rising);
         if (try os9gui.beginTlWindow(screen_area)) {
             defer os9gui.endTlWindow();
 
@@ -180,21 +210,25 @@ pub const AssetBrowserGui = struct {
                     defer os9gui.endL();
                     os9gui.sliderEx(&self.start_index_model, 0, self.model_list.items.len, "", .{});
                     {
-                        _ = try os9gui.beginH(2);
+                        _ = try os9gui.beginH(3);
                         defer os9gui.endL();
                         const len = self.model_search.arraylist.items.len;
                         try os9gui.textbox2(&self.model_search, .{ .make_active = should_focus_tb, .make_inactive = os9gui.gui.isKeyDown(.RETURN) });
                         os9gui.label("Results {d}", .{self.model_list_sub.items.len});
                         if (len != self.model_search.arraylist.items.len)
                             self.model_needs_rebuild = true;
+
+                        if (os9gui.button("Accept")) {
+                            try self.applyDialogState(editor);
+                        }
                     }
                     var moved_with_keyboard = false;
-                    if (os9gui.gui.isBindState(config.keys.down_line.b, .rising)) {
+                    if (os9gui.gui.isBindState(editor.config.keys.down_line.b, .rising)) {
                         self.selected_index_model += 1;
                         moved_with_keyboard = true;
                     }
 
-                    if (os9gui.gui.isBindState(config.keys.up_line.b, .rising) and self.selected_index_model > 0) {
+                    if (os9gui.gui.isBindState(editor.config.keys.up_line.b, .rising) and self.selected_index_model > 0) {
                         self.selected_index_model -= 1;
                         moved_with_keyboard = true;
                     }
@@ -244,11 +278,14 @@ pub const AssetBrowserGui = struct {
                     os9gui.sliderEx(&self.num_texture_column, 1, self.max_column, "num column", .{});
                     const len = self.mat_search.arraylist.items.len;
                     {
-                        _ = try os9gui.beginH(3);
+                        _ = try os9gui.beginH(4);
                         defer os9gui.endL();
                         try os9gui.textbox2(&self.mat_search, .{ .make_active = should_focus_tb });
                         os9gui.label("Results {d}", .{self.mat_list_sub.items.len});
                         _ = os9gui.checkbox("Hide missing", &self.hide_missing);
+                        if (os9gui.button("Accept")) {
+                            try self.applyDialogState(editor);
+                        }
                     }
 
                     if (len != self.mat_search.arraylist.items.len)

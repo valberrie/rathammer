@@ -953,7 +953,7 @@ pub const PlaceModel = struct {
                     .angle = Vec3.zero(),
                     .class = try self.storeString(@tagName(tool.ent_class)),
                     ._model_id = model_id,
-                    .sprite = null,
+                    ._sprite = null,
                 });
                 try self.ecs.attach(new, .bounding_box, bb);
 

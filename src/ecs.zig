@@ -129,11 +129,40 @@ pub const Entity = struct {
     origin: Vec3 = Vec3.zero(),
     angle: Vec3 = Vec3.zero(),
     class: []const u8 = "",
+
+    /// Fields with _ are not serialized
+    /// These are used to draw the entity
     _model_id: ?vpk.VpkResId = null,
-    sprite: ?vpk.VpkResId = null,
+    _sprite: ?vpk.VpkResId = null,
 
     pub fn dupe(self: *const @This()) !@This() {
         return self.*;
+    }
+
+    pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
+        const idAndName = try editor.vpkctx.resolveId(model) orelse return;
+        self._model_id = idAndName.id;
+        if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
+            try kvs.putString("model", idAndName.name);
+        }
+    }
+
+    pub fn setClass(self: *@This(), editor: *Editor, class: []const u8) !void {
+        self.class = try editor.storeString(class);
+
+        self._sprite = null;
+        { //Fgd stuff
+            if (editor.fgd_ctx.getPtr(self.class)) |base| {
+                var sl = base.iconsprite;
+                if (sl.len > 0) {
+                    if (std.mem.endsWith(u8, base.iconsprite, ".vmt"))
+                        sl = base.iconsprite[0 .. base.iconsprite.len - 4];
+                    const sprite_tex_ = try editor.loadTextureFromVpk(sl);
+                    if (sprite_tex_.res_id != 0)
+                        self._sprite = sprite_tex_.res_id;
+                }
+            }
+        }
     }
 
     pub fn drawEnt(ent: *@This(), editor: *Editor, view_3d: Mat4, draw: *DrawCtx, draw_nd: *DrawCtx, param: struct {
@@ -165,7 +194,7 @@ pub const Entity = struct {
         //TODO set the model size of entities hitbox thingy
         if (editor.draw_state.tog.sprite) {
             draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
-            if (ent.sprite) |spr| {
+            if (ent._sprite) |spr| {
                 const isp = try editor.getTexture(spr);
                 draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
             }
@@ -694,9 +723,11 @@ pub const KeyValues = struct {
         try jw.endObject();
     }
 
-    ///Key is not duped or freed
+    ///Key is not duped or freed. value is duped
     pub fn putString(self: *Self, key: []const u8, value: []const u8) !void {
-        var new_list = std.ArrayList(u8).init(self.map.alloc);
+        if (self.map.getPtr(key)) |old|
+            old.deinit();
+        var new_list = std.ArrayList(u8).init(self.map.allocator);
 
         try new_list.appendSlice(value);
 
