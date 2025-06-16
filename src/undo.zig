@@ -212,7 +212,7 @@ pub const UndoDupe = struct {
         inline for (ecs.EcsT.Fields, 0..) |field, i| {
             if (editor.ecs.getOptPtr(self.parent_id, @enumFromInt(i)) catch return) |comp| {
                 if (@hasDecl(field.ftype, "dupe")) {
-                    const duped = comp.dupe() catch return;
+                    const duped = comp.dupe(&editor.ecs, self.own_id) catch return;
                     editor.ecs.attachComponentAndCreate(self.own_id, @enumFromInt(i), duped) catch return;
                 } else {
                     @compileError("must declare a dupe(self) function ! " ++ field.name);

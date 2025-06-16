@@ -16,6 +16,7 @@ const Comp = graph.Ecs.Component;
 /// Component fields begining with an _ are not serialized
 // This is a bit messy currently.
 pub const EcsT = graph.Ecs.Registry(&.{
+    Comp("group", Groups.Group),
     Comp("bounding_box", AABB),
     Comp("solid", Solid),
     Comp("entity", Entity),
@@ -23,18 +24,65 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("key_values", KeyValues),
     Comp("invisible", struct {
         pub const ECS_NO_SERIAL = void;
-        pub fn dupe(_: *@This()) !@This() {
+        pub fn dupe(_: *@This(), _: anytype, _: anytype) !@This() {
             return .{};
         }
     }),
     Comp("editor_info", EditorInfo),
     Comp("deleted", struct {
         pub const ECS_NO_SERIAL = void;
-        pub fn dupe(_: *@This()) !@This() {
+        pub fn dupe(_: *@This(), _: anytype, _: anytype) !@This() {
             return .{};
         }
     }),
 });
+
+/// Groups are used to group entities together. Any entities can be grouped but it is mainly used for brush entities
+/// An entity can only belong to one group at a time.
+pub const Groups = struct {
+    const Self = @This();
+    pub const GroupId = u16;
+
+    pub const Group = struct {
+        pub const NO_GROUP = 0;
+        id: GroupId = NO_GROUP,
+
+        pub fn dupe(self: *@This(), _: anytype, _: anytype) !@This() {
+            return self.*;
+        }
+
+        pub fn serial(self: @This(), _: anytype, jw: anytype) !void {
+            try jw.write(self.id);
+        }
+
+        pub fn initFromJson(v: std.json.Value, _: anytype) !@This() {
+            if (v != .integer) return error.broken;
+
+            return .{ .id = @intCast(v.integer) };
+        }
+    };
+
+    group_counter: u16 = 0,
+
+    entity_mapper: std.AutoHashMap(EcsT.Id, GroupId),
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .entity_mapper = std.AutoHashMap(EcsT.Id, GroupId).init(alloc),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.entity_mapper.deinit();
+    }
+
+    pub fn newGroup(self: *Self, owner: EcsT.Id) !u16 {
+        self.group_counter += 1;
+        const new = self.group_counter;
+        try self.entity_mapper.put(owner, new);
+        return self.group_counter;
+    }
+};
 
 pub const MeshMap = std.AutoHashMap(vpk.VpkResId, *MeshBatch);
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
@@ -110,7 +158,7 @@ pub const AABB = struct {
 
     origin_offset: Vec3 = Vec3.zero(),
 
-    pub fn dupe(self: *@This()) !AABB {
+    pub fn dupe(self: *@This(), _: anytype, _: anytype) !AABB {
         return self.*;
     }
 
@@ -135,7 +183,26 @@ pub const Entity = struct {
     _model_id: ?vpk.VpkResId = null,
     _sprite: ?vpk.VpkResId = null,
 
-    pub fn dupe(self: *const @This()) !@This() {
+    //When we duplicate a brush entity what must happen?
+    //How does selection of brush entities work?
+    //there needs to be a some selection flag, 'ig' mode selects solids normally,
+    //when duplicated, the parent_id is valid, care must be taken to update parent_entity.solids
+    //
+    //other option is groups mode, duping involves duping parent entity, duping all children and updating all state.
+    //
+    //function dupeSelection, checks to see if ig flag is on.
+    //for each selected, if parent_id, remove self from selected, add parent to selected
+    //for each new_selected dupe()
+    //
+    //what happens with ig on and a brush entity selected, normally brush entites can't be selected, only their solids
+    //
+    //duping a brush entity always does full dupe
+    //
+    //instead of micromanaging, set a flag, and on update recalculate all parent state things
+
+    pub fn dupe(self: *const @This(), ecs: *EcsT, new_id: EcsT.Id) anyerror!@This() {
+        _ = ecs;
+        _ = new_id;
         return self.*;
     }
 
@@ -288,7 +355,6 @@ pub const Solid = struct {
     const Self = @This();
     sides: std.ArrayList(Side) = undefined,
     verts: std.ArrayList(Vec3) = undefined,
-    parent_entity: ?EcsT.Id = null,
 
     /// Bounding box is used during broad phase ray tracing
     /// they are recomputed along with vertex arrays
@@ -301,7 +367,7 @@ pub const Solid = struct {
     //    return editor.readComponentFromJson(v, Self);
     //}
 
-    pub fn dupe(self: *const Self) !Self {
+    pub fn dupe(self: *const Self, _: anytype, _: anytype) !Self {
         const ret_sides = try self.sides.clone();
         for (ret_sides.items) |*side| {
             const ind = try side.index.clone();
@@ -514,7 +580,7 @@ pub const Displacement = struct {
     power: u32 = 0,
 
     //TODO duping things with parents how
-    pub fn dupe(self: *Self) !Self {
+    pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
         var ret = self.*;
         ret.verts = try self.verts.clone();
         ret.index = try self.index.clone();
@@ -591,7 +657,7 @@ pub const EditorInfo = struct {
     //pub const ECS_NO_SERIAL = void;
     vis_mask: VisGroups.BitSetT = VisGroups.BitSetT.initEmpty(),
 
-    pub fn dupe(a: *@This()) !@This() {
+    pub fn dupe(a: *@This(), _: anytype, _: anytype) !@This() {
         return a.*;
     }
 
@@ -668,7 +734,7 @@ pub const KeyValues = struct {
     const MapT = std.StringHashMap(Value);
     map: MapT,
 
-    pub fn dupe(self: *Self) !Self {
+    pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
         var ret = Self{
             .map = try self.map.clone(),
         };

@@ -32,6 +32,7 @@ const VisGroups = @import("visgroup.zig");
 const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
 const DISABLE_SPLASH = false;
+const GroupId = ecs.Groups.GroupId;
 
 const util3d = @import("util_3d.zig");
 
@@ -164,6 +165,7 @@ pub const Context = struct {
 
     /// Stores all the world state, solids, entities, disp, etc.
     ecs: EcsT,
+    groups: ecs.Groups,
 
     async_asset_load: thread_pool.Context,
     /// Used to track tool txtures, so we can easily disable drawing, remove once visgroups are good.
@@ -331,6 +333,7 @@ pub const Context = struct {
             .rayctx = raycast.Ctx.init(alloc),
             .selection = Selection.init(alloc),
             .frame_arena = std.heap.ArenaAllocator.init(alloc),
+            .groups = ecs.Groups.init(alloc),
             .config = config,
             .alloc = alloc,
             .fgd_ctx = fgd.EntCtx.init(alloc),
@@ -427,6 +430,7 @@ pub const Context = struct {
         self.vpkctx.deinit();
         self.skybox.deinit();
         self.frame_arena.deinit();
+        self.groups.deinit();
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {
             m.deinit(self.alloc);
@@ -635,8 +639,22 @@ pub const Context = struct {
         }
     }
 
-    pub fn rebuildAllMeshes(self: *Self) !void {
+    //TODO poke around codebase, make sure this rebuilds ALL the dependant state
+    pub fn rebuildAllDependentState(self: *Self) !void {
         mesh_build_time.start();
+        {
+            var it = self.ecs.iterator(.entity);
+            while (it.next()) |ent| {
+                if (try self.ecs.getOptPtr(it.i, .key_values)) |kvs| {
+                    if (kvs.getString("model")) |model| {
+                        ent._model_id = self.modelIdFromName(model) catch null;
+                    }
+                }
+                try ent.setClass(self, ent.class);
+                // Clear before we iterate solids as they will insert themselves into here
+                //ent.solids.clearRetainingCapacity();
+            }
+        }
         { //First clear
             var mesh_it = self.meshmap.valueIterator();
             while (mesh_it.next()) |batch| {
@@ -650,6 +668,9 @@ pub const Context = struct {
                 const bb = (try self.ecs.getOptPtr(it.i, .bounding_box)) orelse continue;
                 solid.recomputeBounds(bb);
                 try solid.rebuild(it.i, self);
+                //if (solid._parent_entity) |pid| {
+                //    try self.attachSolid(it.i, pid);
+                //}
             }
         }
         {
@@ -663,17 +684,6 @@ pub const Context = struct {
             var it = self.meshmap.valueIterator();
             while (it.next()) |item| {
                 item.*.mesh.setData();
-            }
-        }
-        {
-            var it = self.ecs.iterator(.entity);
-            while (it.next()) |ent| {
-                if (try self.ecs.getOptPtr(it.i, .key_values)) |kvs| {
-                    if (kvs.getString("model")) |model| {
-                        ent._model_id = self.modelIdFromName(model) catch null;
-                    }
-                }
-                try ent.setClass(self, ent.class);
             }
         }
         mesh_build_time.end();
@@ -699,18 +709,34 @@ pub const Context = struct {
         return res.value_ptr.*;
     }
 
+    pub fn attachSolid(self: *Self, solid_id: EcsT.Id, parent_id: EcsT.Id) !void {
+        if (try self.ecs.getOptPtr(parent_id, .entity)) |ent| {
+            var found = false;
+            for (ent.solids.items) |item| {
+                if (item == solid_id) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                try ent.solids.append(solid_id);
+        }
+    }
+
     ///Given a csg defined solid, convert to mesh and store.
-    pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid, parent_id: ?EcsT.Id) !void {
+    pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid, group_id: ?GroupId) !void {
         const new = try self.ecs.createEntity();
         try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&solid.editor) });
-        var newsolid = try self.csgctx.genMesh2(
+        const newsolid = try self.csgctx.genMesh2(
             solid.side,
             self.alloc,
             &self.string_storage,
             self,
             //@intCast(self.set.sparse.items.len),
         );
-        newsolid.parent_entity = parent_id;
+        if (group_id) |gid| {
+            try self.ecs.attach(new, .group, .{ .id = gid });
+        }
         for (solid.side, 0..) |*side, s_i| {
             const tex = try self.loadTextureFromVpk(side.material);
             const res = try self.getOrPutMeshBatch(tex.res_id);
@@ -794,7 +820,7 @@ pub const Context = struct {
         parsed.value.editor.cam.setCam(&self.draw_state.cam3d);
 
         loadctx.cb("Building meshes}");
-        try self.rebuildAllMeshes();
+        try self.rebuildAllDependentState();
     }
 
     //TODO write a vmf -> json utility like jsonToVmf.zig
@@ -825,9 +851,10 @@ pub const Context = struct {
             for (vmf_.entity, 0..) |ent, ei| {
                 loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
                 const new = try self.ecs.createEntity();
+                const group_id = try self.groups.newGroup(new);
                 try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&ent.editor) });
                 for (ent.solid) |solid|
-                    try self.putSolidFromVmf(solid, new);
+                    try self.putSolidFromVmf(solid, group_id);
                 {
                     var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
                     var model_id: ?vpk.VpkResId = null;
@@ -871,7 +898,7 @@ pub const Context = struct {
 
                 //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
             }
-            try self.rebuildAllMeshes();
+            try self.rebuildAllDependentState();
             const nm = self.meshmap.count();
             const whole_time = gen_timer.read();
 

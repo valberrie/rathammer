@@ -101,7 +101,7 @@ pub fn main() !void {
 
             var solids = ecs_p.iterator(.solid);
             while (solids.next()) |solid| {
-                if (solid.parent_entity != null) continue;
+                //if (solid._parent_entity != null) continue;
 
                 try vr.writeKey("solid");
                 try vr.beginObject();

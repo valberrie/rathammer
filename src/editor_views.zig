@@ -37,6 +37,7 @@ pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.Immed
         _ = os9gui.checkbox("draw tools", &ds.tog.tools);
         _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
         _ = os9gui.checkbox("draw model", &ds.tog.models);
+        _ = os9gui.checkbox("ignore groups", &editor.selection.ignore_groups);
         _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
         os9gui.label("num model {d}", .{editor.models.count()});
         os9gui.label("num mesh {d}", .{editor.meshmap.count()});
@@ -151,7 +152,7 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     if (win.isBindState(self.config.keys.select.b, .rising)) {
         const pot = self.screenRay(screen_area, view_3d);
         if (pot.len > 0) {
-            try self.selection.put(pot[0].id);
+            try self.selection.put(pot[0].id, self);
         }
     }
     if (win.isBindState(self.config.keys.clear_selection.b, .rising))
