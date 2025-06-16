@@ -495,12 +495,16 @@ pub const Context = struct {
                         continue;
                     if (ent.isSet(@intFromEnum(EcsT.Components.deleted)))
                         continue;
-                    //TODO Check slept
-                    //or just use a component to indicate deletion
                     try jwr.beginObject();
                     {
                         try jwr.objectField("id");
                         try jwr.write(id);
+
+                        if (self.groups.getGroup(@intCast(id))) |group| {
+                            try jwr.objectField("owned_group");
+                            try jwr.write(group);
+                        }
+
                         inline for (EcsT.Fields, 0..) |field, f_i| {
                             if (!@hasDecl(field.ftype, "ECS_NO_SERIAL")) {
                                 if (ent.isSet(f_i)) {
@@ -811,7 +815,7 @@ pub const Context = struct {
             .alloc = self.alloc,
             .str_store = &self.string_storage,
         };
-        var parsed = try json_map.loadJson(jsonctx, slice, loadctx, &self.ecs, &self.vpkctx);
+        var parsed = try json_map.loadJson(jsonctx, slice, loadctx, &self.ecs, &self.vpkctx, &self.groups);
         defer parsed.deinit();
 
         try self.setMapName(filename);
@@ -851,7 +855,7 @@ pub const Context = struct {
             for (vmf_.entity, 0..) |ent, ei| {
                 loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
                 const new = try self.ecs.createEntity();
-                const group_id = try self.groups.newGroup(new);
+                const group_id = if (ent.solid.len > 0) try self.groups.newGroup(new) else 0;
                 try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&ent.editor) });
                 for (ent.solid) |solid|
                     try self.putSolidFromVmf(solid, group_id);

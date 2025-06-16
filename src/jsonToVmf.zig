@@ -59,9 +59,10 @@ pub fn main() !void {
         var ecs_p = try ecs.EcsT.init(alloc);
 
         var vpkmapper = json_map.VpkMapper.init(alloc);
+        var groups = ecs.Groups.init(alloc);
 
         const jsonctx = json_map.InitFromJsonCtx{ .alloc = alloc, .str_store = &strings };
-        const parsed = try json_map.loadJson(jsonctx, slice, &loadctx, &ecs_p, &vpkmapper);
+        const parsed = try json_map.loadJson(jsonctx, slice, &loadctx, &ecs_p, &vpkmapper, &groups);
 
         {
             //try vr.writeComment("This vmf was created by RatHammer.\n", .{});

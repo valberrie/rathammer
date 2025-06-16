@@ -65,12 +65,12 @@ pub const Groups = struct {
     group_counter: u16 = 0,
 
     entity_mapper: std.AutoHashMap(EcsT.Id, GroupId),
-    group_mapper: std.AutoHashMap(GroupId, EcsT.Id),
+    group_mapper: std.AutoHashMap(GroupId, ?EcsT.Id),
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
             .entity_mapper = std.AutoHashMap(EcsT.Id, GroupId).init(alloc),
-            .group_mapper = std.AutoHashMap(GroupId, EcsT.Id).init(alloc),
+            .group_mapper = std.AutoHashMap(GroupId, ?EcsT.Id).init(alloc),
         };
     }
 
@@ -80,7 +80,11 @@ pub const Groups = struct {
     }
 
     pub fn getOwner(self: *Self, group: GroupId) ?EcsT.Id {
-        return self.group_mapper.get(group);
+        return self.group_mapper.get(group) orelse null;
+    }
+
+    pub fn getGroup(self: *Self, owner: EcsT.Id) ?GroupId {
+        return self.entity_mapper.get(owner);
     }
 
     pub fn setOwner(self: *Self, group: GroupId, owner: EcsT.Id) !void {
@@ -89,12 +93,16 @@ pub const Groups = struct {
         try self.group_mapper.put(group, owner);
     }
 
-    pub fn newGroup(self: *Self, owner: ?EcsT.Id) !u16 {
-        self.group_counter += 1;
+    pub fn newGroup(self: *Self, owner: ?EcsT.Id) !GroupId {
+        while (true) {
+            self.group_counter += 1;
+            if (!self.group_mapper.contains(self.group_counter))
+                break;
+        }
         const new = self.group_counter;
+        try self.group_mapper.put(new, owner);
         if (owner) |own| {
             try self.entity_mapper.put(own, new);
-            try self.group_mapper.put(new, own);
         }
         return self.group_counter;
     }

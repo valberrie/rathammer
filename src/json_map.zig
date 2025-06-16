@@ -84,7 +84,14 @@ pub const InitFromJsonCtx = struct {
 };
 
 const log = std.log.scoped(.json_map);
-pub fn loadJson(ctx: InitFromJsonCtx, slice: []const u8, loadctx: anytype, ecs_p: *ecs.EcsT, vpkctx: anytype) !std.json.Parsed(JsonMap) {
+pub fn loadJson(
+    ctx: InitFromJsonCtx,
+    slice: []const u8,
+    loadctx: anytype,
+    ecs_p: *ecs.EcsT,
+    vpkctx: anytype,
+    groups: *ecs.Groups,
+) !std.json.Parsed(JsonMap) {
     var aa = std.heap.ArenaAllocator.init(ctx.alloc);
     defer aa.deinit();
     const parsed = try std.json.parseFromSlice(JsonMap, ctx.alloc, slice, .{});
@@ -96,9 +103,11 @@ pub fn loadJson(ctx: InitFromJsonCtx, slice: []const u8, loadctx: anytype, ecs_p
     for (obj_o, 0..) |val, i| {
         if (val != .object) return error.invalidMap;
         const id = (val.object.get("id") orelse return error.invalidMap).integer;
+        if (val.object.get("owned_group")) |owg| {
+            const gid = owg.integer;
+            try groups.setOwner(@intCast(gid), @intCast(id));
+        }
         var it = val.object.iterator();
-        //TODO all entities have bounding boxes, add those
-        //TODO finally get that model loading thing to set bb's
         var origin = Vec3.zero();
         outer: while (it.next()) |data| {
             if (std.mem.eql(u8, "id", data.key_ptr.*)) continue;

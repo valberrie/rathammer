@@ -660,33 +660,10 @@ pub const Translate = struct {
                             try solid.drawImmediate(draw, self, Vec3.zero(), null);
                         }
                         solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
-                        //if (commit) {
-                        //    if (dupe) {
-                        //        const new = try self.ecs.createEntity();
-                        //        try self.ecs.destroyEntity(new);
-
-                        //        try ustack.?.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
-                        //        try ustack.?.append(try undo.UndoTranslate.create(
-                        //            self.undoctx.alloc,
-                        //            dist,
-                        //            null,
-                        //            new,
-                        //        ));
-                        //    } else {
-                        //        try ustack.?.append(try undo.UndoTranslate.create(
-                        //            self.undoctx.alloc,
-                        //            dist,
-                        //            null,
-                        //            id,
-                        //        ));
-                        //    }
-                        //}
                     }
                 }
                 if (try self.ecs.getOptPtr(id, .entity)) |ent| {
                     const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse continue;
-                    //TODO put the angle gizmo back
-                    //const angle = ent.angle;
                     //TODO the angle function is usable but suboptimal.
                     //the gizmo always manipulates extrinsic angles, rather than relative to current rotation
                     //this is how the angles in the vmf are stored but make for unintuitive editing
@@ -716,26 +693,6 @@ pub const Translate = struct {
                         if (commit) {
                             angle_delta = copy_ent.angle.sub(ent.angle);
                         }
-                        //    if (dupe) {
-                        //        const new = try self.ecs.createEntity();
-                        //        try self.ecs.destroyEntity(new);
-
-                        //        try ustack.?.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
-                        //        try ustack.?.append(try undo.UndoTranslate.create(
-                        //            self.undoctx.alloc,
-                        //            dist,
-                        //            angle_delta,
-                        //            new,
-                        //        ));
-                        //    } else {
-                        //        try ustack.?.append(try undo.UndoTranslate.create(
-                        //            self.undoctx.alloc,
-                        //            dist,
-                        //            angle_delta,
-                        //            id,
-                        //        ));
-                        //    }
-                        //}
                     }
                 }
             }
