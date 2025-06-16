@@ -176,11 +176,12 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
 
         if (selection.len > 0) {
             const ustack = try self.undoctx.pushNew();
-            const new_owner = if (last_owner) |lo| lo else try self.groups.newGroup(null);
+            const group = if (last_owner) |lo| self.groups.getGroup(lo) else null;
+            const new_group = if (group) |g| g else try self.groups.newGroup(null);
             for (selection) |id| {
                 const old = if (try self.ecs.getOpt(id, .group)) |g| g.id else 0;
                 try ustack.append(
-                    try undo.UndoChangeGroup.create(self.undoctx.alloc, old, new_owner, id),
+                    try undo.UndoChangeGroup.create(self.undoctx.alloc, old, new_group, id),
                 );
             }
             undo.applyRedo(ustack.items, self);

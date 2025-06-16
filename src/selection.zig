@@ -48,6 +48,20 @@ pub fn getExclusive(self: *Self) ?Id {
     return null;
 }
 
+/// Returns either the owner of a selected group if that group is exclusive,
+/// or it returns the selection when len == 1
+pub fn getGroupOwnerExclusive(self: *Self, groups: *ecs.Groups) ?Id {
+    blk: {
+        if (self.groups.count() != 1) break :blk;
+        var it = self.groups.keyIterator();
+        const first = it.next() orelse break :blk;
+        if (first.* == 0) break :blk;
+
+        return groups.getOwner(first.*);
+    }
+    return self.getExclusive();
+}
+
 pub fn setToSingle(self: *Self, id: Id) !void {
     self.mode = .one;
     self.clear();
@@ -108,23 +122,21 @@ pub fn put(self: *Self, id: Id, editor: *edit.Context) !void {
         }
     }
     if (do_normal) {
-        const group = try editor.ecs.getOpt(id, .group);
+        const group = if (try editor.ecs.getOpt(id, .group)) |g| g.id else 0;
         switch (self.mode) {
             .one => {
                 try self.multi.resize(1);
                 self.multi.items[0] = id;
-                if (group) |g|
-                    try self.groups.put(g.id, {});
+                self.groups.clearRetainingCapacity();
+                try self.groups.put(group, {});
             },
             .many => {
                 if (std.mem.indexOfScalar(Id, self.multi.items, id)) |index| {
                     _ = self.multi.orderedRemove(index);
-                    if (group) |g|
-                        _ = self.groups.remove(g.id);
+                    _ = self.groups.remove(group);
                 } else {
                     try self.multi.append(id);
-                    if (group) |g|
-                        try self.groups.put(g.id, {});
+                    try self.groups.put(group, {});
                 }
             },
         }

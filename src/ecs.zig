@@ -80,6 +80,7 @@ pub const Groups = struct {
     }
 
     pub fn getOwner(self: *Self, group: GroupId) ?EcsT.Id {
+        if (group == 0) return null;
         return self.group_mapper.get(group) orelse null;
     }
 
