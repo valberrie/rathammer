@@ -157,6 +157,37 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
     }
     if (win.isBindState(self.config.keys.clear_selection.b, .rising))
         self.selection.clear();
+
+    if (win.isBindState(self.config.keys.group_selection.b, .rising)) {
+        var kit = self.selection.groups.keyIterator();
+        var owner_count: usize = 0;
+        var last_owner: ?Editor.EcsT.Id = null;
+        while (kit.next()) |group| {
+            if (self.groups.getOwner(group.*)) |own| {
+                owner_count += 1;
+                last_owner = own;
+            }
+        }
+
+        const selection = self.selection.getSlice();
+
+        if (owner_count > 1)
+            try self.notify("{d} owned groups selected, merging!", .{owner_count}, 0xfca7_3fff);
+
+        if (selection.len > 0) {
+            const ustack = try self.undoctx.pushNew();
+            const new_owner = if (last_owner) |lo| lo else try self.groups.newGroup(null);
+            for (selection) |id| {
+                const old = if (try self.ecs.getOpt(id, .group)) |g| g.id else 0;
+                try ustack.append(
+                    try undo.UndoChangeGroup.create(self.undoctx.alloc, old, new_owner, id),
+                );
+            }
+            undo.applyRedo(ustack.items, self);
+            try self.notify("Grouped {d} objects", .{selection.len}, 0x00ff00ff);
+        }
+    }
+
     if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
         const selection = self.selection.getSlice();
         if (selection.len > 0) {

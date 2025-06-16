@@ -1008,17 +1008,22 @@ pub const Context = struct {
 
     fn saveAndNotify(self: *Self, basename: []const u8, path: []const u8) !void {
         var timer = try std.time.Timer.start();
-        try self.notifier.submitNotify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
+        try self.notify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
         const name = try self.printScratch("{s}{s}.json", .{ path, basename });
         //TODO make copy of existing map incase something goes wrong
         const out_file = try std.fs.cwd().createFile(name, .{});
         defer out_file.close();
         if (self.writeToJson(out_file)) {
-            try self.notifier.submitNotify(" saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
+            try self.notify(" saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
         } else |err| {
             log.err("writeToJson failed ! {}", .{err});
-            try self.notifier.submitNotify("save failed!: {}", .{err}, 0xff0000ff);
+            try self.notify("save failed!: {}", .{err}, 0xff0000ff);
         }
+    }
+
+    pub fn notify(self: *Self, comptime fmt: []const u8, args: anytype, color: u32) !void {
+        log.info(fmt, args);
+        try self.notifier.submitNotify(fmt, args, color);
     }
 
     pub fn update(self: *Self, win: *graph.SDL.Window) !void {
@@ -1031,13 +1036,13 @@ pub const Context = struct {
                 defer out_file.close();
                 self.writeToJson(out_file) catch |err| {
                     log.err("writeToJson failed ! {}", .{err});
-                    try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
+                    try self.notify("Autosave failed!: {}", .{err}, 0xff0000ff);
                 };
             } else |err| {
                 log.err("Autosave failed with error {}", .{err});
-                try self.notifier.submitNotify("Autosave failed!: {}", .{err}, 0xff0000ff);
+                try self.notify("Autosave failed!: {}", .{err}, 0xff0000ff);
             }
-            try self.notifier.submitNotify("Autosaved: {s}", .{basename}, 0x00ff00ff);
+            try self.notify("Autosaved: {s}", .{basename}, 0x00ff00ff);
         }
         if (win.isBindState(self.config.keys.save.b, .rising)) {
             if (self.loaded_map_name) |basename| {

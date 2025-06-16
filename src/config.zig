@@ -36,6 +36,8 @@ pub const Config = struct {
         toggle_select_mode: Keybind = .{ .b = SC(.TAB, 0) },
         clear_selection: Keybind = .{ .b = SC(.E, mask(&.{.LCTRL})) },
 
+        group_selection: Keybind = .{ .b = SC(.T, mask(&.{.LCTRL})) },
+
         duplicate: Keybind = .{ .b = SC(.Z, 0) },
 
         down_line: Keybind = .{ .b = KC(.j, 0) }, //j

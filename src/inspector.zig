@@ -55,7 +55,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                     if (tool.gui_fn) |gf| gf(tool, os9gui, self, scr.layout);
                 }
                 //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
-                if (self.selection.single_id) |id| {
+                if (self.selection.getExclusive()) |id| {
                     if (try self.ecs.getOptPtr(id, .entity)) |ent| {
                         try classCombo(os9gui, &ent.class, &self.fgd_ctx);
 

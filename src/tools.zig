@@ -301,12 +301,12 @@ pub const CubeDraw = struct {
                             .switch_to_fast_face => {
                                 const tid = try self.tools.getToolId(FastFaceManip);
                                 self.edit_state.tool_index = tid;
-                                self.selection.setToSingle(new);
+                                try self.selection.setToSingle(new);
                             },
                             .switch_to_translate => {
                                 const tid = try self.tools.getToolId(Translate);
                                 self.edit_state.tool_index = tid;
-                                self.selection.setToSingle(new);
+                                try self.selection.setToSingle(new);
                             },
                         }
                     }
@@ -1024,7 +1024,7 @@ pub const TranslateFace = struct {
 
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (editor.selection.single_id) |id| {
+        if (editor.selection.getExclusive()) |id| {
             faceTranslate(self, editor, id, td) catch return error.fatal;
         }
     }
