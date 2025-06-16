@@ -176,7 +176,7 @@ pub fn main() !void {
                         }
                     }
 
-                    if (ent.model_id) |mid|
+                    if (ent._model_id) |mid|
                         try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
                 }
                 try vr.endObject();

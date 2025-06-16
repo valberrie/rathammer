@@ -449,7 +449,7 @@ pub const Context = struct {
             const names = self.namesFromId_(res_id) orelse return null;
             self.strbuf.clearRetainingCapacity();
             try self.strbuf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
-            std.debug.print("Searching loose dir for {s} \n", .{self.strbuf.items});
+            //std.debug.print("Searching loose dir for {s} \n", .{self.strbuf.items});
             for (self.loose_dirs.items) |ldir| {
                 const infile = ldir.openFile(self.strbuf.items, .{}) catch continue;
                 defer infile.close();

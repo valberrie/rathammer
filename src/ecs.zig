@@ -13,6 +13,8 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const VisGroups = @import("visgroup.zig");
 
 const Comp = graph.Ecs.Component;
+/// Component fields begining with an _ are not serialized
+// This is a bit messy currently.
 pub const EcsT = graph.Ecs.Registry(&.{
     Comp("bounding_box", AABB),
     Comp("solid", Solid),
@@ -127,8 +129,7 @@ pub const Entity = struct {
     origin: Vec3 = Vec3.zero(),
     angle: Vec3 = Vec3.zero(),
     class: []const u8 = "",
-    model: ?[]const u8 = null,
-    model_id: ?vpk.VpkResId = null,
+    _model_id: ?vpk.VpkResId = null,
     sprite: ?vpk.VpkResId = null,
 
     pub fn dupe(self: *const @This()) !@This() {
@@ -142,7 +143,7 @@ pub const Entity = struct {
         const ENT_RENDER_DIST = 64 * 10;
         const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (editor.draw_state.tog.models and dist < editor.draw_state.tog.model_render_dist) {
-            if (ent.model_id) |m| {
+            if (ent._model_id) |m| {
                 if (editor.models.getPtr(m)) |o_mod| {
                     if (o_mod.mesh) |mod| {
                         const mat1 = Mat4.fromTranslate(ent.origin);
@@ -691,6 +692,25 @@ pub const KeyValues = struct {
             }
         }
         try jw.endObject();
+    }
+
+    ///Key is not duped or freed
+    pub fn putString(self: *Self, key: []const u8, value: []const u8) !void {
+        var new_list = std.ArrayList(u8).init(self.map.alloc);
+
+        try new_list.appendSlice(value);
+
+        try self.map.put(key, .{ .string = new_list });
+    }
+
+    pub fn getString(self: *Self, key: []const u8) ?[]const u8 {
+        if (self.map.get(key)) |val| {
+            return switch (val) {
+                .string => val.string.items,
+                else => null,
+            };
+        }
+        return null;
     }
 
     pub fn deinit(self: *Self) void {

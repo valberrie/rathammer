@@ -34,7 +34,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer loaded_config.deinit();
     const config = loaded_config.config;
     //var win = try graph.SDL.Window.createWindow("Rat Hammer - ラットハンマー", .{
-    var win = try graph.SDL.Window.createWindow("Test", .{
+    var win = try graph.SDL.Window.createWindow("Rat Hammer", .{
         .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
     });
     defer win.destroyWindow();
@@ -391,7 +391,7 @@ pub fn main() !void {
     try wrappedMain(alloc, args);
 
     // if the application is quit while items are being loaded in the thread pool, we get spammed with memory leaks.
-    // There is no benefit to ensuring those items are free'd
+    // There is no benefit to ensuring those items are free'd on exit.
     if (IS_DEBUG)
         _ = gpa.detectLeaks(); // Not deferred, so on error there isn't spam
 }

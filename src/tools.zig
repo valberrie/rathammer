@@ -952,11 +952,22 @@ pub const PlaceModel = struct {
                     .origin = point,
                     .angle = Vec3.zero(),
                     .class = try self.storeString(@tagName(tool.ent_class)),
-                    .model = null,
-                    .model_id = model_id,
+                    ._model_id = model_id,
                     .sprite = null,
                 });
                 try self.ecs.attach(new, .bounding_box, bb);
+
+                var kvs = ecs.KeyValues.init(self.alloc);
+                if (model_id) |mid| {
+                    if (self.vpkctx.namesFromId(mid)) |names| {
+                        var string = std.ArrayList(u8).init(self.alloc);
+                        try string.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
+                        try kvs.map.put(try self.storeString("model"), .{ .string = string });
+                    }
+                }
+
+                try self.ecs.attach(new, .key_values, kvs);
+
                 const ustack = try self.undoctx.pushNew();
                 try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
                 undo.applyRedo(ustack.items, self);

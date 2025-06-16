@@ -616,8 +616,12 @@ pub const Context = struct {
                 }
                 try jw.beginObject();
                 inline for (s.fields) |field| {
-                    try jw.objectField(field.name);
-                    try self.writeComponentToJson(jw, @field(comp, field.name));
+                    if (field.name[0] == '_') { //Skip fields
+
+                    } else {
+                        try jw.objectField(field.name);
+                        try self.writeComponentToJson(jw, @field(comp, field.name));
+                    }
                 }
                 try jw.endObject();
             },
@@ -653,6 +657,16 @@ pub const Context = struct {
             var it = self.meshmap.valueIterator();
             while (it.next()) |item| {
                 item.*.mesh.setData();
+            }
+        }
+        {
+            var it = self.ecs.iterator(.entity);
+            while (it.next()) |ent| {
+                if (try self.ecs.getOptPtr(it.i, .key_values)) |kvs| {
+                    if (kvs.getString("model")) |model| {
+                        ent._model_id = self.modelIdFromName(model) catch null;
+                    }
+                }
             }
         }
         mesh_build_time.end();
@@ -807,17 +821,33 @@ pub const Context = struct {
                     try self.putSolidFromVmf(solid, new);
                 {
                     var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
-                    if (ent.model.len > 0) {
-                        if (self.loadModel(ent.model)) |m| {
-                            _ = m;
-                            //bb.origin_offset = m.hull_min.scale(-1);
-                            //bb.a = m.hull_min;
-                            //bb.b = m.hull_max;
-                        } else |err| {
-                            log.err("Load model failed with {}", .{err});
+                    var model_id: ?vpk.VpkResId = null;
+                    if (ent.rest_kvs.count() > 0) {
+                        var kvs = KeyValues.init(self.alloc);
+                        var it = ent.rest_kvs.iterator();
+                        while (it.next()) |item| {
+                            var new_list = std.ArrayList(u8).init(self.alloc);
+                            try new_list.appendSlice(item.value_ptr.*);
+                            try kvs.map.put(try self.storeString(item.key_ptr.*), .{ .string = new_list });
                         }
-                        //TODO update the bb when the models has loaded
-                        //we need to keep a list of vtables
+
+                        if (kvs.getString("model")) |model| {
+                            if (model.len > 0) {
+                                model_id = self.modelIdFromName(model) catch null;
+                                if (self.loadModel(model)) |m| {
+                                    _ = m;
+                                    //bb.origin_offset = m.hull_min.scale(-1);
+                                    //bb.a = m.hull_min;
+                                    //bb.b = m.hull_max;
+                                } else |err| {
+                                    log.err("Load model failed with {}", .{err});
+                                }
+                                //TODO update the bb when the models has loaded
+                                //we need to keep a list of vtables
+                            }
+                        }
+
+                        try self.ecs.attach(new, .key_values, kvs);
                     }
                     var sprite_tex: ?vpk.VpkResId = null;
                     { //Fgd stuff
@@ -833,28 +863,15 @@ pub const Context = struct {
                         }
                     }
                     bb.setFromOrigin(ent.origin.v);
-                    const model_id = self.modelIdFromName(ent.model) catch null;
                     try self.ecs.attach(new, .entity, .{
                         .origin = ent.origin.v,
                         .angle = ent.angles.v,
                         .class = try self.storeString(ent.classname),
-                        .model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
-                        .model_id = model_id,
+                        //.model = if (ent.model.len > 0) try self.storeString(ent.model) else null,
+                        ._model_id = model_id,
                         .sprite = sprite_tex,
                     });
                     try self.ecs.attach(new, .bounding_box, bb);
-                }
-
-                if (ent.rest_kvs.count() > 0) {
-                    var kvs = KeyValues.init(self.alloc);
-                    var it = ent.rest_kvs.iterator();
-                    while (it.next()) |item| {
-                        var new_list = std.ArrayList(u8).init(self.alloc);
-                        try new_list.appendSlice(item.value_ptr.*);
-                        try kvs.map.put(try self.storeString(item.key_ptr.*), .{ .string = new_list });
-                    }
-
-                    try self.ecs.attach(new, .key_values, kvs);
                 }
 
                 //try procSolid(&editor.csgctx, alloc, solid, &editor.meshmap, &editor.vpkctx);
@@ -1084,7 +1101,7 @@ pub const Context = struct {
 
             var m_it = self.ecs.iterator(.entity);
             while (m_it.next()) |ent| {
-                if (ent.model_id) |mid| {
+                if (ent._model_id) |mid| {
                     if (std.mem.indexOfScalar(vpk.VpkResId, completed_ids.items, mid) != null) {
                         const mod = self.models.getPtr(mid) orelse continue;
                         const mesh = mod.mesh orelse continue;
