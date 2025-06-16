@@ -155,15 +155,14 @@ pub fn main() !void {
                     try vr.writeKey("angles");
                     try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.angle.x(), ent.angle.y(), ent.angle.z() });
 
-                    if (ent.model_id) |mid| {
-                        try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
-                    }
-
                     try vr.writeKv("classname", ent.class);
+                    var model_written = false;
 
                     if (try ecs_p.getOptPtr(ents.i, .key_values)) |kvs| {
                         var it = kvs.map.iterator();
                         while (it.next()) |kv| {
+                            if (std.mem.eql(u8, "model", kv.key_ptr.*))
+                                model_written = true;
                             switch (kv.value_ptr.*) {
                                 .string => |str| try vr.writeKv(kv.key_ptr.*, str.items),
                                 .floats => |c| {
@@ -176,6 +175,9 @@ pub fn main() !void {
                             }
                         }
                     }
+
+                    if (ent.model_id) |mid|
+                        try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
                 }
                 try vr.endObject();
             }

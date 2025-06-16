@@ -423,6 +423,8 @@ pub const EntClass = struct {
             choices: std.ArrayList(KV),
             flags: std.ArrayList(Flag),
             color255: void,
+            material: void,
+            model: void,
             angle: void,
             generic: void,
         };
@@ -681,6 +683,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         boolean,
                                         color255,
                                         angle,
+                                        material,
+                                        studio,
                                     };
                                     var new_type = EntClass.Field.Type{ .generic = {} };
                                     if (stringToEnum(TypeStr, tkz.getSlice(type_tok))) |st| {
@@ -724,7 +728,9 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                                 }
                                             },
                                             .color255 => new_type = .{ .color255 = {} },
+                                            .material => new_type = .{ .material = {} },
                                             .angle => new_type = .{ .angle = {} },
+                                            .studio => new_type = .{ .model = {} },
                                             else => {},
                                         }
                                     } else {

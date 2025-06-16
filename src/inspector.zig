@@ -121,9 +121,9 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                             const color = &res.value_ptr.floats.d;
                                             const old_hsva = graph.ptypes.colorToHsva(
                                                 .{
-                                                    .r = @intFromFloat(color[0]),
-                                                    .g = @intFromFloat(color[1]),
-                                                    .b = @intFromFloat(color[2]),
+                                                    .r = @intFromFloat(std.math.clamp(color[0], 0, 255)),
+                                                    .g = @intFromFloat(std.math.clamp(color[1], 0, 255)),
+                                                    .b = @intFromFloat(std.math.clamp(color[2], 0, 255)),
                                                     .a = 255,
                                                 },
                                             );
@@ -138,7 +138,20 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
 
                                             try os9gui.textboxNumber(&color[3]);
                                         },
-                                        else => {
+                                        .material => {
+                                            //TODO ensure it is a string
+                                            _ = try os9gui.beginH(2);
+                                            defer os9gui.endL();
+                                            if (os9gui.button("Select")) {}
+                                            try os9gui.textbox(&res.value_ptr.string);
+                                        },
+                                        .model => {
+                                            _ = try os9gui.beginH(2);
+                                            defer os9gui.endL();
+                                            if (os9gui.button("Select")) {}
+                                            try os9gui.textbox(&res.value_ptr.string);
+                                        },
+                                        .generic, .flags => {
                                             switch (res.value_ptr.*) {
                                                 .string => try os9gui.textbox(&res.value_ptr.string),
                                                 else => os9gui.label("", .{}),
