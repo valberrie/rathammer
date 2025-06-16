@@ -740,7 +740,18 @@ pub const Translate = struct {
                 }
             }
             if (commit) {
-                //If !ignore_groups, idk
+                // If ignore_groups, do it as usual
+                //If !ignore_groups
+                //make a list of all new entity id's and the groups involved
+                //if a group has an owner and is not in selected, dupe it aswell.
+                //for each original group, create a new group.
+                //iterate all created entites and update using mapping
+                //if a group has an owner, set the new groups owner to duped
+
+                var new_ent_list = std.ArrayList(ecs.EcsT.Id).init(self.frame_arena.allocator());
+                //Map old groups to duped groups
+                var group_mapper = std.AutoHashMap(ecs.Groups.GroupId, ecs.Groups.GroupId).init(self.frame_arena.allocator());
+
                 for (selected) |id| {
                     if (dupe) {
                         const duped = try self.ecs.dupeEntity(id);
@@ -752,6 +763,16 @@ pub const Translate = struct {
                             angle_delta,
                             duped,
                         ));
+                        if (!self.selection.ignore_groups) {
+                            if (try self.ecs.getOpt(duped, .group)) |group| {
+                                if (group.id != ecs.Groups.NO_GROUP) {
+                                    if (!group_mapper.contains(group.id)) {
+                                        try group_mapper.put(group.id, try self.groups.newGroup(null));
+                                    }
+                                    try new_ent_list.append(duped);
+                                }
+                            }
+                        }
                     } else {
                         try ustack.?.append(try undo.UndoTranslate.create(
                             self.undoctx.alloc,
@@ -760,6 +781,26 @@ pub const Translate = struct {
                             id,
                         ));
                     }
+                }
+                if (dupe) {
+                    var it = group_mapper.iterator();
+                    while (it.next()) |item| {
+                        if (self.groups.getOwner(item.key_ptr.*)) |owner| {
+                            const duped = try self.ecs.dupeEntity(owner);
+
+                            try ustack.?.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
+                            try self.groups.setOwner(item.value_ptr.*, duped);
+                            //TODO set the group owner with undo stack
+                        }
+                    }
+                    for (new_ent_list.items) |new_ent| {
+                        const old_group = try self.ecs.get(new_ent, .group);
+                        const new_group = group_mapper.get(old_group.id) orelse continue;
+                        try ustack.?.append(
+                            try undo.UndoChangeGroup.create(self.undoctx.alloc, old_group.id, new_group, new_ent),
+                        );
+                    }
+                    //now iterate the new_ent_list and update the group mapping
                 }
             }
             if (ustack != null)

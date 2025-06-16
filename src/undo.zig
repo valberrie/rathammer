@@ -377,6 +377,49 @@ pub const UndoTextureManip = struct {
     }
 };
 
+pub const UndoChangeGroup = struct {
+    const GroupId = ecs.Groups.GroupId;
+    vt: iUndo,
+
+    old: GroupId,
+    new: GroupId,
+    id: Id,
+
+    pub fn create(alloc: std.mem.Allocator, old: GroupId, new: GroupId, id: Id) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .old = old,
+            .new = new,
+            .id = id,
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+        };
+        return &obj.vt;
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        setGroup(editor, self.id, self.old) catch return;
+    }
+
+    fn setGroup(editor: *Editor, id: Id, new_group: GroupId) !void {
+        if (try editor.ecs.getOptPtr(id, .group)) |group| {
+            group.id = new_group;
+        } else {
+            try editor.ecs.attach(id, .group, .{ .id = new_group });
+        }
+    }
+
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        setGroup(editor, self.id, self.new) catch return;
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
+
 /// This is a noop
 pub const UndoTemplate = struct {
     vt: iUndo,

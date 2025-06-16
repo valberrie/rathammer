@@ -42,9 +42,9 @@ pub const EcsT = graph.Ecs.Registry(&.{
 pub const Groups = struct {
     const Self = @This();
     pub const GroupId = u16;
+    pub const NO_GROUP = 0;
 
     pub const Group = struct {
-        pub const NO_GROUP = 0;
         id: GroupId = NO_GROUP,
 
         pub fn dupe(self: *@This(), _: anytype, _: anytype) !@This() {
@@ -65,21 +65,37 @@ pub const Groups = struct {
     group_counter: u16 = 0,
 
     entity_mapper: std.AutoHashMap(EcsT.Id, GroupId),
+    group_mapper: std.AutoHashMap(GroupId, EcsT.Id),
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
             .entity_mapper = std.AutoHashMap(EcsT.Id, GroupId).init(alloc),
+            .group_mapper = std.AutoHashMap(GroupId, EcsT.Id).init(alloc),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.entity_mapper.deinit();
+        self.group_mapper.deinit();
     }
 
-    pub fn newGroup(self: *Self, owner: EcsT.Id) !u16 {
+    pub fn getOwner(self: *Self, group: GroupId) ?EcsT.Id {
+        return self.group_mapper.get(group);
+    }
+
+    pub fn setOwner(self: *Self, group: GroupId, owner: EcsT.Id) !void {
+        //TODO should we disallow clobbering of this?
+        try self.entity_mapper.put(owner, group);
+        try self.group_mapper.put(group, owner);
+    }
+
+    pub fn newGroup(self: *Self, owner: ?EcsT.Id) !u16 {
         self.group_counter += 1;
         const new = self.group_counter;
-        try self.entity_mapper.put(owner, new);
+        if (owner) |own| {
+            try self.entity_mapper.put(own, new);
+            try self.group_mapper.put(new, own);
+        }
         return self.group_counter;
     }
 };
