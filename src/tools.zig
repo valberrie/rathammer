@@ -596,6 +596,7 @@ pub const Translate = struct {
 
         const last_id = self.selection.getLast() orelse return;
         var angle: ?Vec3 = null;
+        var angle_delta: ?Vec3 = null;
         const giz_origin: ?Vec3 = blk: {
             const last_bb = try self.ecs.getOptPtr(last_id, .bounding_box) orelse return;
             if (try self.ecs.getOptPtr(last_id, .solid)) |solid| { //check Solid before Entity
@@ -638,7 +639,9 @@ pub const Translate = struct {
             };
             const commit = self.edit_state.rmouse == .rising;
             const ustack = if (giz_active == .high and commit) try self.undoctx.pushNew() else null;
-            for (self.selection.getSlice()) |id| {
+            const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
+            const selected = self.selection.getSlice();
+            for (selected) |id| {
                 if (try self.ecs.getOptPtr(id, .solid)) |solid| {
                     solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
                     if (giz_active == .rising) {
@@ -648,38 +651,36 @@ pub const Translate = struct {
                         try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
 
                         //Draw it here too so we it doesn't flash for a single frame
-                        const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
                         try solid.drawImmediate(draw, self, dist, null);
                     }
 
                     if (giz_active == .high) {
-                        const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
                         try solid.drawImmediate(draw, self, dist, null);
                         if (dupe) { //Draw original
                             try solid.drawImmediate(draw, self, Vec3.zero(), null);
                         }
                         solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
-                        if (commit) {
-                            if (dupe) {
-                                const new = try self.ecs.createEntity();
-                                try self.ecs.destroyEntity(new);
+                        //if (commit) {
+                        //    if (dupe) {
+                        //        const new = try self.ecs.createEntity();
+                        //        try self.ecs.destroyEntity(new);
 
-                                try ustack.?.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
-                                try ustack.?.append(try undo.UndoTranslate.create(
-                                    self.undoctx.alloc,
-                                    dist,
-                                    null,
-                                    new,
-                                ));
-                            } else {
-                                try ustack.?.append(try undo.UndoTranslate.create(
-                                    self.undoctx.alloc,
-                                    dist,
-                                    null,
-                                    id,
-                                ));
-                            }
-                        }
+                        //        try ustack.?.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
+                        //        try ustack.?.append(try undo.UndoTranslate.create(
+                        //            self.undoctx.alloc,
+                        //            dist,
+                        //            null,
+                        //            new,
+                        //        ));
+                        //    } else {
+                        //        try ustack.?.append(try undo.UndoTranslate.create(
+                        //            self.undoctx.alloc,
+                        //            dist,
+                        //            null,
+                        //            id,
+                        //        ));
+                        //    }
+                        //}
                     }
                 }
                 if (try self.ecs.getOptPtr(id, .entity)) |ent| {
@@ -707,46 +708,63 @@ pub const Translate = struct {
                         }
                     }
                     if (giz_active == .high) {
-                        const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
                         var copy_ent = ent.*;
                         copy_ent.origin = ent.origin.add(dist);
                         copy_ent.angle = angle orelse ent.angle;
                         try copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = false });
 
                         if (commit) {
-                            const angle_delta = copy_ent.angle.sub(ent.angle);
-                            if (dupe) {
-                                const new = try self.ecs.createEntity();
-                                try self.ecs.destroyEntity(new);
-
-                                try ustack.?.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
-                                try ustack.?.append(try undo.UndoTranslate.create(
-                                    self.undoctx.alloc,
-                                    dist,
-                                    angle_delta,
-                                    new,
-                                ));
-                            } else {
-                                try ustack.?.append(try undo.UndoTranslate.create(
-                                    self.undoctx.alloc,
-                                    dist,
-                                    angle_delta,
-                                    id,
-                                ));
-                            }
+                            angle_delta = copy_ent.angle.sub(ent.angle);
                         }
+                        //    if (dupe) {
+                        //        const new = try self.ecs.createEntity();
+                        //        try self.ecs.destroyEntity(new);
+
+                        //        try ustack.?.append(try undo.UndoDupe.create(self.undoctx.alloc, id, new));
+                        //        try ustack.?.append(try undo.UndoTranslate.create(
+                        //            self.undoctx.alloc,
+                        //            dist,
+                        //            angle_delta,
+                        //            new,
+                        //        ));
+                        //    } else {
+                        //        try ustack.?.append(try undo.UndoTranslate.create(
+                        //            self.undoctx.alloc,
+                        //            dist,
+                        //            angle_delta,
+                        //            id,
+                        //        ));
+                        //    }
+                        //}
+                    }
+                }
+            }
+            if (commit) {
+                //If !ignore_groups, idk
+                for (selected) |id| {
+                    if (dupe) {
+                        const duped = try self.ecs.dupeEntity(id);
+
+                        try ustack.?.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
+                        try ustack.?.append(try undo.UndoTranslate.create(
+                            self.undoctx.alloc,
+                            dist,
+                            angle_delta,
+                            duped,
+                        ));
+                    } else {
+                        try ustack.?.append(try undo.UndoTranslate.create(
+                            self.undoctx.alloc,
+                            dist,
+                            angle_delta,
+                            id,
+                        ));
                     }
                 }
             }
             if (ustack != null)
                 undo.applyRedo(ustack.?.items, self);
         }
-
-        //for(self.selection.getSlice())
-
-        //var do_gizmo = false;
-        //var gizmo_origin =
-
     }
 };
 

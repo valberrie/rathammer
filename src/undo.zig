@@ -187,7 +187,7 @@ pub const UndoTranslate = struct {
     }
 };
 
-pub const UndoDupe = struct {
+pub const UndoDupeDeprecated = struct {
     vt: iUndo,
 
     parent_id: Id,
