@@ -26,6 +26,16 @@ pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.Immed
         const vlayout = try os9gui.beginV();
         defer os9gui.endL();
         os9gui.label("You are paused", .{});
+        {
+            const hl = os9gui.style.config.text_h;
+            vlayout.pushHeight(hl * 3);
+            if (os9gui.textView(hl, 0xff)) |tvc| {
+                if (os9gui.gui.tooltip_text.len > 0) {
+                    var tv = tvc;
+                    tv.text("{s}", .{os9gui.gui.tooltip_text});
+                }
+            }
+        }
         if (os9gui.button("Unpause"))
             paused.* = false;
         if (os9gui.button("Quit"))
@@ -39,10 +49,13 @@ pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.Immed
         _ = os9gui.checkbox("draw model", &ds.tog.models);
         _ = os9gui.checkbox("ignore groups", &editor.selection.ignore_groups);
         _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
+        os9gui.gui.setTooltip("Models further than {d:.2}hu will not be drawn", .{ds.tog.model_render_dist});
         os9gui.label("num model {d}", .{editor.models.count()});
         os9gui.label("num mesh {d}", .{editor.meshmap.count()});
+        os9gui.gui.setTooltip("The number of mesh batches", .{});
 
         try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
+        os9gui.gui.setTooltip("kind: \"Planar\", fwd, back only affect xz of camera pos\nkind: \"normal\", fwd back move camera along its normal", .{});
         try os9gui.enumCombo("new brush entity: {s}", .{@tagName(editor.edit_state.default_group_entity)}, &editor.edit_state.default_group_entity);
 
         var needs_rebuild = false;

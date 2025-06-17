@@ -32,6 +32,7 @@ pub fn classCombo(os9gui: *Os9Gui, ent: *ecs.Entity, editor: *Editor) !void {
         &ctx,
         Ctx.next,
     );
+    os9gui.gui.setTooltip("Select the class", .{});
     if (index != old_i) {
         try ent.setClass(editor, editor.fgd_ctx.nameFromId(index) orelse ent.class);
     }
@@ -50,6 +51,16 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
             //defer os9gui.endL();
             if (try os9gui.beginVScroll(&self.misc_gui_state.scroll_a, .{ .sw = area.w, .sh = 1000000 })) |scr| {
                 defer os9gui.endVScroll(scr);
+                {
+                    const hl = os9gui.style.config.text_h;
+                    scr.layout.pushHeight(hl * 10);
+                    if (os9gui.textView(hl, 0xff)) |tvc| {
+                        if (os9gui.gui.tooltip_text.len > 0) {
+                            var tv = tvc;
+                            tv.text("{s}", .{os9gui.gui.tooltip_text});
+                        }
+                    }
+                }
                 if (self.getCurrentTool()) |tool| {
                     if (tool.guiDoc_fn) |gd| gd(tool, os9gui, self, scr.layout);
                     if (tool.gui_fn) |gf| gf(tool, os9gui, self, scr.layout);
@@ -129,6 +140,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                             );
                                             var hsva = old_hsva;
                                             try os9gui.colorPicker(&hsva);
+                                            os9gui.gui.setTooltip("Click to select color", .{});
                                             if (!std.mem.eql(u8, std.mem.asBytes(&old_hsva), std.mem.asBytes(&hsva))) {
                                                 const col = graph.ptypes.hsvaToColor(hsva);
                                                 color[0] = @floatFromInt(col.r);
@@ -137,12 +149,14 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                             }
 
                                             try os9gui.textboxNumber(&color[3]);
+                                            os9gui.gui.setTooltip("Set the brightness", .{});
                                         },
                                         .material => {
                                             //TODO ensure it is a string
                                             _ = try os9gui.beginH(2);
                                             defer os9gui.endL();
                                             if (os9gui.button("Select")) {}
+                                            os9gui.gui.setTooltip("Open material picker", .{});
                                             try os9gui.textbox(&res.value_ptr.string);
                                         },
                                         .model => {
@@ -156,6 +170,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                                 };
                                                 self.draw_state.tab_index = self.draw_state.model_browser_tab_index;
                                             }
+                                            os9gui.gui.setTooltip("Open model picker", .{});
                                             try os9gui.textbox(&res.value_ptr.string);
                                         },
                                         .generic, .flags => {
@@ -163,6 +178,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                                 .string => try os9gui.textbox(&res.value_ptr.string),
                                                 else => os9gui.label("", .{}),
                                             }
+                                            os9gui.gui.setTooltip("This is a generic field", .{});
                                         },
                                     }
                                 }
