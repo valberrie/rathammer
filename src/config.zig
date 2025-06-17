@@ -38,6 +38,8 @@ pub const Config = struct {
 
         group_selection: Keybind = .{ .b = SC(.T, mask(&.{.LCTRL})) },
 
+        build_map: Keybind = .{ .b = SC(.F9, 0) },
+
         duplicate: Keybind = .{ .b = SC(.Z, 0) },
 
         down_line: Keybind = .{ .b = KC(.j, 0) }, //j

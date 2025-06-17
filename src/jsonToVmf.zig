@@ -52,7 +52,10 @@ pub fn main() !void {
         const bb = bwr.writer();
         var vr = vdf_serial.WriteVdf(@TypeOf(bb)).init(alloc, bb);
 
-        const infile = try std.fs.cwd().openFile(mapname, .{});
+        const infile = std.fs.cwd().openFile(mapname, .{}) catch |err| {
+            std.debug.print("Unable to open file: {s}, {!}\n", .{ mapname, err });
+            std.process.exit(1);
+        };
         defer infile.close();
         const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
 

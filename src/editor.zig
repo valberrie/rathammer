@@ -1079,6 +1079,34 @@ pub const Context = struct {
                 }
             }
         }
+        if (win.isBindState(self.config.keys.build_map.b, .rising)) {
+            blk: {
+                const lp = self.loaded_map_path orelse break :blk;
+                const lm = self.loaded_map_name orelse break :blk;
+                try self.saveAndNotify(lm, lp);
+                var res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
+                    "zig-out/bin/jsonmaptovmf",
+                    "--json",
+                    try self.printScratch("{s}{s}.json", .{ lp, lm }),
+                } });
+                std.debug.print("{s}\n", .{res.stdout});
+                std.debug.print("{s}\n", .{res.stderr});
+                self.alloc.free(res.stdout);
+                self.alloc.free(res.stderr);
+
+                try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
+                res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
+                    "zig-out/bin/mapbuilder",
+                    "--vmf",
+                    "dump.vmf",
+                } });
+                std.debug.print("{s}\n", .{res.stdout});
+                std.debug.print("{s}\n", .{res.stderr});
+                self.alloc.free(res.stdout);
+                self.alloc.free(res.stderr);
+                try self.notify("built map", .{}, 0x00ff00ff);
+            }
+        }
 
         _ = self.frame_arena.reset(.retain_capacity);
         self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
