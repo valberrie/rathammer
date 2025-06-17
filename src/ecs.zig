@@ -253,6 +253,12 @@ pub const Entity = struct {
                     if (sprite_tex_.res_id != 0)
                         self._sprite = sprite_tex_.res_id;
                 }
+
+                if (base.studio_model.len > 0) {
+                    const id = try editor.loadModel(base.studio_model);
+                    if (id != 0)
+                        self._model_id = id;
+                }
             }
         }
     }

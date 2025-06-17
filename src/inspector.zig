@@ -7,7 +7,7 @@ const Editor = @import("editor.zig").Context;
 const Os9Gui = graph.Os9Gui;
 const eql = std.mem.eql;
 
-pub fn classCombo(os9gui: *Os9Gui, class_name: *[]const u8, fgdctx: *fgd.EntCtx) !void {
+pub fn classCombo(os9gui: *Os9Gui, ent: *ecs.Entity, editor: *Editor) !void {
     const Ctx = struct {
         fgdctx: *fgd.EntCtx,
         index: usize = 0,
@@ -19,21 +19,21 @@ pub fn classCombo(os9gui: *Os9Gui, class_name: *[]const u8, fgdctx: *fgd.EntCtx)
             return .{ ctx.index, ctx.fgdctx.ents.items[ctx.index].name };
         }
     };
-    const old_i = fgdctx.getId(class_name.*) orelse 0;
-    if (old_i >= fgdctx.ents.items.len)
+    const old_i = editor.fgd_ctx.getId(ent.class) orelse 0;
+    if (old_i >= editor.fgd_ctx.ents.items.len)
         return;
     var index = old_i;
-    var ctx = Ctx{ .fgdctx = fgdctx };
+    var ctx = Ctx{ .fgdctx = &editor.fgd_ctx };
     try os9gui.combo(
         "{s}",
-        .{class_name.*},
+        .{ent.class},
         &index,
-        fgdctx.ents.items.len,
+        editor.fgd_ctx.ents.items.len,
         &ctx,
         Ctx.next,
     );
     if (index != old_i) {
-        class_name.* = fgdctx.nameFromId(index) orelse class_name.*;
+        try ent.setClass(editor, editor.fgd_ctx.nameFromId(index) orelse ent.class);
     }
 }
 
@@ -57,7 +57,7 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                 //os9gui.label("Current Tool: {s}", .{@tagName(self.edit_state.state)});
                 if (self.selection.getGroupOwnerExclusive(&self.groups)) |id| {
                     if (try self.ecs.getOptPtr(id, .entity)) |ent| {
-                        try classCombo(os9gui, &ent.class, &self.fgd_ctx);
+                        try classCombo(os9gui, ent, self);
 
                         if (os9gui.button("force populate kvs")) {
                             if (self.fgd_ctx.getPtr(ent.class)) |base| {

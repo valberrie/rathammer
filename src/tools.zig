@@ -638,7 +638,8 @@ pub const Translate = struct {
                 );
             };
             const commit = self.edit_state.rmouse == .rising;
-            const ustack = if (giz_active == .high and commit) try self.undoctx.pushNew() else null;
+            const real_commit = giz_active == .high and commit;
+            const ustack = if (real_commit) try self.undoctx.pushNew() else null;
             const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
             const selected = self.selection.getSlice();
             for (selected) |id| {
@@ -696,7 +697,7 @@ pub const Translate = struct {
                     }
                 }
             }
-            if (commit) {
+            if (real_commit) {
                 // If ignore_groups, do it as usual
                 //If !ignore_groups
                 //make a list of all new entity id's and the groups involved

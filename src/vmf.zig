@@ -199,7 +199,6 @@ pub const DispVectorRow = struct {
 pub const Entity = struct {
     id: u32 = 0,
     classname: []const u8 = "",
-    model: []const u8 = "",
     solid: []const Solid = &.{},
     origin: StringVec = .{},
     angles: StringVec = .{},

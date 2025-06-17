@@ -448,6 +448,7 @@ pub const EntClass = struct {
     name: []const u8 = "",
     doc: []const u8 = "",
     iconsprite: []const u8 = "",
+    studio_model: []const u8 = "",
 
     pub fn init(alloc: Allocator) Self {
         return .{
@@ -550,14 +551,23 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                     if (stringToEnum(enum {
                                         base,
                                         iconsprite,
+                                        studio,
                                     }, parent_name)) |en| {
                                         const ps = tkz.params.items;
                                         switch (en) {
+                                            .studio => {
+                                                if (ps.len != 1 or ps[0].tag != .quoted_string) {
+                                                    std.debug.print("Invalid studio mdl\n", .{});
+                                                } else {
+                                                    new_class.studio_model = try ctx.dupeString(tkz.getSlice(ps[0]));
+                                                }
+                                            },
                                             .iconsprite => {
                                                 if (ps.len != 1 or ps[0].tag != .quoted_string) {
                                                     std.debug.print("Invalid icon sprite\n", .{});
+                                                } else {
+                                                    new_class.iconsprite = try ctx.dupeString(tkz.getSlice(ps[0]));
                                                 }
-                                                new_class.iconsprite = try ctx.dupeString(tkz.getSlice(ps[0]));
                                             },
                                             .base => {
                                                 var it = Token.orderedTokenIterator(.comma, ps);
