@@ -693,6 +693,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         boolean,
                                         color255,
                                         angle,
+                                        decal,
                                         material,
                                         studio,
                                     };
@@ -738,7 +739,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                                 }
                                             },
                                             .color255 => new_type = .{ .color255 = {} },
-                                            .material => new_type = .{ .material = {} },
+                                            .material, .decal => new_type = .{ .material = {} },
                                             .angle => new_type = .{ .angle = {} },
                                             .studio => new_type = .{ .model = {} },
                                             else => {},

@@ -155,7 +155,14 @@ pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9G
                                             //TODO ensure it is a string
                                             _ = try os9gui.beginH(2);
                                             defer os9gui.endL();
-                                            if (os9gui.button("Select")) {}
+                                            if (os9gui.button("Select")) {
+                                                self.asset_browser.dialog_state = .{
+                                                    .target_id = id,
+                                                    .previous_pane_index = self.draw_state.tab_index,
+                                                    .kind = .texture,
+                                                };
+                                                self.draw_state.tab_index = self.draw_state.texture_browser_tab_index;
+                                            }
                                             os9gui.gui.setTooltip("Open material picker", .{});
                                             try os9gui.textbox(&res.value_ptr.string);
                                         },

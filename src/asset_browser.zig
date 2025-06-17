@@ -90,7 +90,17 @@ pub const AssetBrowserGui = struct {
                     //To set the model, first change the kv,
                     //then set ent._model_id
                 },
-                .texture => {},
+                .texture => {
+                    const tid = self.selected_mat_vpk_id orelse return;
+                    if (try editor.ecs.getOptPtr(ds.target_id, .key_values)) |ent| {
+                        if (try editor.vpkctx.resolveId(.{ .id = tid })) |idd| {
+                            var name = idd.name;
+                            if (std.mem.startsWith(u8, name, "materials/"))
+                                name = idd.name["materials/".len..];
+                            try ent.putString("texture", name);
+                        }
+                    }
+                },
             }
 
             editor.draw_state.tab_index = ds.previous_pane_index;
