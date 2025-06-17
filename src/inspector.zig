@@ -38,6 +38,192 @@ pub fn classCombo(os9gui: *Os9Gui, ent: *ecs.Entity, editor: *Editor) !void {
     }
 }
 
+pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {
+    if (try os9gui.beginTlWindow(screen_area)) {
+        defer os9gui.endTlWindow();
+        const gui = &os9gui.gui;
+        const win_area = gui.getArea() orelse return;
+        const area = win_area.inset(6 * os9gui.scale);
+        _ = try gui.beginLayout(Gui.SubRectLayout, .{ .rect = area }, .{});
+        defer gui.endLayout();
+        _ = try os9gui.beginH(2);
+        defer os9gui.endL();
+        if (self.selection.getGroupOwnerExclusive(&self.groups)) |id| {
+            if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+                { //Field list
+                    const vl = try os9gui.beginV();
+                    defer os9gui.endL();
+                    try classCombo(os9gui, ent, self);
+                    vl.pushRemaining();
+                    if (self.fgd_ctx.getPtr(ent.class)) |base| {
+                        if (try os9gui.beginIndexedVScroll(base.fields.items.len, &self.misc_gui_state.inspector_index, .{ .column_count = 2 })) |_| {
+                            const index = self.misc_gui_state.inspector_index;
+                            defer os9gui.endIndexedVScroll();
+                            const kvs = if (try self.ecs.getOptPtr(id, .key_values)) |kv| kv else blk: {
+                                try self.ecs.attach(id, .key_values, ecs.KeyValues.init(self.alloc));
+                                break :blk try self.ecs.getPtr(id, .key_values);
+                            };
+                            for (base.fields.items[index..], index..) |req_field, field_i| {
+                                const res = try kvs.map.getOrPut(req_field.name);
+                                if (!res.found_existing) {
+                                    var new_list = std.ArrayList(u8).init(self.alloc);
+                                    try new_list.appendSlice(req_field.default);
+                                    res.value_ptr.* = .{ .string = new_list };
+                                }
+                                const ar = gui.getArea() orelse break;
+                                const SELECTED_FIELD_COLOR = 0x6097dbff;
+                                if (field_i == self.misc_gui_state.selected_index) {
+                                    os9gui.gui.drawRectFilled(ar, SELECTED_FIELD_COLOR);
+                                }
+                                os9gui.drawText("{s}", .{res.key_ptr.*}, ar, .{});
+                                if (os9gui.gui.clickWidget(ar) == .click)
+                                    self.misc_gui_state.selected_index = field_i;
+                                switch (req_field.type) {
+                                    .choices => |ch| {
+                                        try res.value_ptr.toString(kvs.map.allocator);
+                                        try doChoices(ch, os9gui, &res.value_ptr.string);
+                                    },
+                                    .color255 => {
+                                        try res.value_ptr.toFloats(4);
+                                        const c = &res.value_ptr.floats.d;
+                                        const color = graph.ptypes.intColorFromVec3(graph.za.Vec3.new(c[0], c[1], c[2]), 1);
+                                        const a = gui.getArea() orelse break;
+
+                                        os9gui.gui.drawRectFilled(a, color);
+                                    },
+                                    else => {
+                                        switch (res.value_ptr.*) {
+                                            .string => |s| os9gui.label("{s}", .{s.items}),
+                                            .floats => _ = os9gui.gui.getArea() orelse break,
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+                { //Edited
+
+                    const vl = try os9gui.beginV();
+                    defer os9gui.endL();
+                    const index = self.misc_gui_state.selected_index;
+                    if (self.fgd_ctx.getPtr(ent.class)) |base| {
+                        if (index < base.fields.items.len) {
+                            const kvs = try self.ecs.getOptPtr(id, .key_values) orelse return;
+                            const field = base.fields.items[index];
+                            os9gui.label("Field {s}: {s}", .{ field.name, @tagName(field.type) });
+                            if (kvs.map.getPtr(field.name)) |val| {
+                                switch (field.type) {
+                                    .choices => |ch| {
+                                        try val.toString(kvs.map.allocator);
+                                        try doChoices(ch, os9gui, &val.string);
+                                    },
+                                    .angle => {
+                                        try val.toFloats(3);
+                                        _ = try os9gui.beginH(3);
+                                        defer os9gui.endL();
+
+                                        const a = &val.floats;
+
+                                        try os9gui.textboxNumber(&a.d[0]);
+                                        try os9gui.textboxNumber(&a.d[1]);
+                                        try os9gui.textboxNumber(&a.d[2]);
+                                    },
+                                    .color255 => {
+                                        _ = os9gui.gui.isFocused();
+                                        {
+                                            _ = try os9gui.beginH(2);
+                                            defer os9gui.endL();
+                                            try val.toFloats(4);
+                                            const color = &val.floats.d;
+                                            const old_hsva = graph.ptypes.colorToHsva(
+                                                .{
+                                                    .r = @intFromFloat(std.math.clamp(color[0], 0, 255)),
+                                                    .g = @intFromFloat(std.math.clamp(color[1], 0, 255)),
+                                                    .b = @intFromFloat(std.math.clamp(color[2], 0, 255)),
+                                                    .a = 255,
+                                                },
+                                            );
+                                            var hsva = old_hsva;
+                                            try os9gui.colorPicker(&hsva);
+                                            os9gui.gui.setTooltip("Click to select color", .{});
+                                            if (!std.mem.eql(u8, std.mem.asBytes(&old_hsva), std.mem.asBytes(&hsva))) {
+                                                const col = graph.ptypes.hsvaToColor(hsva);
+                                                color[0] = @floatFromInt(col.r);
+                                                color[1] = @floatFromInt(col.g);
+                                                color[2] = @floatFromInt(col.b);
+                                            }
+
+                                            try os9gui.textboxNumber(&color[3]);
+                                            os9gui.gui.setTooltip("Set the brightness", .{});
+                                        }
+                                        {
+                                            _ = try os9gui.beginH(2);
+                                            os9gui.gui.setTooltip("Enter a string like: \'237 218 143 800\'", .{});
+                                            defer os9gui.endL();
+                                            os9gui.label("Set from string", .{});
+                                            var buf: [256]u8 = undefined;
+                                            var sb = Os9Gui.StaticTextbox.init(&buf);
+                                            try os9gui.textbox2(&sb, .{});
+                                            if (sb.len != 0) {
+                                                try val.setString(kvs.map.allocator, sb.getSlice());
+                                            }
+                                        }
+                                    },
+                                    .material => {
+                                        try val.toString(kvs.map.allocator);
+                                        //TODO ensure it is a string
+                                        if (os9gui.button("Select")) {
+                                            self.asset_browser.dialog_state = .{
+                                                .target_id = id,
+                                                .previous_pane_index = self.draw_state.tab_index,
+                                                .kind = .texture,
+                                            };
+                                            self.draw_state.tab_index = self.draw_state.texture_browser_tab_index;
+                                        }
+                                        os9gui.gui.setTooltip("Open material picker", .{});
+                                        try os9gui.textbox(&val.string);
+                                        if (try self.vpkctx.resolveId(.{ .name = val.string.items })) |tid| {
+                                            const bound = os9gui.gui.layout.last_requested_bounds orelse return;
+                                            vl.pushHeight(bound.w);
+                                            const tex = self.getTexture(tid.id) catch return;
+                                            const ta = os9gui.gui.getArea() orelse return;
+                                            os9gui.gui.drawRectTextured(graph.Rec(ta.x, ta.y, ta.h, ta.h), 0xffffffff, tex.rect(), tex);
+                                        }
+                                    },
+                                    .model => {
+                                        try val.toString(kvs.map.allocator);
+                                        _ = try os9gui.beginH(2);
+                                        defer os9gui.endL();
+                                        if (os9gui.button("Select")) {
+                                            self.asset_browser.dialog_state = .{
+                                                .target_id = id,
+                                                .previous_pane_index = self.draw_state.tab_index,
+                                                .kind = .model,
+                                            };
+                                            self.draw_state.tab_index = self.draw_state.model_browser_tab_index;
+                                        }
+                                        os9gui.gui.setTooltip("Open model picker", .{});
+                                        try os9gui.textbox(&val.string);
+                                    },
+                                    .generic, .flags => {
+                                        try val.toString(kvs.map.allocator);
+                                        switch (val.*) {
+                                            .string => try os9gui.textbox(&val.string),
+                                            else => os9gui.label("", .{}),
+                                        }
+                                        os9gui.gui.setTooltip("This is a generic field", .{});
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn drawInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {
     if (try os9gui.beginTlWindow(screen_area)) {
         defer os9gui.endTlWindow();

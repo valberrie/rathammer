@@ -19,6 +19,29 @@ const inspector = @import("inspector.zig");
 const eql = std.mem.eql;
 const VisGroup = @import("visgroup.zig");
 const Os9Gui = graph.Os9Gui;
+const Window = graph.SDL.Window;
+
+pub const iPane = struct {
+    /// Called on every frame
+    draw_fn: ?*const fn (*iPane, graph.Rect, *Context, *DrawCtx, *Window) void = null,
+    /// Only called on frames when gui is redrawn
+    draw_fn_gui: ?*const fn (*iPane, *Context, *DrawCtx, *Os9Gui) void = null,
+
+    /// Called after editor.update each frame, if set, draw_fn_gui will be called
+    gui_dirty_fn: ?*const fn (*iPane, *Context) bool = null,
+};
+
+pub const Main3DView = struct {
+    vt: iPane,
+
+    font: *graph.FontUtil.PublicFontInterface,
+    fh: *f32,
+
+    pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, draw: *DrawCtx, win: *graph.SDL.Window) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        draw3Dview(editor, screen_area, draw, win, self.font, self.fh.*) catch return;
+    }
+};
 
 pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.ImmediateDrawingContext, paused: *bool) !enum { quit, nothing } {
     if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
@@ -104,7 +127,14 @@ pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.Immed
     return .nothing;
 }
 
-pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.ImmediateDrawingContext, win: *graph.SDL.Window, os9gui: *graph.Os9Gui) !void {
+pub fn draw3Dview(
+    self: *Context,
+    screen_area: graph.Rect,
+    draw: *graph.ImmediateDrawingContext,
+    win: *graph.SDL.Window,
+    font: *graph.FontUtil.PublicFontInterface,
+    fh: f32,
+) !void {
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
     // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
     // "draw" still has depth buffer
@@ -261,14 +291,13 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         cw * 2,
     ), 0xffffffff);
     { // text stuff
-        const fh = os9gui.style.config.text_h;
         const col = 0xff_ff_ffff;
         const p = self.draw_state.cam3d.pos;
 
         const SINGLE_COLOR = 0xfcc858ff;
         const MANY_COLOR = 0xfc58d6ff;
 
-        var mt = graph.MultiLineText.start(draw, screen_area.pos(), os9gui.font);
+        var mt = graph.MultiLineText.start(draw, screen_area.pos(), font);
         mt.textFmt("grid: {d:.2}", .{self.edit_state.grid_snap}, fh, col);
         mt.textFmt("pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, fh, col);
         mt.textFmt("select: {s}", .{@tagName(self.selection.mode)}, fh, switch (self.selection.mode) {
@@ -332,7 +361,7 @@ pub fn drawPane(
         .main_3d_view => {
             editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
             editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), win, pane_area.center());
-            try draw3Dview(editor, pane_area, draw, win, os9gui);
+            try draw3Dview(editor, pane_area, draw, win, os9gui.font, os9gui.style.config.text_h);
         },
         .about => {
             if (try os9gui.beginTlWindow(pane_area)) {
@@ -346,7 +375,8 @@ pub fn drawPane(
         .asset_browser => {
             try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .texture);
         },
-        .inspector => try inspector.drawInspector(editor, pane_area, os9gui),
+        .inspector => try inspector.newInspector(editor, pane_area, os9gui),
+        //.inspector => try inspector.drawInspector(editor, pane_area, os9gui),
         .model_preview => {
             try editor.asset_browser.drawModelPreview(
                 win,

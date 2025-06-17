@@ -94,10 +94,10 @@ pub const AssetBrowserGui = struct {
                     const tid = self.selected_mat_vpk_id orelse return;
                     if (try editor.ecs.getOptPtr(ds.target_id, .key_values)) |ent| {
                         if (try editor.vpkctx.resolveId(.{ .id = tid })) |idd| {
-                            var name = idd.name;
-                            if (std.mem.startsWith(u8, name, "materials/"))
-                                name = idd.name["materials/".len..];
-                            try ent.putString("texture", name);
+                            //var name = idd.name;
+                            //if (std.mem.startsWith(u8, name, "materials/"))
+                            //    name = idd.name["materials/".len..];
+                            try ent.putString("texture", idd.name);
                         }
                     }
                 },
@@ -243,27 +243,32 @@ pub const AssetBrowserGui = struct {
                         moved_with_keyboard = true;
                     }
 
-                    self.start_index_model = @min(self.model_list_sub.items.len, self.start_index_model);
-                    for (self.model_list_sub.items[self.start_index_model..], self.start_index_model..) |model, i| {
-                        const tt = editor.vpkctx.entries.get(model) orelse continue;
-                        if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = self.selected_index_model == i }))
-                            self.selected_index_model = i;
-                        if (self.selected_index_model == i)
-                            self.selected_model_vpk_id = model;
-                        if (os9gui.gui.layout.last_requested_bounds == null) {
-                            if (moved_with_keyboard) {
-                                const pad = 5;
-                                const ii: i64 = @intCast(i);
-                                const sm: i64 = @intCast(self.selected_index_model);
-                                const start: i64 = @intCast(self.start_index_model);
-                                if (sm - pad < start) {
-                                    self.start_index_model = @max(0, (sm - pad));
-                                } else if (sm + pad > ii) {
-                                    //j = (sm + pad ) - ii
-                                    self.start_index_model += @max(0, (sm + pad) - ii);
+                    vl.pushRemaining();
+                    if (try os9gui.beginIndexedVScroll(self.model_list_sub.items.len, &self.start_index_model, .{})) |_| {
+                        defer os9gui.endIndexedVScroll();
+                        self.start_index_model = @min(self.model_list_sub.items.len, self.start_index_model);
+                        self.selected_index_model = std.math.clamp(self.selected_index_model, self.start_index_model, self.model_list_sub.items.len - 1);
+                        for (self.model_list_sub.items[self.start_index_model..], self.start_index_model..) |model, i| {
+                            const tt = editor.vpkctx.entries.get(model) orelse continue;
+                            if (os9gui.buttonEx("{s}/{s}", .{ tt.path, tt.name }, .{ .disabled = self.selected_index_model == i }))
+                                self.selected_index_model = i;
+                            if (self.selected_index_model == i)
+                                self.selected_model_vpk_id = model;
+                            if (os9gui.gui.layout.last_requested_bounds == null) {
+                                if (moved_with_keyboard) {
+                                    const pad = 5;
+                                    const ii: i64 = @intCast(i);
+                                    const sm: i64 = @intCast(self.selected_index_model);
+                                    const start: i64 = @intCast(self.start_index_model);
+                                    if (sm - pad < start) {
+                                        self.start_index_model = @max(0, (sm - pad));
+                                    } else if (sm + pad > ii) {
+                                        //j = (sm + pad ) - ii
+                                        self.start_index_model += @max(0, (sm + pad) - ii);
+                                    }
                                 }
+                                break;
                             }
-                            break;
                         }
                     }
                 },

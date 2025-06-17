@@ -747,6 +747,26 @@ pub const KeyValues = struct {
             }
         }
 
+        pub fn toString(self: *@This(), alloc: std.mem.Allocator) !void {
+            switch (self.*) {
+                .string => return,
+                .floats => |f| {
+                    var new = std.ArrayList(u8).init(alloc);
+                    for (f.d[0..f.count]) |fl|
+                        try new.writer().print("{d} ", .{fl});
+
+                    self.* = .{ .string = new };
+                },
+            }
+        }
+
+        pub fn setString(self: *@This(), alloc: std.mem.Allocator, string: []const u8) !void {
+            self.deinit();
+            var new = std.ArrayList(u8).init(alloc);
+            try new.appendSlice(string);
+            self.* = .{ .string = new };
+        }
+
         pub fn clone(self: *@This()) !@This() {
             switch (self.*) {
                 .string => return .{ .string = try self.string.clone() },

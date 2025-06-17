@@ -258,6 +258,8 @@ pub const Context = struct {
     //TODO this is inspector state
     misc_gui_state: struct {
         scroll_a: graph.Vec2f = .{ .x = 0, .y = 0 },
+        inspector_index: usize = 0,
+        selected_index: usize = 0,
     } = .{},
 
     config: Conf.Config,
