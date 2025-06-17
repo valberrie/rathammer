@@ -111,6 +111,7 @@ pub fn loadJson(
         var origin = Vec3.zero();
         outer: while (it.next()) |data| {
             if (std.mem.eql(u8, "id", data.key_ptr.*)) continue;
+            if (std.mem.eql(u8, "owned_group", data.key_ptr.*)) continue;
             inline for (ecs.EcsT.Fields, 0..) |field, f_i| {
                 if (std.mem.eql(u8, field.name, data.key_ptr.*)) {
                     const comp = try readComponentFromJson(ctx, data.value_ptr.*, field.ftype, vpkctx);
@@ -127,6 +128,7 @@ pub fn loadJson(
                 }
             }
 
+            log.err("Invalid key : {s}", .{data.key_ptr.*});
             return error.invalidKey;
         }
         var bb = ecs.AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };

@@ -3,6 +3,7 @@ const graph = @import("graph");
 const ecs = @import("ecs.zig");
 const vdf_serial = @import("vdf_serial.zig");
 const vmf = @import("vmf.zig");
+const GroupId = ecs.Groups.GroupId;
 
 const StringStorage = @import("string.zig").StringStorage;
 const json_map = @import("json_map.zig");
@@ -100,48 +101,24 @@ pub fn main() !void {
             });
             var side_id_start: usize = 0;
 
+            var group_ent_map = std.AutoHashMap(GroupId, std.ArrayList(ecs.EcsT.Id)).init(alloc);
+
             var solids = ecs_p.iterator(.solid);
             while (solids.next()) |solid| {
-                //if (solid._parent_entity != null) continue;
-
-                try vr.writeKey("solid");
-                try vr.beginObject();
-                {
-                    try vr.writeKv("id", solids.i);
-                    for (solid.sides.items) |side| {
-                        try vr.writeKey("side");
-                        try vr.beginObject();
-                        {
-                            const id = side_id_start;
-                            side_id_start += 1;
-                            //const id = ((i + 1) << 12) | solids.i;
-                            try vr.writeKv("id", id);
-                            if (side.index.items.len >= 3) {
-                                const v1 = solid.verts.items[side.index.items[0]];
-                                const v2 = solid.verts.items[side.index.items[1]];
-                                const v3 = solid.verts.items[side.index.items[2]];
-
-                                try vr.writeKey("plane");
-                                try vr.printValue("\"({d} {d} {d}) ({d} {d} {d}) ({d} {d} {d})\"\n", .{
-                                    v1.x(), v1.y(), v1.z(),
-                                    v2.x(), v2.y(), v2.z(),
-                                    v3.x(), v3.y(), v3.z(),
-                                });
-                            }
-                            try vr.writeKv("material", sanatizeMaterialName(vpkmapper.getResource(side.tex_id) orelse ""));
-                            try vr.writeKey("uaxis");
-                            const uvfmt = "\"[{d} {d} {d} {d}] {d}\"\n";
-                            try vr.printValue(uvfmt, .{ side.u.axis.x(), side.u.axis.y(), side.u.axis.z(), side.u.trans, side.u.scale });
-                            try vr.writeKey("vaxis");
-                            try vr.printValue(uvfmt, .{ side.v.axis.x(), side.v.axis.y(), side.v.axis.z(), side.v.trans, side.v.scale });
-                            try vr.writeKv("rotation", @as(i32, 0));
-                            try vr.writeKv("lightmapscale", @as(i32, 16));
-                            try vr.writeKv("smoothing_groups", @as(i32, 0));
+                if (try ecs_p.getOpt(solids.i, .group)) |g| {
+                    if (g.id != 0) {
+                        const res = try group_ent_map.getOrPut(g.id);
+                        if (!res.found_existing) {
+                            res.value_ptr.* = std.ArrayList(ecs.EcsT.Id).init(alloc);
                         }
-                        try vr.endObject();
+                        try res.value_ptr.append(solids.i);
+                        continue;
                     }
                 }
-                try vr.endObject();
+
+                //if (solid._parent_entity != null) continue;
+
+                try writeSolid(&vr, solids.i, solid, &side_id_start, &vpkmapper);
             }
             try vr.endObject(); //world
 
@@ -180,10 +157,60 @@ pub fn main() !void {
                     if (ent._model_id) |mid|
                         try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
                 }
+
+                if (groups.getGroup(ents.i)) |group| {
+                    if (group_ent_map.get(group)) |list| {
+                        for (list.items) |solid_i| {
+                            const solid = try ecs_p.getOptPtr(solid_i, .solid) orelse continue;
+                            try writeSolid(&vr, solid_i, solid, &side_id_start, &vpkmapper);
+                        }
+                    }
+                }
                 try vr.endObject();
             }
         }
     } else {
         std.debug.print("Please specify json file with --json\n", .{});
     }
+}
+
+fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start: *usize, vpkmapper: anytype) !void {
+    try vr.writeKey("solid");
+    try vr.beginObject();
+    {
+        try vr.writeKv("id", ent_id);
+        for (solid.sides.items) |side| {
+            try vr.writeKey("side");
+            try vr.beginObject();
+            {
+                const id = side_id_start.*;
+                side_id_start.* += 1;
+                //const id = ((i + 1) << 12) | solids.i;
+                try vr.writeKv("id", id);
+                if (side.index.items.len >= 3) {
+                    const v1 = solid.verts.items[side.index.items[0]];
+                    const v2 = solid.verts.items[side.index.items[1]];
+                    const v3 = solid.verts.items[side.index.items[2]];
+
+                    try vr.writeKey("plane");
+                    try vr.printValue("\"({d} {d} {d}) ({d} {d} {d}) ({d} {d} {d})\"\n", .{
+                        v1.x(), v1.y(), v1.z(),
+                        v2.x(), v2.y(), v2.z(),
+                        v3.x(), v3.y(), v3.z(),
+                    });
+                }
+                try vr.writeKv("material", sanatizeMaterialName(vpkmapper.getResource(side.tex_id) orelse ""));
+                try vr.writeKey("uaxis");
+                const uvfmt = "\"[{d} {d} {d} {d}] {d}\"\n";
+                try vr.printValue(uvfmt, .{ side.u.axis.x(), side.u.axis.y(), side.u.axis.z(), side.u.trans, side.u.scale });
+                try vr.writeKey("vaxis");
+                try vr.printValue(uvfmt, .{ side.v.axis.x(), side.v.axis.y(), side.v.axis.z(), side.v.trans, side.v.scale });
+                try vr.writeKv("rotation", @as(i32, 0));
+                try vr.writeKv("lightmapscale", @as(i32, 16));
+                try vr.writeKv("smoothing_groups", @as(i32, 0));
+            }
+            try vr.endObject();
+        }
+    }
+    try vr.endObject();
 }
