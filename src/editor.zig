@@ -243,6 +243,7 @@ pub const Context = struct {
     selection: Selection,
 
     edit_state: struct {
+        default_group_entity: enum { none, func_detail } = .func_detail,
         tool_index: usize = 0,
         /// used to determine if the tool has changed
         last_frame_tool_index: usize = 0,

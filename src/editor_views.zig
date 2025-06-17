@@ -43,6 +43,7 @@ pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.Immed
         os9gui.label("num mesh {d}", .{editor.meshmap.count()});
 
         try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
+        try os9gui.enumCombo("new brush entity: {s}", .{@tagName(editor.edit_state.default_group_entity)}, &editor.edit_state.default_group_entity);
 
         var needs_rebuild = false;
         if (editor.visgroups.getRoot()) |vg_| {
@@ -177,7 +178,17 @@ pub fn draw3Dview(self: *Context, screen_area: graph.Rect, draw: *graph.Immediat
         if (selection.len > 0) {
             const ustack = try self.undoctx.pushNew();
             const group = if (last_owner) |lo| self.groups.getGroup(lo) else null;
-            const new_group = if (group) |g| g else try self.groups.newGroup(null);
+            var owner: ?ecs.EcsT.Id = null;
+            if (last_owner == null) {
+                if (self.edit_state.default_group_entity != .none) {
+                    const new = try self.ecs.createEntity();
+                    try self.ecs.attach(new, .entity, .{
+                        .class = @tagName(self.edit_state.default_group_entity),
+                    });
+                    owner = new;
+                }
+            }
+            const new_group = if (group) |g| g else try self.groups.newGroup(owner);
             for (selection) |id| {
                 const old = if (try self.ecs.getOpt(id, .group)) |g| g.id else 0;
                 try ustack.append(
