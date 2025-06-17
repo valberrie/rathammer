@@ -66,10 +66,10 @@ pub fn main() !void {
         const parsed = try json_map.loadJson(jsonctx, slice, &loadctx, &ecs_p, &vpkmapper, &groups);
 
         {
-            //try vr.writeComment("This vmf was created by RatHammer.\n", .{});
-            //try vr.writeComment("It may not be compatible with official Valve tools.\n", .{});
-            //try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
-            //try vr.writeComment("rathammer_version  0.0.1\n", .{});
+            try vr.writeComment("This vmf was created by RatHammer.\n", .{});
+            try vr.writeComment("It may not be compatible with official Valve tools.\n", .{});
+            try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
+            try vr.writeComment("rathammer_version  0.0.1\n", .{});
             try vr.writeKv("versioninfo", vmf.VersionInfo{
                 .editorversion = 400,
                 .editorbuild = 2987,

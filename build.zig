@@ -1,8 +1,5 @@
 const std = @import("std");
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
@@ -10,6 +7,13 @@ pub fn build(b: *std.Build) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
+
+    const mapbuilder = b.addExecutable(.{
+        .name = "mapbuilder",
+        .root_source_file = b.path("src/map_builder.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const jsonToVmf = b.addExecutable(.{
         .name = "jsonmaptovmf",
@@ -28,6 +32,7 @@ pub fn build(b: *std.Build) void {
     const ratmod = ratdep.module("ratgraph");
     hammer_exe.root_module.addImport("graph", ratmod);
     jsonToVmf.root_module.addImport("graph", ratmod);
+    mapbuilder.root_module.addImport("graph", ratmod);
 
     const opts = b.addOptions();
     opts.addOption(bool, "time_profile", b.option(bool, "profile", "profile the time loading takes") orelse false);
@@ -39,6 +44,7 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(hammer_exe);
     b.installArtifact(jsonToVmf);
+    b.installArtifact(mapbuilder);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
