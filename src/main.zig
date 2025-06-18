@@ -57,6 +57,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .item_height = args.gui_item_height orelse scaled_item_height,
     });
     defer os9gui.deinit();
+
+    try editor.panes.registerCustom("main_3d_view", editor_view.Main3DView, try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
+
     var loadctx = edit.LoadCtx{
         .draw = &draw,
         .font = &font,
@@ -129,6 +132,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     };
     var paused = false;
 
+    var gui_timer = try std.time.Timer.start();
+
     win.grabMouse(true);
     main_loop: while (!win.should_exit) {
         if (win.isBindState(config.keys.quit.b, .rising))
@@ -141,12 +146,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             win.grabMouse(false);
             try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
             const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
-            try os9gui.beginFrame(is, &win);
+            try os9gui.resetFrame(is, &win);
             switch (try editor_view.drawPauseMenu(editor, &os9gui, &draw, &paused)) {
                 .quit => break :main_loop,
                 .nothing => {},
             }
-            try os9gui.endFrame(&draw);
+            try os9gui.drawGui(&draw);
             try draw.end(editor.draw_state.cam3d);
             win.swap();
             continue;
@@ -175,8 +180,17 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             editor.edit_state.rmouse = .low;
         }
 
+        var do_gui = true;
+        if (gui_timer.read() > (std.time.ns_per_ms * 16) * 30) { //2 fps
+            gui_timer.reset();
+            do_gui = true;
+        }
+        if (!do_gui) {
+            do_gui = (win.mouse.left != .low or win.mouse.wheel_delta.y != 0);
+        }
         const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
-        try os9gui.beginFrame(is, &win);
+        if (do_gui)
+            try os9gui.resetFrame(is, &win);
 
         const cam_state = graph.ptypes.Camera3D.MoveState{
             .down = win.bindHigh(config.keys.cam_down.b),
@@ -209,7 +223,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
         {
             const state_btns = [_]graph.SDL.keycodes.Scancode{ ._1, ._2, ._3, ._4, ._5, ._6, ._7 };
-            const num_field = editor.tools.tools.items.len;
+            const num_field = editor.tools.vtables.items.len;
             //const num_field = @typeInfo(@TypeOf(editor.edit_state.state)).Enum.fields.len;
             for (state_btns, 0..) |sbtn, i| {
                 if (i >= num_field)
@@ -224,12 +238,16 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             const has_mouse = pane_area.containsPoint(win.mouse.pos);
-            try editor_view.drawPane(editor, pane, has_mouse, cam_state, &win, pane_area, &draw, &os9gui);
+            if (do_gui or pane == .main_3d_view)
+                try editor_view.drawPane(editor, pane, has_mouse, cam_state, &win, pane_area, &draw, &os9gui);
         }
         editor.draw_state.grab.endFrame();
 
-        try loadctx.loadedSplash(win.keys.len > 0);
-        try os9gui.endFrame(&draw);
+        if (do_gui)
+            try loadctx.loadedSplash(win.keys.len > 0);
+        if (do_gui) try os9gui.drawGui(&draw) else try os9gui.drawGuiNoRebuild(&draw);
+
+        draw.setViewport(null);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
     }

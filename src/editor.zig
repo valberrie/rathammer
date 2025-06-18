@@ -33,6 +33,7 @@ const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
 const DISABLE_SPLASH = false;
 const GroupId = ecs.Groups.GroupId;
+const eviews = @import("editor_views.zig");
 
 const util3d = @import("util_3d.zig");
 
@@ -173,6 +174,7 @@ pub const Context = struct {
     visgroups: VisGroups,
 
     tools: tool_def.ToolRegistry,
+    panes: eviews.PaneReg,
 
     draw_state: struct {
         tab_index: usize = 0,
@@ -344,6 +346,7 @@ pub const Context = struct {
             .string_storage = StringStorage.init(alloc),
             .asset_browser = assetbrowse.AssetBrowserGui.init(alloc),
             .tools = tool_def.ToolRegistry.init(alloc),
+            .panes = eviews.PaneReg.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
             .visgroups = VisGroups.init(alloc),
@@ -418,6 +421,7 @@ pub const Context = struct {
 
         self.visgroups.deinit();
         self.tools.deinit();
+        self.panes.deinit();
         self.tool_res_map.deinit();
         self.file_selection.file_buf.deinit();
         self.undoctx.deinit();
@@ -920,7 +924,7 @@ pub const Context = struct {
         const start = area.pos();
         const w = 100;
         const tool_index = self.edit_state.tool_index;
-        for (self.tools.tools.items, 0..) |tool, i| {
+        for (self.tools.vtables.items, 0..) |tool, i| {
             const fi: f32 = @floatFromInt(i);
             const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
             tool.tool_icon_fn(tool, draw, self, rec);
@@ -1230,11 +1234,11 @@ pub const LoadCtx = struct {
         self.timer.reset();
         self.win.pumpEvents(.poll);
         self.draw.begin(0x678caaff, self.win.screen_dimensions.toF()) catch return;
-        self.os9gui.beginFrame(.{}, self.win) catch return;
+        self.os9gui.resetFrame(.{}, self.win) catch return;
         //self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
         const perc: f32 = @as(f32, @floatFromInt(self.cb_count)) / @as(f32, @floatFromInt(self.expected_cb));
         self.drawSplash(perc, message);
-        self.os9gui.endFrame(self.draw) catch return;
+        self.os9gui.drawGui(self.draw) catch return;
         self.draw.end(null) catch return;
         self.win.swap(); //So the window doesn't look too broken while loading
     }

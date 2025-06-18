@@ -17,6 +17,7 @@ const gizmo2 = @import("gizmo2.zig");
 const Gizmo = @import("gizmo.zig").Gizmo;
 const ecs = @import("ecs.zig");
 const Solid = ecs.Solid;
+const VtableReg = @import("vtable_reg.zig").VtableReg;
 
 //todo
 //extrude tool
@@ -24,8 +25,11 @@ const Solid = ecs.Solid;
 //  click on a face twice
 //  if points lie on same plane, infer clipping normal to be perpendicular to that plane
 
-pub const ToolReg = ?usize;
-pub const initToolReg = null;
+pub const ToolRegistry = VtableReg(i3DTool);
+pub const ToolReg = ToolRegistry.TableReg;
+pub const initToolReg = ToolRegistry.initTableReg;
+//pub const ToolReg = ?usize;
+//pub const initToolReg = null;
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
     runTool_fn: *const fn (*@This(), ToolData, *Editor) ToolError!void,
@@ -59,7 +63,7 @@ pub const ToolData = struct {
     is_first_frame: bool,
 };
 
-pub const ToolRegistry = struct {
+pub const ToolRegistryOld = struct {
     const Self = @This();
 
     tools: std.ArrayList(*i3DTool),
@@ -299,12 +303,12 @@ pub const CubeDraw = struct {
                         switch (tool.post_state) {
                             .reset => tool.state = .start,
                             .switch_to_fast_face => {
-                                const tid = try self.tools.getToolId(FastFaceManip);
+                                const tid = try self.tools.getId(FastFaceManip);
                                 self.edit_state.tool_index = tid;
                                 try self.selection.setToSingle(new);
                             },
                             .switch_to_translate => {
-                                const tid = try self.tools.getToolId(Translate);
+                                const tid = try self.tools.getId(Translate);
                                 self.edit_state.tool_index = tid;
                                 try self.selection.setToSingle(new);
                             },

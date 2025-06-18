@@ -21,6 +21,8 @@ const VisGroup = @import("visgroup.zig");
 const Os9Gui = graph.Os9Gui;
 const Window = graph.SDL.Window;
 
+const VtableReg = @import("vtable_reg.zig").VtableReg;
+
 pub const iPane = struct {
     /// Called on every frame
     draw_fn: ?*const fn (*iPane, graph.Rect, *Context, *DrawCtx, *Window) void = null,
@@ -29,17 +31,41 @@ pub const iPane = struct {
 
     /// Called after editor.update each frame, if set, draw_fn_gui will be called
     gui_dirty_fn: ?*const fn (*iPane, *Context) bool = null,
+
+    deinit_fn: *const fn (*iPane, std.mem.Allocator) void,
 };
 
+pub const PaneReg = VtableReg(iPane);
+
 pub const Main3DView = struct {
+    pub threadlocal var tool_id: PaneReg.TableReg = PaneReg.initTableReg;
+
     vt: iPane,
 
     font: *graph.FontUtil.PublicFontInterface,
-    fh: *f32,
+    fh: f32,
 
     pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, draw: *DrawCtx, win: *graph.SDL.Window) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        draw3Dview(editor, screen_area, draw, win, self.font, self.fh.*) catch return;
+        draw3Dview(editor, screen_area, draw, win, self.font, self.fh) catch return;
+    }
+
+    pub fn create(alloc: std.mem.Allocator, os9gui: *Os9Gui) !*iPane {
+        var ret = try alloc.create(@This());
+        ret.* = .{
+            .vt = .{
+                .deinit_fn = &@This().deinit,
+                .draw_fn = &@This().draw_fn,
+            },
+            .font = os9gui.font,
+            .fh = os9gui.style.config.text_h,
+        };
+        return &ret.vt;
+    }
+
+    pub fn deinit(vt: *iPane, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
     }
 };
 
@@ -262,8 +288,8 @@ pub fn draw3Dview(
         .win = win,
         .is_first_frame = self.edit_state.last_frame_tool_index != self.edit_state.tool_index,
     };
-    if (self.edit_state.tool_index < self.tools.tools.items.len) {
-        const vt = self.tools.tools.items[self.edit_state.tool_index];
+    if (self.edit_state.tool_index < self.tools.vtables.items.len) {
+        const vt = self.tools.vtables.items[self.edit_state.tool_index];
         try vt.runTool_fn(vt, td, self);
     }
     { //sky stuff
@@ -359,9 +385,13 @@ pub fn drawPane(
 ) !void {
     switch (pane) {
         .main_3d_view => {
+            const vt = try editor.panes.getVt(Main3DView);
             editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
             editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), win, pane_area.center());
-            try draw3Dview(editor, pane_area, draw, win, os9gui.font, os9gui.style.config.text_h);
+            if (vt.draw_fn) |drawf|
+                drawf(vt, pane_area, editor, draw, win);
+
+            //try draw3Dview(editor, pane_area, draw, win, os9gui.font, os9gui.style.config.text_h);
         },
         .about => {
             if (try os9gui.beginTlWindow(pane_area)) {
