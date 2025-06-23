@@ -483,6 +483,24 @@ pub const Solid = struct {
         aabb.b = max;
     }
 
+    pub fn translateVerts(self: *@This(), id: EcsT.Id, offset: Vec3, editor: *Editor, vert_i: []const u32) !void {
+        for (vert_i) |v_i| {
+            if (v_i >= self.verts.items.len) continue;
+            self.verts.items[v_i] = self.verts.items[v_i].add(offset);
+        }
+
+        for (self.sides.items) |*side| {
+            const batch = editor.meshmap.getPtr(side.tex_id) orelse continue;
+            batch.*.is_dirty = true;
+
+            //ensure this is in batch
+            try batch.*.contains.put(id, {});
+        }
+        const bb = (try editor.ecs.getPtr(id, .bounding_box));
+        self.recomputeBounds(bb);
+        editor.draw_state.meshes_dirty = true;
+    }
+
     pub fn translateSide(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Editor, side_i: usize) !void {
         if (side_i >= self.sides.items.len) return;
         for (self.sides.items[side_i].index.items) |ind| {
@@ -555,17 +573,15 @@ pub const Solid = struct {
         }
     }
 
-    //messy but if side_i is not null, offset only applies to that face
-    pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, side_i: ?usize) !void {
-        if (side_i orelse 0 >= self.sides.items.len) return;
+    /// only_verts contains a list of vertex indices to apply offset to.
+    /// If it is null, all vertices are offset
+    pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, only_verts: ?[]const u32) !void {
         for (self.sides.items) |side| {
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
                 .texture = (try editor.getTexture(side.tex_id)).id,
                 .camera = ._3d,
             } }) catch return).billboard;
-            //try batch.vertices.ensureUnusedCapacity(side.verts.items.len);
-            //try batch.indicies.ensureUnusedCapacity(side.index.items.len);
             const uvs = try editor.csgctx.calcUVCoordsIndexed(
                 self.verts.items,
                 side.index.items,
@@ -578,10 +594,11 @@ pub const Solid = struct {
                 const v = self.verts.items[vi];
 
                 var off = offset;
-                if (side_i) |s| {
-                    if (std.mem.indexOfScalar(u32, self.sides.items[s].index.items, vi) == null)
+                if (only_verts) |ov| {
+                    if (std.mem.indexOfScalar(u32, ov, vi) == null)
                         off = Vec3.zero();
                 }
+
                 try batch.vertices.append(.{
                     .pos = .{
                         .x = v.x() + off.x(),

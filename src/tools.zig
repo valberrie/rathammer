@@ -124,6 +124,10 @@ pub const VertexTranslate = struct {
         vert_index: u16,
         vert: Vec3,
     };
+    const Sel = std.MultiArrayList(struct {
+        vert: Vec3,
+        index: u32,
+    });
 
     //How will the vertex translation work?
     //Selection works like normal selection, but uses mouse clicks or whatever.
@@ -136,7 +140,8 @@ pub const VertexTranslate = struct {
     //distance we want to accept depends on our distance from vertex
 
     vt: i3DTool,
-    selected_verts: std.ArrayList(SelectedVertex),
+    //selected_verts: std.ArrayList(SelectedVertex),
+    selected: std.AutoHashMap(ecs.EcsT.Id, Sel),
 
     /// The perpendicular distance between a vertex and the mouse's ray must be smaller to be a
     /// candidate for selection.
@@ -163,20 +168,27 @@ pub const VertexTranslate = struct {
                 .tool_icon_fn = &drawIcon,
                 .runTool_fn = &runTool,
             },
-            .selected_verts = std.ArrayList(SelectedVertex).init(alloc),
+            .selected = std.AutoHashMap(ecs.EcsT.Id, Sel).init(alloc),
+            //.selected_verts = std.ArrayList(SelectedVertex).init(alloc),
         };
         return &self.vt;
     }
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.selected_verts.deinit();
+        self.reset();
+        //self.selected_verts.deinit();
+        self.selected.deinit();
         alloc.destroy(self);
     }
 
     fn reset(self: *Self) void {
-        self.selected_verts.clearRetainingCapacity();
+        //self.selected_verts.clearRetainingCapacity();
         self.gizmo_position = Vec3.zero();
+        var it = self.selected.valueIterator();
+        while (it.next()) |item|
+            item.deinit(self.selected.allocator);
+        self.selected.clearRetainingCapacity();
     }
 
     pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
@@ -192,22 +204,35 @@ pub const VertexTranslate = struct {
     }
 
     fn addOrRemoveVert(self: *Self, id: ecs.EcsT.Id, vert_index: u16, vert: Vec3) !void {
-        for (self.selected_verts.items, 0..) |sel, i| {
-            if (sel.id == id and sel.vert_index == vert_index) {
-                _ = self.selected_verts.swapRemove(i);
+        const res = try self.selected.getOrPut(id);
+        if (!res.found_existing) {
+            res.value_ptr.* = .{};
+        }
+
+        for (res.value_ptr.items(.index), 0..) |item, vi| {
+            if (item == vert_index) {
+                _ = res.value_ptr.swapRemove(vi);
                 return;
             }
         }
-        try self.selected_verts.append(.{ .id = id, .vert_index = vert_index, .vert = vert });
+        try res.value_ptr.append(self.selected.allocator, .{ .vert = vert, .index = vert_index });
     }
 
     fn setGizmoPositionToMean(self: *Self) void {
         self.gizmo_position = Vec3.zero();
-        if (self.selected_verts.items.len == 0) return; //Prevent div by zero
-        for (self.selected_verts.items) |sel| {
-            self.gizmo_position = self.gizmo_position.add(sel.vert);
+        var count: usize = 0;
+
+        var it = self.selected.valueIterator();
+        while (it.next()) |sel| {
+            const verts = sel.items(.vert);
+            count += verts.len;
+            for (verts) |v|
+                self.gizmo_position = self.gizmo_position.add(v);
         }
-        self.gizmo_position = self.gizmo_position.scale(1 / @as(f32, @floatFromInt(self.selected_verts.items.len)));
+        if (count == 0) //prevent div by zero
+            return;
+
+        self.gizmo_position = self.gizmo_position.scale(1 / @as(f32, @floatFromInt(count)));
     }
 
     pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
@@ -219,7 +244,12 @@ pub const VertexTranslate = struct {
         const r = ed.camRay(td.screen_area, td.view_3d.*);
         const POT_VERT_COLOR = 0x66CDAAff;
         var this_frame_had_selection = false;
+
+        const ar = ed.frame_arena.allocator();
+        var id_mapper = std.AutoHashMap(ecs.EcsT.Id, void).init(ar);
+
         solid_loop: for (selected_slice) |sel| {
+            try id_mapper.put(sel, {});
             if (try ed.ecs.getOptPtr(sel, .solid)) |solid| {
                 solid.drawEdgeOutline(draw_nd, 0x00ff00ff, 0x0, Vec3.zero());
 
@@ -243,14 +273,32 @@ pub const VertexTranslate = struct {
             self.setGizmoPositionToMean();
         }
         const SEL_VERT_COLOR = 0xBA55D3ff;
-        for (self.selected_verts.items) |selv| {
-            draw_nd.point3D(selv.vert, SEL_VERT_COLOR);
+        {
+            var it = self.selected.iterator();
+            var to_remove = std.ArrayList(ecs.EcsT.Id).init(ar);
+            while (it.next()) |item| {
+                //Remove any verts that don't belong to a globally selected solid
+                if (!id_mapper.contains(item.key_ptr.*)) {
+                    try to_remove.append(item.key_ptr.*);
+
+                    //We deinit here so we can quickly remove after loop
+                    item.value_ptr.deinit(self.selected.allocator);
+                    continue; //Don't draw, memory has been freed
+                }
+                const verts = item.value_ptr.items(.vert);
+                for (verts) |v|
+                    draw_nd.point3D(v, SEL_VERT_COLOR);
+            }
+            for (to_remove.items) |rem| {
+                _ = self.selected.remove(rem);
+            }
         }
 
-        if (self.selected_verts.items.len > 0) {
-            var origin_mut = self.gizmo_position;
+        if (self.selected.count() > 0) {
+            const origin = self.gizmo_position;
+            var origin_mut = origin;
             const giz_active = self.gizmo.handle(
-                self.gizmo_position,
+                origin,
                 &origin_mut,
                 ed.draw_state.cam3d.pos,
                 ed.edit_state.lmouse,
@@ -259,7 +307,52 @@ pub const VertexTranslate = struct {
                 td.view_3d.*,
                 ed.edit_state.mpos,
             );
-            _ = giz_active;
+
+            const commit = ed.edit_state.rmouse == .rising;
+            const real_commit = giz_active == .high and commit;
+
+            const dist = snapV3(origin_mut.sub(origin), ed.edit_state.grid_snap);
+            for (selected_slice) |id| {
+                const manip_verts = self.selected.getPtr(id) orelse continue;
+                const solid = try ed.ecs.getOptPtr(id, .solid) orelse continue;
+                //solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+
+                switch (giz_active) {
+                    .low => {},
+                    .rising => {
+                        try solid.removeFromMeshMap(id, ed);
+                    },
+                    .falling => {
+                        try solid.translate(id, Vec3.zero(), ed); //Dummy to put it bake in the mesh batch
+
+                        //Draw it here too so we it doesn't flash for a single frame
+                        try solid.drawImmediate(td.draw, ed, dist, null);
+                    },
+
+                    .high => {
+                        try solid.drawImmediate(td.draw, ed, dist, manip_verts.items(.index));
+                        //if (dupe) { //Draw original
+                        //    try solid.drawImmediate(draw, self, Vec3.zero(), null);
+                        //}
+                        //solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
+                    },
+                }
+            }
+            if (real_commit) {
+                const ustack = try ed.undoctx.pushNew();
+                for (selected_slice) |id| {
+                    const manip_verts = self.selected.getPtr(id) orelse continue;
+                    if (manip_verts.items(.index).len == 0) continue;
+
+                    try ustack.append(try undo.UndoVertexTranslate.create(
+                        ed.undoctx.alloc,
+                        id,
+                        dist,
+                        manip_verts.items(.index),
+                    ));
+                }
+                undo.applyRedo(ustack.items, ed);
+            }
         }
     }
 };
@@ -625,7 +718,7 @@ pub const FastFaceManip = struct {
                                     if (sel.face_id >= solid_o.sides.items.len) continue;
                                     const s_io: usize = @intCast(sel.face_id);
                                     const side_o = &solid_o.sides.items[s_io];
-                                    solid_o.drawImmediate(td.draw, editor, dist, s_io) catch return;
+                                    solid_o.drawImmediate(td.draw, editor, dist, side_o.index.items) catch return;
                                     draw_nd.convexPolyIndexed(side_o.index.items, solid_o.verts.items, 0xff000088, .{ .offset = dist });
                                 }
 
@@ -1232,7 +1325,7 @@ pub const TranslateFace = struct {
 
                     if (giz_active == .high) {
                         const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
-                        try solid.drawImmediate(td.draw, self, dist, s_i);
+                        try solid.drawImmediate(td.draw, self, dist, side.index.items);
                         if (self.edit_state.rmouse == .rising) {
                             //try solid.translateSide(id, dist, self, s_i);
                             const ustack = try self.undoctx.pushNew();

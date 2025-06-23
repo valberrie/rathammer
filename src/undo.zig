@@ -227,6 +227,45 @@ pub const UndoDupeDeprecated = struct {
     }
 };
 
+pub const UndoVertexTranslate = struct {
+    vt: iUndo,
+
+    id: Id,
+    offset: Vec3,
+    vert_indicies: []const u32,
+
+    pub fn create(alloc: std.mem.Allocator, id: Id, offset: Vec3, vert_index: []const u32) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .id = id,
+            .offset = offset,
+            .vert_indicies = try alloc.dupe(u32, vert_index),
+        };
+        return &obj.vt;
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.translateVerts(self.id, self.offset.scale(-1), editor, self.vert_indicies) catch return;
+        }
+    }
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.translateVerts(self.id, self.offset, editor, self.vert_indicies) catch return;
+        }
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.free(self.vert_indicies);
+        alloc.destroy(self);
+    }
+};
+
+//TODO deprecate, use UndoVertexTranslate
 pub const UndoSolidFaceTranslate = struct {
     vt: iUndo,
 
