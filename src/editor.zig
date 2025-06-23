@@ -175,6 +175,7 @@ pub const Context = struct {
 
     tools: tool_def.ToolRegistry,
     panes: eviews.PaneReg,
+    paused: bool = false,
 
     draw_state: struct {
         tab_index: usize = 0,
