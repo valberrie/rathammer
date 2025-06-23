@@ -116,6 +116,161 @@ pub const ToolRegistryOld = struct {
     }
 };
 
+pub const VertexTranslate = struct {
+    const Self = @This();
+    pub threadlocal var tool_id: ToolReg = initToolReg;
+    const SelectedVertex = struct {
+        id: ecs.EcsT.Id,
+        vert_index: u16,
+        vert: Vec3,
+    };
+
+    //How will the vertex translation work?
+    //Selection works like normal selection, but uses mouse clicks or whatever.
+    //only verticies of selected objects can be selected
+    //if vert_sel > 0, a translate gizmo is active
+    //This tool can easily create invalid geometry, maybe warn user?
+    //
+    //How do we determine if we have intersected a vertex.
+    //perpendicalr distance from line to point is easy to find?
+    //distance we want to accept depends on our distance from vertex
+
+    vt: i3DTool,
+    selected_verts: std.ArrayList(SelectedVertex),
+
+    /// The perpendicular distance between a vertex and the mouse's ray must be smaller to be a
+    /// candidate for selection.
+    /// Measured in hammer units (hu).
+    /// In the future, maybe scale this with by the distance from the camera? Seems unnecessary from testing.
+    ray_vertex_distance_max: f32 = 5,
+
+    selection_mode: enum {
+        /// Add or remove all candidate verticies.
+        many,
+        /// Add or remove the first vertex encountered.
+        /// This a cheap way to let users fix overlapping verticies within a solid.
+        one,
+    } = .many,
+
+    gizmo: Gizmo = .{},
+    gizmo_position: Vec3 = Vec3.zero(),
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var self = try alloc.create(@This());
+        self.* = .{
+            .vt = .{
+                .deinit_fn = &deinit,
+                .tool_icon_fn = &drawIcon,
+                .runTool_fn = &runTool,
+            },
+            .selected_verts = std.ArrayList(SelectedVertex).init(alloc),
+        };
+        return &self.vt;
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.selected_verts.deinit();
+        alloc.destroy(self);
+    }
+
+    fn reset(self: *Self) void {
+        self.selected_verts.clearRetainingCapacity();
+        self.gizmo_position = Vec3.zero();
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("vertex.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, ed: *Editor) ToolError!void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.runVertex(td, ed) catch return error.fatal;
+    }
+
+    fn addOrRemoveVert(self: *Self, id: ecs.EcsT.Id, vert_index: u16, vert: Vec3) !void {
+        for (self.selected_verts.items, 0..) |sel, i| {
+            if (sel.id == id and sel.vert_index == vert_index) {
+                _ = self.selected_verts.swapRemove(i);
+                return;
+            }
+        }
+        try self.selected_verts.append(.{ .id = id, .vert_index = vert_index, .vert = vert });
+    }
+
+    fn setGizmoPositionToMean(self: *Self) void {
+        self.gizmo_position = Vec3.zero();
+        if (self.selected_verts.items.len == 0) return; //Prevent div by zero
+        for (self.selected_verts.items) |sel| {
+            self.gizmo_position = self.gizmo_position.add(sel.vert);
+        }
+        self.gizmo_position = self.gizmo_position.scale(1 / @as(f32, @floatFromInt(self.selected_verts.items.len)));
+    }
+
+    pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
+        if (td.is_first_frame)
+            self.reset();
+        const draw_nd = &ed.draw_state.ctx;
+        const selected_slice = ed.selection.getSlice();
+        const lm = ed.edit_state.lmouse;
+        const r = ed.camRay(td.screen_area, td.view_3d.*);
+        const POT_VERT_COLOR = 0x66CDAAff;
+        var this_frame_had_selection = false;
+        solid_loop: for (selected_slice) |sel| {
+            if (try ed.ecs.getOptPtr(sel, .solid)) |solid| {
+                solid.drawEdgeOutline(draw_nd, 0x00ff00ff, 0x0, Vec3.zero());
+
+                if (this_frame_had_selection and self.selection_mode == .one)
+                    continue :solid_loop;
+
+                for (solid.verts.items, 0..) |vert, v_i| {
+                    const proj = util3d.projectPointOntoRay(r[0], r[1], vert);
+                    const distance = proj.distance(vert);
+                    if (distance < self.ray_vertex_distance_max) {
+                        draw_nd.point3D(vert, POT_VERT_COLOR);
+                        if (lm == .rising) {
+                            this_frame_had_selection = true;
+                            try self.addOrRemoveVert(sel, @intCast(v_i), vert);
+                        }
+                    }
+                }
+            }
+        }
+        if (this_frame_had_selection) {
+            self.setGizmoPositionToMean();
+        }
+        const SEL_VERT_COLOR = 0xBA55D3ff;
+        for (self.selected_verts.items) |selv| {
+            draw_nd.point3D(selv.vert, SEL_VERT_COLOR);
+        }
+
+        if (self.selected_verts.items.len > 0) {
+            var origin_mut = self.gizmo_position;
+            const giz_active = self.gizmo.handle(
+                self.gizmo_position,
+                &origin_mut,
+                ed.draw_state.cam3d.pos,
+                ed.edit_state.lmouse,
+                draw_nd,
+                td.screen_area.dim(),
+                td.view_3d.*,
+                ed.edit_state.mpos,
+            );
+            _ = giz_active;
+        }
+    }
+};
+//double computeDistance(vec3 A, vec3 B, vec3 C) {
+//    vec3 d = (C - B) / C.distance(B);
+//    vec3 v = A - B;
+//    double t = v.dot(d);
+//    vec3 P = B + t * d;
+//    return P.distance(A);
+//}
+
 //TODO How do tools register keybindings?
 pub const CubeDraw = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;

@@ -105,6 +105,30 @@ pub fn doesRayIntersectBoundingBox(comptime numdim: usize, comptime ft: type, mi
     return coord;
 }
 
+pub fn meanVerticies(verts: []const Vec3) Vec3 {
+    var mean = Vec3.zero();
+    for (verts) |v|
+        mean.add(v);
+    return mean.scale(1 / @as(f32, @floatFromInt(verts.len)));
+}
+
+pub fn projectPointOntoRay(ray_origin: Vec3, ray_dir: Vec3, p: Vec3) Vec3 {
+    //d is ray_dir
+    //v is point - ray_orig
+
+    //vec3 d = (C - B) / C.distance(B);
+    //vec3 v = A - B;
+    //double t = v.dot(d);
+    //vec3 P = B + t * d;
+    //return P.distance(A);
+
+    const v = p.sub(ray_origin);
+    const t = v.dot(ray_dir);
+
+    const point_on_line = ray_origin.add(ray_dir.scale(t));
+    return point_on_line;
+}
+
 pub fn trianglePlane(verts: [3]V3f) V3f {
     const a = verts[2].sub(verts[0]);
     const b = verts[1].sub(verts[0]);
