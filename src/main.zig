@@ -16,6 +16,7 @@ const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
 const G = graph.RGui;
 const PauseWindow = @import("windows/pause.zig").PauseWindow;
+const InspectorWindow = @import("windows/inspector.zig").InspectorWindow;
 
 const Conf = @import("config.zig");
 
@@ -66,8 +67,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     gui.style.config.default_item_h = scaled_item_height;
     gui.style.config.text_h = scaled_text_height;
     const gui_dstate = G.DrawState{ .ctx = &draw, .font = os9gui.font, .style = &gui.style, .gui = &gui };
+    const inspector_win = InspectorWindow.create(&gui, editor);
     const pause_win = PauseWindow.create(&gui, editor);
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
+    try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
 
     try editor.panes.registerCustom("main_3d_view", editor_view.Main3DView, try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
 
@@ -97,6 +100,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer name_buf.deinit();
 
     editor.draw_state.cam3d.fov = config.window.cam_fov;
+    var windows_list: [16]*G.iWindow = undefined;
+    var win_count: usize = 0;
 
     if (args.vmf) |mapname| {
         if (std.mem.endsWith(u8, mapname, ".json")) {
@@ -129,7 +134,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const tabs = [_]Tab{
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .inspector }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .new_inspector }),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
@@ -182,16 +187,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
 
-        const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
-        {
-            const wins = &.{};
-            try gui.pre_update(wins);
-            //try gui.updateWindowSize(&pause_win.vt, winrect);
-            try gui.update(wins);
-            try gui.draw(gui_dstate, false, wins);
-            gui.drawFbos(&draw, wins);
-        }
-
         if (win.keyRising(._9))
             editor.draw_state.tog.wireframe = !editor.draw_state.tog.wireframe;
 
@@ -227,6 +222,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 editor.draw_state.tab_index = i;
         }
 
+        const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
         if (win.isBindState(config.keys.grid_inc.b, .rising))
             editor.edit_state.grid_snap *= 2;
         if (win.isBindState(config.keys.grid_dec.b, .rising))
@@ -250,10 +246,26 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
 
+        try gui.pre_update(gui.windows.items);
+        win_count = 0;
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             const has_mouse = pane_area.containsPoint(win.mouse.pos);
-            try editor_view.drawPane(editor, pane, has_mouse, cam_state, &win, pane_area, &draw, &os9gui);
+            switch (pane) {
+                .new_inspector => {
+                    windows_list[win_count] = &inspector_win.vt;
+                    try gui.updateWindowSize(&inspector_win.vt, pane_area);
+                    win_count += 1;
+                },
+                else => try editor_view.drawPane(editor, pane, has_mouse, cam_state, &win, pane_area, &draw, &os9gui),
+            }
+        }
+        {
+            const wins = windows_list[0..win_count];
+            //try gui.updateWindowSize(&pause_win.vt, winrect);
+            try gui.update(wins);
+            try gui.draw(gui_dstate, false, wins);
+            gui.drawFbos(&draw, wins);
         }
         editor.draw_state.grab.endFrame();
 

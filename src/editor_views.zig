@@ -350,9 +350,11 @@ pub const Pane = enum {
     main_3d_view,
     asset_browser,
     inspector,
+    new_inspector,
     model_preview,
     model_browser,
     about,
+    none,
 };
 const Split = @import("splitter.zig");
 pub const Tab = struct {
@@ -384,6 +386,7 @@ pub fn drawPane(
     os9gui: *graph.Os9Gui,
 ) !void {
     switch (pane) {
+        .none, .new_inspector => {},
         .main_3d_view => {
             const vt = try editor.panes.getVt(Main3DView);
             editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});

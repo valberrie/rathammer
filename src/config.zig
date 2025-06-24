@@ -24,19 +24,19 @@ pub const Config = struct {
 
         cam_slow: Keybind = .{ .b = SC(.LCTRL, 0) },
 
-        quit: Keybind = .{ .b = SC(.ESCAPE, mask(&.{.LCTRL})) },
-        focus_search: Keybind = .{ .b = KC(.f, mask(&.{.LCTRL})) },
+        quit: Keybind = .{ .b = SC(.ESCAPE, mask(&.{.CTRL})) },
+        focus_search: Keybind = .{ .b = KC(.f, mask(&.{.CTRL})) },
 
         workspace: std.ArrayList(Keybind),
-        save: Keybind = .{ .b = KC(.s, mask(&.{.LCTRL})) },
-        save_new: Keybind = .{ .b = KC(.s, mask(&.{ .LCTRL, .LSHIFT })) },
+        save: Keybind = .{ .b = KC(.s, mask(&.{.CTRL})) },
+        save_new: Keybind = .{ .b = KC(.s, mask(&.{ .CTRL, .SHIFT })) },
 
         select: Keybind = .{ .b = SC(.E, 0) },
         delete_selected: Keybind = .{ .b = SC(.X, 0) },
         toggle_select_mode: Keybind = .{ .b = SC(.TAB, 0) },
-        clear_selection: Keybind = .{ .b = SC(.E, mask(&.{.LCTRL})) },
+        clear_selection: Keybind = .{ .b = SC(.E, mask(&.{.CTRL})) },
 
-        group_selection: Keybind = .{ .b = SC(.T, mask(&.{.LCTRL})) },
+        group_selection: Keybind = .{ .b = SC(.T, mask(&.{.CTRL})) },
 
         build_map: Keybind = .{ .b = SC(.F9, 0) },
 
@@ -113,7 +113,6 @@ pub const ConfigCtx = struct {
 pub const Keybind = struct {
     b: graph.SDL.NewBind,
     pub fn parseVdf(v: *const vdf.KV.Value, _: std.mem.Allocator, _: anytype) !@This() {
-        const stw = std.mem.startsWith;
         if (v.* != .literal)
             return error.notgood;
 
@@ -124,32 +123,40 @@ pub const Keybind = struct {
             .mod = 0,
         };
         var has_key: bool = false;
-        while (it.next()) |key_name| {
-            const is_scancode = stw(u8, key_name, "scancode:");
-            var start_i = if (is_scancode) "scancode:".len else 0;
-            if (stw(u8, key_name, "keycode:"))
-                start_i = "keycode:".len;
+        while (it.next()) |token| {
+            const key_t = classifyKey(token);
+            const key_name = key_t[0];
 
-            const slice1 = key_name[start_i..];
-            if (slice1.len > buf.len)
+            if (key_name.len > buf.len)
                 return error.keyNameTooLong;
-            @memcpy(buf[0..slice1.len], slice1);
-            std.mem.replaceScalar(u8, buf[0..slice1.len], '_', ' ');
-            //std.debug.print("{s}\n", .{slice1});
-            const scancode = graph.SDL.getScancodeFromName(buf[0..slice1.len]);
+            @memcpy(buf[0..key_name.len], key_name);
+            std.mem.replaceScalar(u8, buf[0..key_name.len], '_', ' ');
+            _ = std.ascii.lowerString(buf[0..key_name.len], buf[0..key_name.len]);
+            const converted_name = buf[0..key_name.len];
+            const scancode = graph.SDL.getScancodeFromName(converted_name);
+
             if (scancode == 0) {
+                const backup = backupKeymod(converted_name);
+                if (backup != .NONE) {
+                    ret.mod |= @intFromEnum(backup);
+                    continue;
+                }
+
                 std.debug.print("Not a key {s}\n", .{key_name});
                 return error.notAKey;
             }
 
             const Kmod = graph.SDL.keycodes.Keymod;
             const keymod = Kmod.fromScancode(@enumFromInt(scancode));
-            ret.key = if (is_scancode) .{ .scancode = @enumFromInt(scancode) } else .{ .keycode = graph.SDL.getKeyFromScancode(@enumFromInt(scancode)) };
+            ret.key = switch (key_t[1]) {
+                .scancode => .{ .scancode = @enumFromInt(scancode) },
+                .keycode => .{ .keycode = graph.SDL.getKeyFromScancode(@enumFromInt(scancode)) },
+            };
+
             if (keymod != @intFromEnum(Kmod.NONE)) {
                 ret.mod |= keymod;
             }
             has_key = true;
-
             //const keyc = graph.SDL.getKeyFromScancode(@enumFromInt(scancode));
             //std.debug.print("{s}\n", .{graph.c.SDL_GetKeyName(@intFromEnum(keyc))});
         }
@@ -158,6 +165,29 @@ pub const Keybind = struct {
         return .{ .b = ret };
     }
 };
+
+fn classifyKey(token: []const u8) struct { []const u8, enum { scancode, keycode } } {
+    if (std.mem.startsWith(u8, token, "scancode:"))
+        return .{ token["scancode:".len..], .scancode };
+    if (std.mem.startsWith(u8, token, "keycode:"))
+        return .{ token["keycode:".len..], .keycode };
+    return .{ token, .keycode };
+}
+
+/// 'ctrl' is not a key on the keyboard, so sdl returns 0 for getScancodeFromName
+/// Most of the time we don't want lctrl we want any ctrl
+/// this maps all of the combined modifier keys defined in sdl keymod
+fn backupKeymod(name: []const u8) graph.SDL.keycodes.Keymod {
+    if (std.mem.eql(u8, name, "ctrl"))
+        return .CTRL;
+    if (std.mem.eql(u8, name, "shift"))
+        return .SHIFT;
+    if (std.mem.eql(u8, name, "gui"))
+        return .GUI;
+    if (std.mem.eql(u8, name, "alt"))
+        return .ALT;
+    return .NONE;
+}
 
 pub fn loadConfig(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) !ConfigCtx { //Load config
     const in = try dir.openFile(path, .{});

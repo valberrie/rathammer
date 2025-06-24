@@ -12,31 +12,32 @@ keys {
     cam_down        scancode:c
 
     select          scancode:E
+    clear_selection ctrl+scancode:E
     delete_selected scancode:X
 
     grid_inc        scancode:R
     grid_dec        scancode:F
-    undo            left_ctrl+scancode:z
-    redo            left_ctrl+left_shift+scancode:z
+    undo            ctrl+scancode:z
+    redo            ctrl+shift+scancode:z
 
     cam_slow        scancode:left_ctrl
 
     duplicate       scancode:z
 
-    quit            left_ctrl+escape
+    quit            ctrl+escape
     pause           escape
-    focus_search    "left_ctrl+keycode:f"
+    focus_search    "ctrl+keycode:f"
 
     down_line       keycode:j
     up_line         keycode:k
     grab_far        scancode:q
 
 
-    workspace      left_alt+1
-    workspace      left_alt+scancode:t //texture browser
-    workspace      left_alt+scancode:m //Model browser
-    workspace      left_alt+2
-    workspace      left_alt+3
+    workspace      alt+1
+    workspace      alt+scancode:t //texture browser
+    workspace      alt+scancode:m //Model browser
+    workspace      alt+2
+    workspace      alt+3
 
     cube_draw_plane_up      scancode:x
     cube_draw_plane_down    scancode:z
