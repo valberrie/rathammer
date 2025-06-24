@@ -230,8 +230,8 @@ fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start
                 try vr.writeKey("vaxis");
                 try vr.printValue(uvfmt, .{ side.v.axis.x(), side.v.axis.y(), side.v.axis.z(), side.v.trans, side.v.scale });
                 try vr.writeKv("rotation", @as(i32, 0));
-                try vr.writeKv("lightmapscale", @as(i32, 16));
-                try vr.writeKv("smoothing_groups", @as(i32, 0));
+                try vr.writeKv("lightmapscale", side.lightmapscale);
+                try vr.writeKv("smoothing_groups", side.smoothing_groups);
             }
             try vr.endObject();
         }

@@ -101,12 +101,15 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     if (args.vmf) |mapname| {
         if (std.mem.endsWith(u8, mapname, ".json")) {
             try editor.loadJson(std.fs.cwd(), mapname, &loadctx);
-            try editor.writeToJsonFile(std.fs.cwd(), "serial2.json");
+            //try editor.writeToJsonFile(std.fs.cwd(), "serial2.json");
         } else {
             try editor.loadVmf(std.fs.cwd(), mapname, &loadctx);
-            try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
+            //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
         }
-    } else {}
+    } else {
+        //Put a default sky
+        try editor.skybox.loadSky(try editor.storeString("sky_day01_01"), &editor.vpkctx);
+    }
 
     //TODO with assets loaded dynamically, names might not be correct when saving before all loaded
 

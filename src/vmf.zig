@@ -209,9 +209,9 @@ pub const Entity = struct {
 };
 pub const Side = struct {
     pub const UvCoord = struct {
-        axis: graph.za.Vec3,
-        translation: f64,
-        scale: f64,
+        axis: graph.za.Vec3 = graph.za.Vec3.up(),
+        translation: f64 = 0,
+        scale: f64 = 0,
 
         pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
             if (val.* != .literal)
@@ -229,7 +229,7 @@ pub const Side = struct {
             };
         }
     };
-    id: u32,
+    id: u32 = 0,
     plane: struct {
         pub fn parseVdf(val: *const vdf.KV.Value, _: anytype, _: anytype) !@This() {
             if (val.* != .literal)
@@ -248,12 +248,12 @@ pub const Side = struct {
         tri: [3]vdf.Vec3,
     },
 
-    uaxis: UvCoord,
-    vaxis: UvCoord,
-    material: []const u8,
-    lightmapscale: i32,
-    rotation: f32,
-    smoothing_groups: i32,
+    uaxis: UvCoord = .{},
+    vaxis: UvCoord = .{},
+    material: []const u8 = "",
+    lightmapscale: i32 = 16,
+    rotation: f32 = 0,
+    smoothing_groups: i32 = 0,
     dispinfo: DispInfo = .{},
 };
 

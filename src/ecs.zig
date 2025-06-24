@@ -322,6 +322,9 @@ pub const Side = struct {
     tw: i32 = 0,
     th: i32 = 0,
 
+    lightmapscale: i32 = 16,
+    smoothing_groups: i32 = 0,
+
     /// This field is allocated by StringStorage.
     /// It is only used to keep track of textures that are missing, so they are persisted across save/load.
     /// the actual material assigned is stored in `tex_id`

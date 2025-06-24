@@ -457,6 +457,8 @@ pub const EntClass = struct {
     }
 
     pub fn inherit(self: *Self, parent: Self) !void {
+        //BUG, some fields are inherited twice, switch to a hash map
+        //This is because of multinheritance, the diamond problem
         for (parent.fields.items) |item| {
             var cc = item;
             cc.is_derived = true;
