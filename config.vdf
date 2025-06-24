@@ -20,7 +20,8 @@ keys {
     undo            ctrl+scancode:z
     redo            ctrl+shift+scancode:z
 
-    cam_slow        scancode:left_ctrl
+    cam_slow        scancode:left_ctrl //This must be left_ctrl, not ctrl as 'ctrl' is not a physical key, only a modifier
+                                       //Bindings must include at least one key.
 
     duplicate       scancode:z
 
@@ -50,7 +51,7 @@ autosave {
                         //Autosaves are stored per the filename of the map so
                         //my_path_to_map/my_map.json
                         //other_path/my_map.json
-                        //would clobber each others autosaves
+                        //would overwrite each other's autosaves
 }
 
 window {
@@ -73,7 +74,7 @@ games {
 
         //List paths which will be omitted from material search
         asset_browser_exclude {
-            prefix "materials/"
+            prefix "materials/" //prepended to each entry
 
             
             entry "models" //This becomes "materials/models"

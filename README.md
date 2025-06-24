@@ -11,9 +11,9 @@ Wip
 * serializing to json
 * model placement
 * asset browsing
+* Writing vmf files.
 
 ## TODO
-* Writing vmf files.
 * Writing obj files
 * alpha sorting
 * Translation and rotation about arbitrary axis
