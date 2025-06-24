@@ -63,14 +63,15 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                     try classCombo(os9gui, ent, self);
                     vl.pushRemaining();
                     if (self.fgd_ctx.getPtr(ent.class)) |base| {
-                        if (try os9gui.beginIndexedVScroll(base.fields.items.len, &self.misc_gui_state.inspector_index, .{ .column_count = 2 })) |_| {
+                        const field_list = base.field_data.items;
+                        if (try os9gui.beginIndexedVScroll(field_list.len, &self.misc_gui_state.inspector_index, .{ .column_count = 2 })) |_| {
                             const index = self.misc_gui_state.inspector_index;
                             defer os9gui.endIndexedVScroll();
                             const kvs = if (try self.ecs.getOptPtr(id, .key_values)) |kv| kv else blk: {
                                 try self.ecs.attach(id, .key_values, ecs.KeyValues.init(self.alloc));
                                 break :blk try self.ecs.getPtr(id, .key_values);
                             };
-                            for (base.fields.items[index..], index..) |req_field, field_i| {
+                            for (field_list[index..], index..) |req_field, field_i| {
                                 const res = try kvs.map.getOrPut(req_field.name);
                                 if (!res.found_existing) {
                                     var new_list = std.ArrayList(u8).init(self.alloc);
@@ -115,9 +116,9 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                     defer os9gui.endL();
                     const index = self.misc_gui_state.selected_index;
                     if (self.fgd_ctx.getPtr(ent.class)) |base| {
-                        if (index < base.fields.items.len) {
+                        if (index < base.field_data.items.len) {
                             const kvs = try self.ecs.getOptPtr(id, .key_values) orelse return;
-                            const field = base.fields.items[index];
+                            const field = base.field_data.items[index];
                             os9gui.label("Field {s}: {s}", .{ field.name, @tagName(field.type) });
                             if (kvs.map.getPtr(field.name)) |val| {
                                 switch (field.type) {

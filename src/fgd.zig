@@ -444,7 +444,9 @@ pub const EntClass = struct {
             }
         }
     };
-    fields: std.ArrayList(Field),
+    field_data: std.ArrayList(Field),
+    fields: std.StringHashMap(usize),
+    //fields: std.ArrayList(Field),
     name: []const u8 = "",
     doc: []const u8 = "",
     iconsprite: []const u8 = "",
@@ -452,24 +454,44 @@ pub const EntClass = struct {
 
     pub fn init(alloc: Allocator) Self {
         return .{
-            .fields = std.ArrayList(Field).init(alloc),
+            .field_data = std.ArrayList(Field).init(alloc),
+            .fields = std.StringHashMap(usize).init(alloc),
         };
+    }
+
+    //Assumes all fields are already alloced
+    pub fn addField(self: *Self, field: Field) !void {
+        if (self.fields.contains(field.name)) {
+            var f = field;
+            f.deinit();
+            return;
+        }
+
+        const index = self.field_data.items.len;
+        try self.fields.put(field.name, index);
+        try self.field_data.append(field);
     }
 
     pub fn inherit(self: *Self, parent: Self) !void {
         //BUG, some fields are inherited twice, switch to a hash map
         //This is because of multinheritance, the diamond problem
-        for (parent.fields.items) |item| {
-            var cc = item;
+        var it = parent.fields.iterator();
+        while (it.next()) |item| {
+            if (self.fields.contains(item.key_ptr.*)) continue; //duplicate field
+
+            var cc = parent.field_data.items[item.value_ptr.*];
             cc.is_derived = true;
-            try self.fields.append(cc);
+            const index = self.field_data.items.len;
+            try self.fields.put(item.key_ptr.*, index);
+            try self.field_data.append(cc);
         }
         //TODO also inherit inputs and outputs, maybe check for override?
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.fields.items) |*item|
+        for (self.field_data.items) |*item|
             item.deinit();
+        self.field_data.deinit();
         self.fields.deinit();
     }
 };
@@ -750,7 +772,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         //std.debug.print("TYPE {s}\n", .{tkz.getSlice(type_tok)});
                                         //_ = try tkz.expectNext(.newline);
                                     }
-                                    try new_class.fields.append(.{
+                                    try new_class.addField(.{
                                         .name = try ctx.dupeString(fsl),
                                         .type = new_type,
                                         .default = default_str,
