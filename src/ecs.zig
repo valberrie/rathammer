@@ -773,12 +773,15 @@ pub const EditorInfo = struct {
 // user press ctrl-v with the string "255 255 255 800" in clipboard.
 // the relevant get filled out.
 pub const KeyValues = struct {
+    const MAX_FLOAT = 8;
+    pub const Floats = struct { count: u8, d: [MAX_FLOAT]f32 };
     const Value = union(enum) {
-        const MAX_FLOAT = 8;
         string: std.ArrayList(u8),
-        floats: struct { count: u8, d: [MAX_FLOAT]f32 },
+        floats: Floats,
         //float4: [4]f32,
 
+        //TODO with the new gui doing this float stuff is a bit pointless.
+        //just store all as strings and keep it simple
         pub fn toFloats(self: *@This(), comptime count: u8) !void {
             if (count >= MAX_FLOAT)
                 @compileError("not enough floats");

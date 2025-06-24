@@ -408,7 +408,11 @@ pub fn drawPane(
         .asset_browser => {
             try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .texture);
         },
-        .inspector => try inspector.newInspector(editor, pane_area, os9gui),
+        .inspector => {
+            var time = try std.time.Timer.start();
+            try inspector.newInspector(editor, pane_area, os9gui);
+            std.debug.print("Built gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
+        },
         //.inspector => try inspector.drawInspector(editor, pane_area, os9gui),
         .model_preview => {
             try editor.asset_browser.drawModelPreview(

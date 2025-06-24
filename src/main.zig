@@ -134,7 +134,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const tabs = [_]Tab{
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .inspector }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .new_inspector }),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
@@ -149,6 +149,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .panes = Tab.newPane(&panes, &PI, &.{.main_3d_view}),
         },
     };
+
+    var last_frame_group_owner: ?edit.EcsT.Id = null;
 
     win.grabMouse(true);
     main_loop: while (!win.should_exit) {
@@ -245,6 +247,13 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 }
             }
         }
+        { //Hacks to update gui
+            const new_id = editor.selection.getGroupOwnerExclusive(&editor.groups);
+            if (new_id != last_frame_group_owner) {
+                inspector_win.vt.needs_rebuild = true;
+            }
+            last_frame_group_owner = new_id;
+        }
 
         try gui.pre_update(gui.windows.items);
         win_count = 0;
@@ -263,14 +272,20 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         {
             const wins = windows_list[0..win_count];
             //try gui.updateWindowSize(&pause_win.vt, winrect);
+            //var time = try std.time.Timer.start();
             try gui.update(wins);
             try gui.draw(gui_dstate, false, wins);
             gui.drawFbos(&draw, wins);
+            //std.debug.print("draw gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
         }
         editor.draw_state.grab.endFrame();
 
         try loadctx.loadedSplash(win.keys.len > 0);
-        try os9gui.drawGui(&draw);
+        {
+            //var time = try std.time.Timer.start();
+            try os9gui.drawGui(&draw);
+            //std.debug.print("draw gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
+        }
 
         draw.setViewport(null);
         try draw.end(editor.draw_state.cam3d);
@@ -280,7 +295,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{
-        .stack_trace_frames = if (IS_DEBUG) 8 else 0,
+        .stack_trace_frames = if (IS_DEBUG) 0 else 0,
     }){};
     const alloc = gpa.allocator();
     var arg_it = try std.process.argsWithAllocator(alloc);

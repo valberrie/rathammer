@@ -62,7 +62,7 @@ pub const PauseWindow = struct {
         }
     }
 
-    pub fn commitCb(vt: *iArea, _: *Gui, _: []const u8) void {
+    pub fn commitCb(vt: *iArea, _: *Gui, _: []const u8, _: usize) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
         self.editor.selection.setToSingle(@intCast(self.ent_select)) catch return;
     }
@@ -89,13 +89,13 @@ pub const PauseWindow = struct {
         const a = &self.area;
 
         const ds = &self.editor.draw_state;
-        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Unpause", &self.area, @This().btnCb, Buttons.id(.unpause)));
-        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Quit", &self.area, @This().btnCb, Buttons.id(.quit)));
-        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Force autosave", &self.area, @This().btnCb, Buttons.id(.force_autosave)));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &ds.tog.tools, "draw tools"));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &ds.tog.sprite, "draw sprite"));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &ds.tog.models, "draw model"));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &self.editor.selection.ignore_groups, "ignore groups"));
+        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
+        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
+        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
+        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
+        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
+        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
         a.addChildOpt(gui, vt, Wg.Combo.build(gui, ly.getArea(), &ds.cam3d.fwd_back_kind));
         a.addChildOpt(gui, vt, Wg.Combo.build(gui, ly.getArea(), &self.editor.edit_state.default_group_entity));
         a.addChildOpt(gui, vt, Wg.Slider.build(gui, ly.getArea(), &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
