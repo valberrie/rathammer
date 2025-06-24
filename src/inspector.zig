@@ -46,10 +46,17 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
         const area = win_area.inset(6 * os9gui.scale);
         _ = try gui.beginLayout(Gui.SubRectLayout, .{ .rect = area }, .{});
         defer gui.endLayout();
-        _ = try os9gui.beginH(2);
+        const top_v = try os9gui.beginV();
         defer os9gui.endL();
         if (self.selection.getGroupOwnerExclusive(&self.groups)) |id| {
+            if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+                os9gui.label("sides: {d}", .{solid.sides.items.len});
+                os9gui.label("verts: {d}", .{solid.verts.items.len});
+            }
+            top_v.pushRemaining();
             if (try self.ecs.getOptPtr(id, .entity)) |ent| {
+                _ = try os9gui.beginH(2);
+                defer os9gui.endL();
                 { //Field list
                     const vl = try os9gui.beginV();
                     defer os9gui.endL();

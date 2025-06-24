@@ -56,8 +56,8 @@ pub fn main() !void {
 
     const game_path = gamedir ++ "/" ++ game_name;
     try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vbsp.exe", "-game", game_path, "-novconfig", map_no_extension }, working_dir);
-    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vvis.exe", "-game", game_path, "-novconfig", map_no_extension }, working_dir);
-    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vrad.exe", "-game", game_path, "-novconfig", map_no_extension }, working_dir);
+    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vvis.exe", "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
+    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vrad.exe", "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
 
     const bsp_name = try printString(alloc, "{s}.bsp", .{map_no_extension});
     try working.copyFile(bsp_name, output_dir, bsp_name, .{});

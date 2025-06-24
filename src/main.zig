@@ -201,7 +201,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             editor.edit_state.rmouse = .low;
         }
 
-        const is: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
+        const is_full: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
+        const is = if (editor.draw_state.grab.is) Gui.InputState{} else is_full;
         try os9gui.resetFrame(is, &win);
 
         const cam_state = graph.ptypes.Camera3D.MoveState{

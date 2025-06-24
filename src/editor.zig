@@ -534,75 +534,6 @@ pub const Context = struct {
         try bwr.flush();
     }
 
-    fn readComponentFromJson(self: *Self, v: std.json.Value, T: type) !T {
-        const info = @typeInfo(T);
-        switch (T) {
-            []const u8 => {
-                if (v != .string) return error.value;
-                return try self.string_storage.store(v.string);
-            },
-            Vec3 => {
-                if (v != .string) return error.value;
-                var it = std.mem.splitScalar(u8, v.string, ' ');
-                const x = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                const y = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                const z = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                return Vec3.new(x, y, z);
-            },
-            Side.UVaxis => {
-                if (v != .string) return error.value;
-                var it = std.mem.splitScalar(u8, v.string, ' ');
-                const x = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                const y = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                const z = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                const tr = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                const sc = try std.fmt.parseFloat(f32, it.next() orelse return error.expectedFloat);
-                return .{
-                    .axis = Vec3.new(x, y, z),
-                    .trans = tr,
-                    .scale = sc,
-                };
-            },
-            vpk.VpkResId => {
-                if (v != .string) return error.value;
-                const id = try self.vpkctx.getResourceIdString(v.string);
-                return id orelse return error.broken;
-            },
-            else => {},
-        }
-        switch (info) {
-            .Bool, .Float, .Int => return try std.json.innerParseFromValue(T, self.alloc, v, .{}),
-            .Struct => |s| {
-                if (std.meta.hasFn(T, "initFromJson")) {
-                    return try T.initFromJson(v, self);
-                }
-                if (vdf.getArrayListChild(T)) |child| {
-                    var ret = std.ArrayList(child).init(self.alloc);
-                    if (v != .array) return error.value;
-                    for (v.array.items) |item|
-                        try ret.append(try self.readComponentFromJson(item, child));
-
-                    return ret;
-                }
-                if (v != .object) return error.value;
-                var ret: T = .{};
-                inline for (s.fields) |field| {
-                    if (v.object.get(field.name)) |val| {
-                        @field(ret, field.name) = try self.readComponentFromJson(val, field.type);
-                    }
-                }
-                return ret;
-            },
-            .Optional => |o| {
-                if (v == .null)
-                    return null;
-                return try self.readComponentFromJson(v, o.child);
-            },
-            else => {},
-        }
-        @compileError("not sup " ++ @typeName(T));
-    }
-
     pub fn writeComponentToJson(self: *Self, jw: anytype, comp: anytype) !void {
         const T = @TypeOf(comp);
         const info = @typeInfo(T);
@@ -629,12 +560,16 @@ pub const Context = struct {
                 if (std.meta.hasFn(T, "serial")) {
                     return try comp.serial(self, jw);
                 }
-                if (vdf.getArrayListChild(@TypeOf(comp))) |_| {
-                    try jw.beginArray();
-                    for (comp.items) |item| {
-                        try self.writeComponentToJson(jw, item);
+                if (vdf.getArrayListChild(@TypeOf(comp))) |child| {
+                    if (child == u8) {
+                        try jw.write(comp.items);
+                    } else {
+                        try jw.beginArray();
+                        for (comp.items) |item| {
+                            try self.writeComponentToJson(jw, item);
+                        }
+                        try jw.endArray();
                     }
-                    try jw.endArray();
                     return;
                 }
                 try jw.beginObject();
@@ -902,6 +837,11 @@ pub const Context = struct {
                         ._sprite = null,
                     });
                     try self.ecs.attach(new, .bounding_box, bb);
+
+                    if (ent.connections.is_init) {
+                        const new_con = try ecs.Connections.initFromVmf(self.alloc, &ent.connections, &self.string_storage);
+                        try self.ecs.attach(new, .connections, new_con);
+                    }
 
                     {
                         var new_ent = try self.ecs.getPtr(new, .entity);

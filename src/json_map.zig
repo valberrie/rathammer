@@ -185,6 +185,10 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
             }
             if (vdf.getArrayListChild(T)) |child| {
                 var ret = std.ArrayList(child).init(ctx.alloc);
+                if (child == u8 and v == .string) {
+                    try ret.appendSlice(v.string);
+                    return ret;
+                }
                 if (v != .array) return error.value;
                 for (v.array.items) |item|
                     try ret.append(try readComponentFromJson(ctx, item, child, vpkctx));

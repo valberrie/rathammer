@@ -157,6 +157,27 @@ pub fn main() !void {
                         }
                     }
 
+                    if (try ecs_p.getOptPtr(ents.i, .connections)) |cons| {
+                        try vr.writeKey("connections");
+                        try vr.beginObject();
+                        {
+                            //Format for vmf is
+                            //listen_event   "target,input,value,delay,fire_count"
+                            const fmt = "\"{s},{s},{s},{d},{d}\"\n";
+                            for (cons.list.items) |con| {
+                                try vr.writeKey(con.listen_event);
+                                try vr.printValue(fmt, .{
+                                    con.target.items,
+                                    con.input,
+                                    con.value.items,
+                                    con.delay,
+                                    con.fire_count,
+                                });
+                            }
+                        }
+                        try vr.endObject();
+                    }
+
                     if (ent._model_id) |mid|
                         try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
                 }

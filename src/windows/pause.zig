@@ -25,6 +25,7 @@ pub const PauseWindow = struct {
 
     editor: *Context,
     should_exit: bool = false,
+    ent_select: u32 = 0,
 
     pub fn create(gui: *Gui, editor: *Context) *PauseWindow {
         const self = gui.create(@This());
@@ -61,6 +62,11 @@ pub const PauseWindow = struct {
         }
     }
 
+    pub fn commitCb(vt: *iArea, _: *Gui, _: []const u8) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        self.editor.selection.setToSingle(@intCast(self.ent_select)) catch return;
+    }
+
     pub fn build(vt: *iWindow, gui: *Gui, area: Rect) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         self.area.area = area;
@@ -93,6 +99,11 @@ pub const PauseWindow = struct {
         a.addChildOpt(gui, vt, Wg.Combo.build(gui, ly.getArea(), &ds.cam3d.fwd_back_kind));
         a.addChildOpt(gui, vt, Wg.Combo.build(gui, ly.getArea(), &self.editor.edit_state.default_group_entity));
         a.addChildOpt(gui, vt, Wg.Slider.build(gui, ly.getArea(), &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
+
+        a.addChildOpt(gui, vt, Wg.TextboxNumber.build(gui, ly.getArea(), &self.ent_select, vt, .{
+            .commit_vt = &self.area,
+            .commit_cb = &commitCb,
+        }));
         //a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &self.bool2, "secnd button"));
         //a.addChildOpt(gui, vt, Wg.StaticSlider.build(gui, ly.getArea(), 4, 0, 10));
         //a.addChild(gui, vt, Wg.Combo(MyEnum).build(gui, ly.getArea() orelse return, &self.my_enum));

@@ -11,6 +11,12 @@ const thread_pool = @import("thread_pool.zig");
 const Editor = @import("editor.zig").Context;
 const DrawCtx = graph.ImmediateDrawingContext;
 const VisGroups = @import("visgroup.zig");
+//Global TODO for ecs stuff
+//Many strings in kvs and connections are stored by editor.StringStorage
+//as they act as an enum value specified in the fgd.
+//Is allowing arbirtary values for this a usecase? Maybe then we need to explcitly allocate.
+//rather than storing a []const u8, put a wrapper struct or typedef atleast to indicate its allocation status.
+//All arraylists should be converted to Unmanaged, registry could have a pub var component_alloc they can call globally.
 
 const Comp = graph.Ecs.Component;
 /// Component fields begining with an _ are not serialized
@@ -35,6 +41,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
             return .{};
         }
     }),
+    Comp("connections", Connections),
 });
 
 /// Groups are used to group entities together. Any entities can be grouped but it is mainly used for brush entities
@@ -370,7 +377,17 @@ pub const Side = struct {
         try jw.beginObject();
         {
             try jw.objectField("index");
-            try editor.writeComponentToJson(jw, self.index);
+            try jw.beginArray();
+            var last = self.index.getLastOrNull() orelse return error.invalidSide;
+            // verticies should never be the same as a neighbor.
+            // This exists because of some bug in csg, which very occasionally generates an extra index
+            for (self.index.items) |id| {
+                if (id == last)
+                    continue;
+                try jw.write(id);
+                last = id;
+            }
+            try jw.endArray();
             try jw.objectField("u");
             try editor.writeComponentToJson(jw, self.u);
             try jw.objectField("v");
@@ -709,8 +726,20 @@ pub const EditorInfo = struct {
         return a.*;
     }
 
-    pub fn initFromJson(_: std.json.Value, _: anytype) !@This() {
-        return .{ .vis_mask = VisGroups.BitSetT.initEmpty() };
+    pub fn initFromJson(v: std.json.Value, _: anytype) !@This() {
+        if (v != .string) return error.invalidEditorInfo;
+
+        const str = v.string;
+        if (std.mem.indexOfScalar(u8, str, '_')) |ind| {
+            var bits = .{ .vis_mask = VisGroups.BitSetT.initEmpty() };
+            const first = try std.fmt.parseInt(VisGroups.BitSetT.MaskInt, str[0..ind], 16);
+            const second = try std.fmt.parseInt(VisGroups.BitSetT.MaskInt, str[ind + 1 ..], 16);
+            bits.vis_mask.masks[0] = first;
+            bits.vis_mask.masks[1] = second;
+            return bits;
+        }
+
+        return error.invalidEditorInfo;
     }
     pub fn serial(self: @This(), _: *Editor, jw: anytype) !void {
         const mask_count = self.vis_mask.masks.len;
@@ -883,5 +912,113 @@ pub const KeyValues = struct {
         while (it.next()) |item|
             item.deinit();
         self.map.deinit();
+    }
+};
+
+pub const Connection = struct {
+    const Self = @This();
+    listen_event: []const u8, //Allocated by someone else (string storage)
+
+    target: std.ArrayList(u8),
+    input: []const u8, //Allocated by strstore
+
+    value: std.ArrayList(u8),
+    delay: f32,
+    fire_count: i32,
+
+    pub fn deinit(self: *Self) void {
+        self.value.deinit();
+        self.target.deinit();
+    }
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .target = std.ArrayList(u8).init(alloc),
+            .value = std.ArrayList(u8).init(alloc),
+            .listen_event = "",
+            .input = "",
+            .delay = 0,
+            .fire_count = -1,
+        };
+    }
+
+    pub fn initFromVmf(alloc: std.mem.Allocator, con: vmf.Connection, str_store: anytype) !@This() {
+        var ret = init(alloc);
+        ret.listen_event = try str_store.store(con.listen_event);
+        try ret.target.appendSlice(con.target);
+        ret.input = try str_store.store(con.input);
+        try ret.value.appendSlice(con.value);
+        ret.delay = con.delay;
+        ret.fire_count = con.fire_count;
+        return ret;
+    }
+
+    pub fn initFromJson(v: std.json.Value, ctx: anytype) !@This() {
+        const H = struct {
+            fn getString(val: *const std.json.ObjectMap, name: []const u8) ![]const u8 {
+                if (val.get(name)) |o| {
+                    if (o != .string) return error.invalidTypeForConnection;
+                    return o.string;
+                }
+                return "";
+            }
+            fn getNum(val: *const std.json.ObjectMap, name: []const u8, default: anytype) !@TypeOf(default) {
+                switch (val.get(name) orelse return default) {
+                    .integer => |i| return std.math.lossyCast(@TypeOf(default), i),
+                    .float => |f| return std.math.lossyCast(@TypeOf(default), f),
+                    else => return error.invalidTypeForConnection,
+                }
+            }
+        };
+        if (v != .object) return error.broken;
+        var ret = init(ctx.alloc);
+
+        ret.listen_event = try ctx.str_store.store(try H.getString(&v.object, "listen_event"));
+        ret.input = try ctx.str_store.store(try H.getString(&v.object, "input"));
+        try ret.target.appendSlice(try H.getString(&v.object, "target"));
+        try ret.value.appendSlice(try H.getString(&v.object, "value"));
+
+        ret.delay = try H.getNum(&v.object, "delay", ret.delay);
+        ret.fire_count = try H.getNum(&v.object, "fire_count", ret.fire_count);
+        return ret;
+    }
+};
+
+pub const Connections = struct {
+    const Self = @This();
+
+    list: std.ArrayList(Connection) = undefined,
+
+    pub fn initFromVmf(alloc: std.mem.Allocator, con: *const vmf.Connections, strstore: anytype) !Self {
+        var ret = .{ .list = std.ArrayList(Connection).init(alloc) };
+        if (!con.is_init)
+            return ret;
+
+        for (con.list.items) |co| {
+            try ret.list.append(try Connection.initFromVmf(alloc, co, strstore));
+        }
+        return ret;
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.list.items) |*item|
+            item.deinit();
+        self.list.deinit();
+    }
+
+    pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
+        var new = try self.list.clone();
+        for (self.list.items, 0..) |old, i| {
+            new.items[i] = .{
+                //Explictly copy fields over to prevent bugs if alloced fields are added.
+                .listen_event = old.listen_event,
+                .input = old.input,
+                .delay = old.delay,
+                .fire_count = old.fire_count,
+                .value = try old.value.clone(),
+                .target = try old.target.clone(),
+            };
+        }
+        return .{ .list = new };
     }
 };
