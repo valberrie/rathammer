@@ -20,6 +20,24 @@ pub fn stripExtension(str: []const u8) []const u8 {
     return str[0 .. std.mem.lastIndexOfScalar(u8, str, '.') orelse str.len];
 }
 
+pub fn catString(alloc: std.mem.Allocator, strings: []const []const u8) ![]const u8 {
+    var total_len: usize = 0;
+    for (strings) |str|
+        total_len += str.len;
+    const slice = try alloc.alloc(u8, total_len);
+    var index: usize = 0;
+    for (strings) |str| {
+        @memcpy(slice[index .. index + str.len], str);
+        index += str.len;
+    }
+    return slice;
+}
+
+fn die() noreturn {
+    std.debug.print("Something horrible happened. Absolutely, fatal\n", .{});
+    std.process.exit(1);
+}
+
 const builtin = @import("builtin");
 const DO_WINE = builtin.target.os.tag != .windows;
 
@@ -34,12 +52,20 @@ pub fn main() !void {
 
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("vmf", .string, "vmf to load"),
+        Arg("gamedir", .string, "directory to game, 'Half-Life 2'"),
+        Arg("gamename", .string, "name of game 'hl2_complete'"),
+        Arg("outputdir", .string, "dir relative to gamedir where bsp is put, 'hl2/maps'"),
+        Arg("tmpdir", .string, "directory for map artifacts, default is /tmp/mapcompile"),
     }, &arg_it);
+    const cwd = std.fs.cwd();
 
-    const game_name = "hl2_complete";
-    const gamedir = "/mnt/flash/SteamLibrary/steamapps/common/Half-Life 2";
-    const working_dir = "/tmp/mapcompile";
-    const outputdir = gamedir ++ "/hl2/maps";
+    const game_name = args.gamename orelse "hl2_complete";
+    const gamedir_pre = args.gamedir orelse "./Half-Life 2";
+    const gamedir = try cwd.realpathAlloc(alloc, gamedir_pre);
+    std.debug.print("found gamedir: {s}\n", .{gamedir});
+
+    const working_dir = args.tmpdir orelse "/tmp/mapcompile";
+    const outputdir = try catString(alloc, &.{ gamedir, args.outputdir orelse "/hl2/maps" });
 
     const mapname = args.vmf orelse {
         std.debug.print("Please specify vmf name with --vmf\n", .{});
@@ -54,10 +80,10 @@ pub fn main() !void {
 
     const output_dir = try std.fs.cwd().openDir(outputdir, .{});
 
-    const game_path = gamedir ++ "/" ++ game_name;
-    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vbsp.exe", "-game", game_path, "-novconfig", map_no_extension }, working_dir);
-    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vvis.exe", "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
-    try runCommand(alloc, &.{ "wine", gamedir ++ "/bin/vrad.exe", "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
+    const game_path = try catString(alloc, &.{ gamedir, "/", game_name });
+    try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension }, working_dir);
+    try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
+    try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
 
     const bsp_name = try printString(alloc, "{s}.bsp", .{map_no_extension});
     try working.copyFile(bsp_name, output_dir, bsp_name, .{});
@@ -68,19 +94,32 @@ fn runCommand(alloc: std.mem.Allocator, argv: []const []const u8, working_dir: [
     for (argv) |arg|
         std.debug.print("{s} ", .{arg});
     std.debug.print("\n", .{});
-    const res = try std.process.Child.run(.{
-        .allocator = alloc,
-        .argv = argv,
-        .cwd = working_dir,
-    });
-    std.debug.print("{s}\n", .{res.stdout});
-    switch (res.term) {
+    var child = std.process.Child.init(argv, alloc);
+    child.cwd = working_dir;
+    child.stdout_behavior = .Pipe;
+    child.stdin_behavior = .Ignore;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+
+    if (child.stdout) |file| {
+        var line_buf: [512]u8 = undefined;
+        const r = file.reader();
+        while (true) {
+            const line = r.readUntilDelimiter(&line_buf, '\n') catch |err| switch (err) {
+                error.StreamTooLong => continue,
+                error.EndOfStream => break,
+                else => break,
+            };
+            std.debug.print("{s}\n", .{line});
+        }
+    }
+
+    switch (try child.wait()) {
         .Exited => |e| {
             if (e == 0)
                 return;
         },
         else => {},
     }
-    std.debug.print("{s}\n", .{res.stderr});
     return error.broken;
 }
