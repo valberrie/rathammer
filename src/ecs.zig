@@ -397,6 +397,10 @@ pub const Side = struct {
             try editor.writeComponentToJson(jw, self.v);
             try jw.objectField("tex_id");
             try editor.writeComponentToJson(jw, self.tex_id);
+            try jw.objectField("lightmapscale");
+            try editor.writeComponentToJson(jw, self.lightmapscale);
+            try jw.objectField("smoothing_groups");
+            try editor.writeComponentToJson(jw, self.smoothing_groups);
         }
         try jw.endObject();
     }

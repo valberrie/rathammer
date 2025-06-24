@@ -134,7 +134,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const tabs = [_]Tab{
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .new_inspector }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .inspector }),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
