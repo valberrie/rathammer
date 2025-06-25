@@ -450,7 +450,7 @@ pub const EntClass = struct {
     };
     pub const Io = struct {
         pub const Kind = enum { input, output };
-        pub const Type = enum { void, string, int, float, boolean, ehandle };
+        pub const Type = enum { void, string, integer, float, bool, ehandle, color255, target_destination, vector };
         //All strings alloced by entctx
         kind: Kind,
         name: []const u8,
@@ -537,6 +537,15 @@ pub fn loadFgd(ctx: *EntCtx, base_dir: std.fs.Dir, path: []const u8) !void {
     crass(ctx, &tkz, base_dir, alloc) catch |err| {
         std.debug.print("Line: {d}:{d}\n", .{ tkz.line_counter, tkz.char_counter });
         return err;
+    };
+}
+
+fn getIoType(string: []const u8, buf: *std.ArrayList(u8)) !EntClass.Io.Type {
+    try buf.resize(string.len);
+    _ = std.ascii.lowerString(buf.items, string);
+    return stringToEnum(EntClass.Io.Type, buf.items) orelse {
+        std.debug.print("Not an io type: {s}\n", .{string});
+        return .void;
     };
 }
 
@@ -688,7 +697,7 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                     const new_io = EntClass.Io{
                                         .name = try ctx.dupeString(tkz.getSlice(io_name)),
                                         .doc = try ctx.dupeString(io_doc),
-                                        .type = stringToEnum(EntClass.Io.Type, tkz.getSlice(io_type)) orelse return error.invalidIoType,
+                                        .type = try getIoType(tkz.getSlice(io_type), &multi_string_buf),
                                         .kind = fw,
                                     };
                                     try new_class.addIo(new_io);

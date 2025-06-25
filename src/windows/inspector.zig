@@ -147,7 +147,17 @@ pub const InspectorWindow = struct {
             ly.padding.left = 10;
             ly.padding.right = 10;
             ly.padding.top = 10;
-            self.buildIoTab(gui, sp[0], vt) catch {};
+
+            const cons = self.getConsPtr() orelse return;
+
+            vt.addChildOpt(gui, win, Wg.VScroll.build(gui, sp[0], .{
+                .build_cb = &buildIoScrollCb,
+                .build_vt = win.area,
+                .win = win,
+                .count = cons.list.items.len,
+                .item_h = gui.style.config.default_item_h,
+            }));
+            //self.buildIoTab(gui, sp[0], vt) catch {};
             const names = [6][]const u8{ "Listen", "target", "input", "value", "delay", "fc" };
             for (names) |n| {
                 const ar = ly.getArea() orelse break;
@@ -533,7 +543,13 @@ pub const InspectorWindow = struct {
         ));
     }
 
-    fn buildIoTab(self: *@This(), gui: *Gui, area: Rect, lay: *iArea) !void {
+    fn buildIoScrollCb(window_area: *iArea, vt: *iArea, index: usize, gui: *Gui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", window_area));
+        _ = win;
+        self.buildIoTab(gui, vt.area, vt, index) catch return;
+    }
+
+    fn buildIoTab(self: *@This(), gui: *Gui, area: Rect, lay: *iArea, index: usize) !void {
         const cons = self.getConsPtr() orelse return;
         const win = &self.vt;
         const th = gui.style.config.text_h;
@@ -541,7 +557,8 @@ pub const InspectorWindow = struct {
         const rem4 = @trunc((area.w - num_w * 2) / 4);
         const col_ws = [6]f32{ rem4, rem4, rem4, rem4, num_w, num_w };
         var tly = guis.TableLayoutCustom{ .item_height = gui.style.config.default_item_h, .bounds = area, .column_widths = &col_ws };
-        for (cons.list.items) |con| {
+        if (index >= cons.list.items.len) return;
+        for (cons.list.items[index..]) |con| {
             lay.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), con.listen_event, null));
             lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{s}", .{con.target.items}));
             lay.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), con.input, null));
