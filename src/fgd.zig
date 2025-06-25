@@ -448,6 +448,17 @@ pub const EntClass = struct {
             }
         }
     };
+    pub const Io = struct {
+        pub const Kind = enum { input, output };
+        pub const Type = enum { void, string, int, float, boolean, ehandle };
+        //All strings alloced by entctx
+        kind: Kind,
+        name: []const u8,
+        type: Type,
+        doc: []const u8,
+    };
+    io_data: std.ArrayList(Io),
+    io: std.StringHashMap(usize),
     field_data: std.ArrayList(Field),
     fields: std.StringHashMap(usize),
     //fields: std.ArrayList(Field),
@@ -458,6 +469,8 @@ pub const EntClass = struct {
 
     pub fn init(alloc: Allocator) Self {
         return .{
+            .io_data = std.ArrayList(Io).init(alloc),
+            .io = std.StringHashMap(usize).init(alloc),
             .field_data = std.ArrayList(Field).init(alloc),
             .fields = std.StringHashMap(usize).init(alloc),
         };
@@ -474,6 +487,15 @@ pub const EntClass = struct {
         const index = self.field_data.items.len;
         try self.fields.put(field.name, index);
         try self.field_data.append(field);
+    }
+
+    /// Assumes all fields are alloced
+    pub fn addIo(self: *Self, io: Io) !void {
+        if (self.io.contains(io.name)) return;
+
+        const index = self.io_data.items.len;
+        try self.io.put(io.name, index);
+        try self.io_data.append(io);
     }
 
     pub fn inherit(self: *Self, parent: Self) !void {
@@ -497,6 +519,8 @@ pub const EntClass = struct {
             item.deinit();
         self.field_data.deinit();
         self.fields.deinit();
+        self.io.deinit();
+        self.io_data.deinit();
     }
 };
 
@@ -644,26 +668,31 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                         _ = try tkz.expectNextEatNewline(.l_bracket);
 
                         { //Parse all the fields
-                            const FirstWord = enum {
-                                input,
-                                output,
-                            };
                             while (try tkz.nextEatNewline()) |first| {
                                 if (first.tag == .r_bracket) break; //this class in done
                                 if (first.tag != .plain_string) return error.syntax;
                                 const fsl = tkz.getSlice(first);
-                                if (stringToEnum(FirstWord, fsl)) |fw| { //Input, output field
-                                    _ = try tkz.expectNext(.plain_string); //name of io
-                                    _ = fw;
+                                if (stringToEnum(EntClass.Io.Kind, fsl)) |fw| { //Input, output field
+                                    const io_name = try tkz.expectNext(.plain_string); //name of io
                                     _ = try tkz.expectNext(.l_paren);
-                                    _ = try tkz.expectNext(.plain_string); //type
+                                    const io_type = try tkz.expectNext(.plain_string); //type
                                     _ = try tkz.expectNext(.r_paren);
                                     const n1 = try tkz.peek() orelse return error.syntax;
+                                    var io_doc: []const u8 = "";
                                     if (n1.tag == .colon) {
                                         _ = try tkz.next(); //eat peek
                                         multi_string_buf.clearRetainingCapacity();
                                         try tkz.expectMultilineString(&multi_string_buf); // description
+                                        io_doc = multi_string_buf.items;
                                     }
+                                    const new_io = EntClass.Io{
+                                        .name = try ctx.dupeString(tkz.getSlice(io_name)),
+                                        .doc = try ctx.dupeString(io_doc),
+                                        .type = stringToEnum(EntClass.Io.Type, tkz.getSlice(io_type)) orelse return error.invalidIoType,
+                                        .kind = fw,
+                                    };
+                                    try new_class.addIo(new_io);
+                                    std.debug.print("{s} : {s}\n", .{ tkz.getSlice(io_name), tkz.getSlice(io_type) });
                                 } else { // A regular field
                                     //std.debug.print("\t{s}\n", .{fsl});
                                     _ = try tkz.expectNext(.l_paren);

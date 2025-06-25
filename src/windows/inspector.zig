@@ -142,7 +142,18 @@ pub const InspectorWindow = struct {
             return;
         }
         if (eql(u8, tab_name, "io")) {
-            vt.addChildOpt(gui, win, Wg.TextView.build(gui, vt.area, &.{ "my text is long", @embedFile("inspector.zig") }, win, .{ .mode = .split_on_space }));
+            const sp = vt.area.split(.horizontal, vt.area.h * 0.5);
+            var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = sp[1] };
+            ly.padding.left = 10;
+            ly.padding.right = 10;
+            ly.padding.top = 10;
+            self.buildIoTab(gui, sp[0], vt) catch {};
+            const names = [6][]const u8{ "Listen", "target", "input", "value", "delay", "fc" };
+            for (names) |n| {
+                const ar = ly.getArea() orelse break;
+                const sp1 = ar.split(.vertical, ar.w / 2);
+                vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
+            }
         }
     }
 
@@ -264,6 +275,13 @@ pub const InspectorWindow = struct {
         const ed = self.editor;
         if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id|
             return (ed.ecs.getOptPtr(sel_id, .key_values) catch null);
+        return null;
+    }
+
+    pub fn getConsPtr(self: *Self) ?*ecs.Connections {
+        const ed = self.editor;
+        if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id|
+            return (ed.ecs.getOptPtr(sel_id, .connections) catch null);
         return null;
     }
 
@@ -514,8 +532,27 @@ pub const InspectorWindow = struct {
             .{ .fgd_class_index = info.class_i, .fgd_field_index = info.field_i },
         ));
     }
+
+    fn buildIoTab(self: *@This(), gui: *Gui, area: Rect, lay: *iArea) !void {
+        const cons = self.getConsPtr() orelse return;
+        const win = &self.vt;
+        const th = gui.style.config.text_h;
+        const num_w = th * 2;
+        const rem4 = @trunc((area.w - num_w * 2) / 4);
+        const col_ws = [6]f32{ rem4, rem4, rem4, rem4, num_w, num_w };
+        var tly = guis.TableLayoutCustom{ .item_height = gui.style.config.default_item_h, .bounds = area, .column_widths = &col_ws };
+        for (cons.list.items) |con| {
+            lay.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), con.listen_event, null));
+            lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{s}", .{con.target.items}));
+            lay.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), con.input, null));
+            lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{s}", .{con.value.items}));
+            lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{d}", .{con.delay}));
+            lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{d}", .{con.fire_count}));
+        }
+    }
 };
 
+/// This should only be passed to Wg.Button !
 pub fn customButtonDraw(vt: *iArea, d: DrawState) void {
     const self: *Wg.Button = @alignCast(@fieldParentPtr("vt", vt));
     d.ctx.rect(vt.area, 0xffff_ffff);
