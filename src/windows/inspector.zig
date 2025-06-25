@@ -85,7 +85,8 @@ pub const InspectorWindow = struct {
         //start a vlayout
         //var ly = Vert{ .area = vt.area };
         const max_w = gui.style.config.default_item_h * 30;
-        const inset = GuiHelp.insetAreaForWindowFrame(gui, vt.area.area);
+        const sp1 = vt.area.area.split(.horizontal, vt.area.area.h * 0.5);
+        const inset = GuiHelp.insetAreaForWindowFrame(gui, sp1[0]);
         const w = @min(max_w, inset.w);
         var ly = guis.VerticalLayout{
             .padding = .{},
@@ -103,10 +104,30 @@ pub const InspectorWindow = struct {
         a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
         a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
 
-        self.buildErr(gui, &ly) catch {};
+        //self.buildErr(gui, &ly) catch {};
+        ly.pushRemaining();
+        a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io" }, vt, &buildTabs, &self.area));
     }
 
-    fn buildErr(self: *@This(), gui: *Gui, ly: anytype) !void {
+    fn buildTabs(user_vt: *iArea, vt: *iArea, tab_name: []const u8, gui: *Gui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", user_vt));
+        const eql = std.mem.eql;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
+        _ = win;
+        ly.padding.left = 10;
+        ly.padding.right = 10;
+        ly.padding.top = 10;
+        if (eql(u8, tab_name, "props")) {
+            self.buildErr(gui, &ly, vt) catch {};
+            std.debug.print("Done big props\n", .{});
+            return;
+        }
+        if (eql(u8, tab_name, "io")) {
+            std.debug.print("Done the io yo\n", .{});
+        }
+    }
+
+    fn buildErr(self: *@This(), gui: *Gui, ly: anytype, lay: *iArea) !void {
         const ed = self.editor;
         const a = &self.area;
         const win = &self.vt;
@@ -134,18 +155,18 @@ pub const InspectorWindow = struct {
                         return fields[id].name;
                     }
                 };
-                a.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
+                lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
                     .user_vt = &self.area,
                     .commit_cb = &Lam.commit,
                     .name_cb = &Lam.name,
                     .current = ed.fgd_ctx.getId(ent.class) orelse 0,
                     .count = self.editor.fgd_ctx.ents.items.len,
                 }, {}));
-                a.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
+                lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
                 const fields = eclass.field_data.items;
                 ly.pushRemaining();
-                a.addChildOpt(gui, win, Wg.VScroll.build(gui, ly.getArea(), .{
+                lay.addChildOpt(gui, win, Wg.VScroll.build(gui, ly.getArea(), .{
                     .build_cb = &buildScrollItems,
                     .build_vt = a,
                     .win = win,
