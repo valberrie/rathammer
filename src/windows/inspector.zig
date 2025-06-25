@@ -104,32 +104,6 @@ pub const InspectorWindow = struct {
         a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
 
         self.buildErr(gui, &ly) catch {};
-
-        //a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &self.bool2, "secnd button"));
-        //a.addChildOpt(gui, vt, Wg.StaticSlider.build(gui, ly.getArea(), 4, 0, 10));
-        //a.addChild(gui, vt, Wg.Combo(MyEnum).build(gui, ly.getArea() orelse return, &self.my_enum));
-        //a.addChild(gui, vt, Wg.Combo(std.fs.File.Kind).build(gui, ly.getArea() orelse return, &self.fenum));
-
-        //a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "My button 2", null, null, 48));
-        //a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "My button 3", null, null, 48));
-        //a.addChild(gui, vt, Wg.Colorpicker.build(gui, ly.getArea() orelse return, &self.color));
-
-        //a.addChildOpt(gui, vt, Wg.Textbox.build(gui, ly.getArea()));
-        //a.addChildOpt(gui, vt, Wg.Textbox.build(gui, ly.getArea()));
-        //a.addChildOpt(gui, vt, Wg.TextboxNumber.build(gui, ly.getArea(), &self.number, vt));
-        //a.addChildOpt(gui, vt, Wg.Slider.build(gui, ly.getArea(), &self.i32_n, -10, 10, .{}));
-        //a.addChildOpt(gui, vt, Wg.Slider.build(gui, ly.getArea(), &self.i32_n, 0, 10, .{}));
-
-        //ly.pushRemaining();
-        //a.addChildOpt(gui, vt, Wg.VScroll.build(
-        //    gui,
-        //    ly.getArea(),
-        //    &buildScrollItems,
-        //    &self.area,
-        //    vt,
-        //    10,
-        //    gui.style.config.default_item_h,
-        //));
     }
 
     fn buildErr(self: *@This(), gui: *Gui, ly: anytype) !void {
@@ -140,7 +114,7 @@ pub const InspectorWindow = struct {
             if (try ed.ecs.getOptPtr(sel_id, .entity)) |ent| {
                 const aa = ly.getArea() orelse return;
                 const Lam = struct {
-                    fn commit(vtt: *iArea, id: usize) void {
+                    fn commit(vtt: *iArea, id: usize, _: void) void {
                         const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
                         const fields = lself.editor.fgd_ctx.ents.items;
                         lself.vt.needs_rebuild = true;
@@ -153,20 +127,20 @@ pub const InspectorWindow = struct {
                         }
                     }
 
-                    fn name(vtt: *iArea, id: usize, _: *Gui) []const u8 {
+                    fn name(vtt: *iArea, id: usize, _: *Gui, _: void) []const u8 {
                         const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
                         const fields = lself.editor.fgd_ctx.ents.items;
                         if (id >= fields.len) return "BROKEN";
                         return fields[id].name;
                     }
                 };
-                a.addChildOpt(gui, win, Wg.ComboUser.build(gui, aa, .{
+                a.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
                     .user_vt = &self.area,
                     .commit_cb = &Lam.commit,
                     .name_cb = &Lam.name,
                     .current = ed.fgd_ctx.getId(ent.class) orelse 0,
                     .count = self.editor.fgd_ctx.ents.items.len,
-                }));
+                }, {}));
                 a.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
                 const fields = eclass.field_data.items;
@@ -205,6 +179,7 @@ pub const InspectorWindow = struct {
         if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id| {
             if (ed.ecs.getOptPtr(sel_id, .entity) catch null) |ent| {
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
+                const class_i = ed.fgd_ctx.base.get(ent.class) orelse return;
                 const fields = eclass.field_data.items;
                 if (index >= fields.len) return;
                 const kvs = if (try ed.ecs.getOptPtr(sel_id, .key_values)) |kv| kv else blk: {
@@ -227,6 +202,25 @@ pub const InspectorWindow = struct {
                         res.value_ptr.* = .{ .string = new_list };
                     }
                     switch (req_f.type) {
+                        .model => {
+                            try res.value_ptr.toString(kvs.map.allocator);
+                            const H = struct {
+                                fn btn_cb(win_ar: *iArea, id: usize, _: *Gui, _: *iWindow) void {
+                                    const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", win_ar));
+                                    lself.editor.asset_browser.dialog_state = .{
+                                        .target_id = @intCast(id),
+                                        .previous_pane_index = lself.editor.draw_state.tab_index,
+                                        .kind = .model,
+                                    };
+                                    lself.editor.draw_state.tab_index = lself.editor.draw_state.model_browser_tab_index;
+                                }
+                            };
+                            a.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Select", .{
+                                .cb_vt = window_area,
+                                .cb_fn = &H.btn_cb,
+                                .id = sel_id,
+                            }));
+                        },
                         .choices => |ch| {
                             const ar = ly.getArea();
                             try res.value_ptr.toString(kvs.map.allocator);
@@ -238,6 +232,15 @@ pub const InspectorWindow = struct {
                                     .cb_vt = win.area,
                                     .user_id = cb_id,
                                 }, checked));
+                            } else {
+                                var found: usize = 0;
+                                for (ch.items, 0..) |choice, i| {
+                                    if (std.mem.eql(u8, res.value_ptr.string.items, choice[0])) {
+                                        found = i;
+                                        break;
+                                    }
+                                }
+                                self.buildChoice(.{ .class_i = class_i, .field_i = f_i, .count = ch.items.len, .current = found }, ar, gui, win, a);
                             }
                         },
                         .color255 => {
@@ -352,6 +355,50 @@ pub const InspectorWindow = struct {
         win.needs_rebuild = true;
         self.selected_kv_index = id;
         //We need to rebuild buttons to show the selected mark
+    }
+
+    pub fn buildChoice(self: *@This(), info: anytype, area: ?Rect, gui: *Gui, win: *iWindow, vt: *iArea) void {
+        //const ed = self.editor;
+        const aa = area orelse return;
+        const Lam = struct {
+            fgd_class_index: usize,
+            fgd_field_index: usize,
+
+            fn commit(vtt: *iArea, id: usize, lam: @This()) void {
+                const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+
+                const fields = lself.editor.fgd_ctx.ents.items;
+                const f = fields[lam.fgd_class_index];
+                const fie = f.field_data.items[lam.fgd_field_index];
+
+                if (lself.getKvsPtr()) |kvs| {
+                    kvs.putString(fie.name, fie.type.choices.items[id][0]) catch return;
+                }
+            }
+
+            fn name(vtt: *iArea, id: usize, _: *Gui, lam: @This()) []const u8 {
+                const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                const class = lself.editor.fgd_ctx.ents.items[lam.fgd_class_index];
+                const field = class.field_data.items[lam.fgd_field_index];
+                if (field.type == .choices) {
+                    if (id < field.type.choices.items.len)
+                        return field.type.choices.items[id][1];
+                }
+                return "not a choice";
+            }
+        };
+        vt.addChildOpt(gui, win, Wg.ComboUser(Lam).build(
+            gui,
+            aa,
+            .{
+                .user_vt = &self.area,
+                .commit_cb = &Lam.commit,
+                .name_cb = &Lam.name,
+                .current = info.current,
+                .count = info.count,
+            },
+            .{ .fgd_class_index = info.class_i, .fgd_field_index = info.field_i },
+        ));
     }
 };
 
