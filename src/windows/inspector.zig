@@ -29,6 +29,8 @@ pub const InspectorWindow = struct {
     kv_id_map: std.AutoHashMap(usize, []const u8),
     kv_id_index: usize = 0,
 
+    str: []const u8 = "ass",
+
     pub fn create(gui: *Gui, editor: *Context) *InspectorWindow {
         const self = gui.create(@This());
         self.* = .{
@@ -100,6 +102,7 @@ pub const InspectorWindow = struct {
         a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
         a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
         a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
+
         self.buildErr(gui, &ly) catch {};
 
         //a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &self.bool2, "secnd button"));
@@ -135,6 +138,35 @@ pub const InspectorWindow = struct {
         const win = &self.vt;
         if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id| {
             if (try ed.ecs.getOptPtr(sel_id, .entity)) |ent| {
+                const aa = ly.getArea() orelse return;
+                const Lam = struct {
+                    fn commit(vtt: *iArea, id: usize) void {
+                        const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                        const fields = lself.editor.fgd_ctx.ents.items;
+                        lself.vt.needs_rebuild = true;
+                        if (id >= fields.len) return;
+                        const led = lself.editor;
+                        if (led.selection.getGroupOwnerExclusive(&led.groups)) |lsel_id| {
+                            if (led.ecs.getOptPtr(lsel_id, .entity) catch null) |lent| {
+                                lent.setClass(led, fields[id].name) catch return;
+                            }
+                        }
+                    }
+
+                    fn name(vtt: *iArea, id: usize, _: *Gui) []const u8 {
+                        const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                        const fields = lself.editor.fgd_ctx.ents.items;
+                        if (id >= fields.len) return "BROKEN";
+                        return fields[id].name;
+                    }
+                };
+                a.addChildOpt(gui, win, Wg.ComboUser.build(gui, aa, .{
+                    .user_vt = &self.area,
+                    .commit_cb = &Lam.commit,
+                    .name_cb = &Lam.name,
+                    .current = ed.fgd_ctx.getId(ent.class) orelse 0,
+                    .count = self.editor.fgd_ctx.ents.items.len,
+                }));
                 a.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
                 const fields = eclass.field_data.items;
