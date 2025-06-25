@@ -949,7 +949,7 @@ pub const Context = struct {
         );
     }
 
-    fn printScratch(self: *Self, comptime str: []const u8, args: anytype) ![]const u8 {
+    pub fn printScratch(self: *Self, comptime str: []const u8, args: anytype) ![]const u8 {
         self.scratch_buf.clearRetainingCapacity();
         try self.scratch_buf.writer().print(str, args);
         return self.scratch_buf.items;

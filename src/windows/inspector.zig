@@ -26,8 +26,11 @@ pub const InspectorWindow = struct {
     selected_kv_index: usize = 0,
     kv_scroll_index: usize = 0,
 
+    id_kv_map: std.StringHashMap(usize),
     kv_id_map: std.AutoHashMap(usize, []const u8),
     kv_id_index: usize = 0,
+
+    selected_class_id: ?usize = null,
 
     str: []const u8 = "ass",
 
@@ -38,6 +41,7 @@ pub const InspectorWindow = struct {
             .vt = iWindow.init(&@This().build, gui, &@This().deinit, &self.area),
             .editor = editor,
             .kv_id_map = std.AutoHashMap(usize, []const u8).init(gui.alloc),
+            .id_kv_map = std.StringHashMap(usize).init(gui.alloc),
         };
         self.area.draw_fn = &draw;
         self.area.deinit_fn = &area_deinit;
@@ -49,6 +53,7 @@ pub const InspectorWindow = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         //self.layout.deinit(gui, vt);
         self.kv_id_map.deinit();
+        self.id_kv_map.deinit();
         vt.deinit(gui);
         gui.alloc.destroy(self); //second
     }
@@ -61,14 +66,17 @@ pub const InspectorWindow = struct {
 
     fn resetIds(self: *Self) void {
         self.kv_id_map.clearRetainingCapacity();
+        self.id_kv_map.clearRetainingCapacity();
         self.kv_id_index = 0;
     }
 
     /// name must be owned by someone else, probably editor.stringstorage
     fn getId(self: *Self, name: []const u8) usize {
+        if (self.id_kv_map.get(name)) |item| return item;
         const id = self.kv_id_index;
         self.kv_id_index += 1;
         self.kv_id_map.put(id, name) catch return id;
+        self.id_kv_map.put(name, id) catch return id;
         return id;
     }
 
@@ -85,8 +93,9 @@ pub const InspectorWindow = struct {
         //start a vlayout
         //var ly = Vert{ .area = vt.area };
         const max_w = gui.style.config.default_item_h * 30;
-        const sp1 = vt.area.area.split(.horizontal, vt.area.area.h * 0.5);
-        const inset = GuiHelp.insetAreaForWindowFrame(gui, sp1[0]);
+        const sp1 = vt.area.area;
+        //const sp1 = vt.area.area.split(.horizontal, vt.area.area.h * 0.5);
+        const inset = GuiHelp.insetAreaForWindowFrame(gui, sp1);
         const w = @min(max_w, inset.w);
         var ly = guis.VerticalLayout{
             .padding = .{},
@@ -112,12 +121,23 @@ pub const InspectorWindow = struct {
     fn buildTabs(user_vt: *iArea, vt: *iArea, tab_name: []const u8, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", user_vt));
         const eql = std.mem.eql;
-        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
-        ly.padding.left = 10;
-        ly.padding.right = 10;
-        ly.padding.top = 10;
         if (eql(u8, tab_name, "props")) {
-            self.buildErr(gui, &ly, vt) catch {};
+            const sp = vt.area.split(.horizontal, vt.area.h * 0.5);
+            {
+                var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = sp[0] };
+                ly.padding.left = 10;
+                ly.padding.right = 10;
+                ly.padding.top = 10;
+                self.buildErr(gui, &ly, vt) catch {};
+            }
+
+            {
+                var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = sp[1] };
+                ly.padding.left = 10;
+                ly.padding.right = 10;
+                ly.padding.top = 10;
+                self.buildValueEditor(gui, &ly, vt) catch {};
+            }
             std.debug.print("Done big props\n", .{});
             return;
         }
@@ -130,6 +150,7 @@ pub const InspectorWindow = struct {
         const ed = self.editor;
         const a = &self.area;
         const win = &self.vt;
+        self.selected_class_id = null;
         if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id| {
             if (try ed.ecs.getOptPtr(sel_id, .entity)) |ent| {
                 const aa = ly.getArea() orelse return;
@@ -154,17 +175,18 @@ pub const InspectorWindow = struct {
                         return fields[id].name;
                     }
                 };
+                self.selected_class_id = ed.fgd_ctx.getId(ent.class);
                 lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
                     .user_vt = &self.area,
                     .commit_cb = &Lam.commit,
                     .name_cb = &Lam.name,
-                    .current = ed.fgd_ctx.getId(ent.class) orelse 0,
+                    .current = self.selected_class_id orelse 0,
                     .count = self.editor.fgd_ctx.ents.items.len,
                 }, {}));
                 lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
                 const fields = eclass.field_data.items;
-                { //Doc string
+                if (eclass.doc.len > 0) { //Doc string
                     ly.pushHeight(Wg.TextView.heightForN(gui, 4));
                     lay.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{eclass.doc}, win, .{
                         .mode = .split_on_space,
@@ -179,6 +201,57 @@ pub const InspectorWindow = struct {
                     .item_h = gui.style.config.default_item_h,
                     .index_ptr = &self.kv_scroll_index,
                 }));
+            }
+        }
+    }
+
+    // If a kv is selected, this edits it
+    fn buildValueEditor(self: *@This(), gui: *Gui, ly: anytype, lay: *iArea) !void {
+        const ed = self.editor;
+        const win = &self.vt;
+        if (self.selected_class_id) |cid| {
+            const class = &ed.fgd_ctx.ents.items[cid];
+            if (self.selected_kv_index >= class.field_data.items.len) return;
+            const field = &class.field_data.items[self.selected_kv_index];
+
+            lay.addChildOpt(gui, &self.vt, Wg.Text.buildStatic(gui, ly.getArea(), field.name, null));
+            if (field.doc_string.len > 0) {
+                ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+                lay.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{field.doc_string}, win, .{
+                    .mode = .split_on_space,
+                }));
+            }
+            const kvs = self.getKvsPtr() orelse return;
+            const val = kvs.map.getPtr(field.name) orelse return;
+            const cb_id = self.getId(field.name);
+            switch (field.type) {
+                .flags => |flags| {
+                    try val.toString(kvs.map.allocator);
+                    const mask = std.fmt.parseInt(u32, val.string.items, 10) catch null;
+                    for (flags.items) |flag| {
+                        const is_set = if (mask) |m| flag.mask & m > 0 else flag.on;
+                        const packed_id: u64 = @as(u64, @intCast(flag.mask)) << 32 | cb_id;
+                        lay.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), flag.name, .{
+                            .cb_fn = &cb_commitCheckbox,
+                            .cb_vt = win.area,
+                            .user_id = packed_id,
+                        }, is_set));
+                    }
+                },
+                else => {
+                    const ar = ly.getArea();
+                    switch (val.*) {
+                        .string => |s| {
+                            lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                                .init_string = s.items,
+                                .user_id = cb_id,
+                                .commit_vt = win.area,
+                                .commit_cb = &cb_commitTextbox,
+                            }));
+                        },
+                        .floats => {},
+                    }
+                },
             }
         }
     }
@@ -365,9 +438,24 @@ pub const InspectorWindow = struct {
         }
     }
 
-    pub fn cb_commitCheckbox(this_window: *iArea, _: *Gui, val: bool, id: usize) void {
+    pub fn cb_commitCheckbox(this_window: *iArea, _: *Gui, val: bool, id: u64) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", this_window));
-        self.setKvStr(id, if (val) "1" else "0");
+        const upper: u32 = @intCast(id >> 32);
+        if (upper != 0) { //we store flags in upper 32
+            const lower = id << 32 >> 32; //Clear upper
+            const kvs = self.getKvsPtr() orelse return;
+            const name = self.getNameFromId(lower) orelse return;
+            const old_str = kvs.getString(name) orelse return;
+            var mask = std.fmt.parseInt(u32, old_str, 10) catch 0;
+            if (val) {
+                mask = mask | upper; //add bit
+            } else {
+                mask = mask & ~upper; //remove bit
+            }
+            self.setKvStr(lower, self.editor.printScratch("{d}", .{mask}) catch return);
+        } else {
+            self.setKvStr(id, if (val) "1" else "0");
+        }
     }
 
     pub fn cb_commitTextbox(this_window: *iArea, _: *Gui, string: []const u8, id: usize) void {

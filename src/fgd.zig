@@ -521,6 +521,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
     //defer std.debug.print("BAS ignored tok: {d}\n", .{ignored_count});
     var multi_string_buf = std.ArrayList(u8).init(alloc);
     defer multi_string_buf.deinit();
+    var print_buf = std.ArrayList(u8).init(alloc);
+    defer print_buf.deinit();
     while (try tkz.next()) |tk| {
         const tok = tkz.getSlice(tk);
         //std.debug.print("{s}:{s}\n", .{ @tagName(tk.tag), slice[tk.pos.start..tk.pos.end] });
@@ -686,6 +688,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         }
                                     }
 
+                                    var new_type = EntClass.Field.Type{ .generic = {} };
+                                    var new_type_doc: []const u8 = "";
                                     var index: i32 = -1;
                                     var default_str: []const u8 = "";
                                     while (true) {
@@ -703,11 +707,13 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                                     },
                                                     1 => { //default value
                                                         const t = (try tkz.next()) orelse return error.syntax;
-                                                        default_str = try ctx.dupeString(tkz.getSlice(t));
+                                                        default_str = tkz.getSlice(t);
+                                                        //default_str = try ctx.dupeString(tkz.getSlice(t));
                                                     },
                                                     2 => { //doc string
                                                         multi_string_buf.clearRetainingCapacity();
                                                         try tkz.expectMultilineString(&multi_string_buf);
+                                                        new_type_doc = try ctx.dupeString(multi_string_buf.items);
                                                         break;
                                                     },
                                                     else => return error.syntax,
@@ -732,7 +738,6 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                         material,
                                         studio,
                                     };
-                                    var new_type = EntClass.Field.Type{ .generic = {} };
                                     if (stringToEnum(TypeStr, tkz.getSlice(type_tok))) |st| {
                                         switch (st) {
                                             .choices, .Choices => {
@@ -759,19 +764,38 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                             .flags, .Flags => {
                                                 _ = try tkz.expectNext(.equals);
                                                 _ = try tkz.expectNextEatNewline(.l_bracket);
+                                                var new_flags = std.ArrayList(EntClass.Field.Type.Flag).init(alloc);
                                                 while (true) {
                                                     const n1 = try tkz.nextEatNewline() orelse return error.choiceMis;
                                                     switch (n1.tag) {
                                                         .plain_string => {
+                                                            const mask = try std.fmt.parseInt(u32, tkz.getSlice(n1), 10);
                                                             _ = try tkz.expectNext(.colon);
-                                                            _ = try tkz.expectNext(.quoted_string);
+                                                            const mask_name = try tkz.expectNext(.quoted_string);
                                                             _ = try tkz.expectNext(.colon);
-                                                            _ = try tkz.expectNext(.plain_string);
+                                                            //TODO make this optional
+                                                            const def = try tkz.expectNext(.plain_string);
+                                                            const defint = try std.fmt.parseInt(u32, tkz.getSlice(def), 10);
+                                                            try new_flags.append(.{
+                                                                .on = defint > 0,
+                                                                .name = try ctx.dupeString(tkz.getSlice(mask_name)),
+                                                                .mask = mask,
+                                                            });
                                                         },
                                                         .r_bracket => break,
                                                         else => return error.flagSyntax,
                                                     }
                                                 }
+                                                var def_mask: u32 = 0;
+                                                for (new_flags.items) |f| {
+                                                    if (f.on) {
+                                                        def_mask |= f.mask;
+                                                    }
+                                                }
+                                                print_buf.clearRetainingCapacity();
+                                                try print_buf.writer().print("{d}", .{def_mask});
+                                                default_str = print_buf.items;
+                                                new_type = .{ .flags = new_flags };
                                             },
                                             .color255 => new_type = .{ .color255 = {} },
                                             .material, .decal => new_type = .{ .material = {} },
@@ -786,8 +810,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                     try new_class.addField(.{
                                         .name = try ctx.dupeString(fsl),
                                         .type = new_type,
-                                        .default = default_str,
-                                        .doc_string = "",
+                                        .default = try ctx.dupeString(default_str),
+                                        .doc_string = new_type_doc,
                                     });
                                 }
                             }
