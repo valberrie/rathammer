@@ -163,12 +163,13 @@ pub const FgdTokenizer = struct {
     //A multi-line string has the grammar:
     // <multi-line-str> ::= <quoted_string> <newline> | <multi-line-str-cont>
     // <multi-line-str-cont> ::= <plus> <newline> <multi-line-str>
-    pub fn expectMultilineString(self: *@This()) !void { //TODO return string, requires alloc
+    pub fn expectMultilineString(self: *@This(), ret: *std.ArrayList(u8)) !void { //TODO return string, requires alloc
         while (true) {
             const n1 = try self.next() orelse return error.multilineStringSyntax;
             if (n1.tag != .quoted_string) {
                 return error.multilineStringSyntax;
             }
+            try ret.appendSlice(self.getSlice(n1));
             const ne = try self.peek() orelse return;
             switch (ne.tag) {
                 .plus => {
@@ -177,8 +178,11 @@ pub const FgdTokenizer = struct {
                     _ = try self.expectNext(.newline);
                     const n = try self.peek() orelse return;
                     switch (n.tag) {
-                        .quoted_string => continue,
-                        else => return, //Shitty workaround to ill defined syntax
+                        .quoted_string => {
+                            try ret.append('\n');
+                            continue;
+                        },
+                        else => return, //A workaround to ill defined syntax
                         //Some multi-line strings (2 in base.fgd) terminate with a '+' with no string on the following line
                         //Should be a syntax error
                     }
@@ -515,6 +519,8 @@ pub fn loadFgd(ctx: *EntCtx, base_dir: std.fs.Dir, path: []const u8) !void {
 pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allocator) !void {
     var ignored_count: usize = 0;
     //defer std.debug.print("BAS ignored tok: {d}\n", .{ignored_count});
+    var multi_string_buf = std.ArrayList(u8).init(alloc);
+    defer multi_string_buf.deinit();
     while (try tkz.next()) |tk| {
         const tok = tkz.getSlice(tk);
         //std.debug.print("{s}:{s}\n", .{ @tagName(tk.tag), slice[tk.pos.start..tk.pos.end] });
@@ -623,7 +629,10 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                             .colon => { //Parse docstring
                                 _ = try tkz.next(); //peeked
                                 try tkz.eatNewline();
-                                try tkz.expectMultilineString();
+                                multi_string_buf.clearRetainingCapacity();
+                                try tkz.expectMultilineString(&multi_string_buf);
+                                new_class.doc = try ctx.dupeString(multi_string_buf.items);
+                                //std.debug.print("NEW ONE {s}\n", .{multi_string_buf.items});
                             },
                             .newline => {},
                             .l_bracket => {},
@@ -650,7 +659,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                     const n1 = try tkz.peek() orelse return error.syntax;
                                     if (n1.tag == .colon) {
                                         _ = try tkz.next(); //eat peek
-                                        try tkz.expectMultilineString(); // description
+                                        multi_string_buf.clearRetainingCapacity();
+                                        try tkz.expectMultilineString(&multi_string_buf); // description
                                     }
                                 } else { // A regular field
                                     //std.debug.print("\t{s}\n", .{fsl});
@@ -696,7 +706,8 @@ pub fn crass(ctx: *EntCtx, tkz: *FgdTokenizer, base_dir: std.fs.Dir, alloc: Allo
                                                         default_str = try ctx.dupeString(tkz.getSlice(t));
                                                     },
                                                     2 => { //doc string
-                                                        try tkz.expectMultilineString();
+                                                        multi_string_buf.clearRetainingCapacity();
+                                                        try tkz.expectMultilineString(&multi_string_buf);
                                                         break;
                                                     },
                                                     else => return error.syntax,

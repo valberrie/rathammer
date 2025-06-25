@@ -113,7 +113,6 @@ pub const InspectorWindow = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("area", user_vt));
         const eql = std.mem.eql;
         var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
-        _ = win;
         ly.padding.left = 10;
         ly.padding.right = 10;
         ly.padding.top = 10;
@@ -123,7 +122,7 @@ pub const InspectorWindow = struct {
             return;
         }
         if (eql(u8, tab_name, "io")) {
-            std.debug.print("Done the io yo\n", .{});
+            vt.addChildOpt(gui, win, Wg.TextView.build(gui, vt.area, &.{ "my text is long", @embedFile("inspector.zig") }, win, .{ .mode = .split_on_space }));
         }
     }
 
@@ -165,6 +164,12 @@ pub const InspectorWindow = struct {
                 lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
                 const fields = eclass.field_data.items;
+                { //Doc string
+                    ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+                    lay.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{eclass.doc}, win, .{
+                        .mode = .split_on_space,
+                    }));
+                }
                 ly.pushRemaining();
                 lay.addChildOpt(gui, win, Wg.VScroll.build(gui, ly.getArea(), .{
                     .build_cb = &buildScrollItems,

@@ -62,7 +62,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     });
     defer os9gui.deinit();
 
-    var gui = try G.Gui.init(alloc, &win, try std.fs.cwd().openDir("ratgraph", .{}));
+    var gui = try G.Gui.init(alloc, &win, try std.fs.cwd().openDir("ratgraph", .{}), os9gui.font);
     defer gui.deinit();
     gui.style.config.default_item_h = scaled_item_height;
     gui.style.config.text_h = scaled_text_height;
