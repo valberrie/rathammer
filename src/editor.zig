@@ -29,6 +29,7 @@ const Autosaver = @import("autosave.zig").Autosaver;
 const NotifyCtx = @import("notify.zig").NotifyCtx;
 const Selection = @import("selection.zig");
 const VisGroups = @import("visgroup.zig");
+const MapBuilder = @import("map_builder.zig");
 const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
 const DISABLE_SPLASH = false;
@@ -1032,7 +1033,7 @@ pub const Context = struct {
                 const lp = self.loaded_map_path orelse break :blk;
                 const lm = self.loaded_map_name orelse break :blk;
                 try self.saveAndNotify(lm, lp);
-                var res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
+                const res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
                     "zig-out/bin/jsonmaptovmf",
                     "--json",
                     try self.printScratch("{s}{s}.json", .{ lp, lm }),
@@ -1043,16 +1044,25 @@ pub const Context = struct {
                 self.alloc.free(res.stderr);
 
                 try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
-                res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
-                    "zig-out/bin/mapbuilder",
-                    "--vmf",
-                    "dump.vmf",
-                } });
-                std.debug.print("{s}\n", .{res.stdout});
-                std.debug.print("{s}\n", .{res.stderr});
-                self.alloc.free(res.stdout);
-                self.alloc.free(res.stderr);
-                try self.notify("built map", .{}, 0x00ff00ff);
+                var build_arena = std.heap.ArenaAllocator.init(self.alloc);
+                defer build_arena.deinit();
+                const gname = name_blk: {
+                    const game_name = self.game_conf.game_dir;
+                    const start = if (std.mem.lastIndexOfScalar(u8, game_name, '/')) |i| i + 1 else 0;
+                    break :name_blk game_name[start..];
+                };
+
+                if (MapBuilder.buildmap(build_arena.allocator(), .{
+                    .vmf = "dump.vmf",
+                    .gamedir_pre = self.game_conf.base_dir,
+                    .gamename = gname,
+                    .outputdir = try self.printScratch("hl2/maps", .{}),
+                    .tmpdir = "/tmp/mapcompile",
+                })) {
+                    try self.notify("built map", .{}, 0x00ff00ff);
+                } else |_| {
+                    try self.notify("Error building Map", .{}, 0xff0000ff);
+                }
             }
         }
 

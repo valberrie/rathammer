@@ -37,4 +37,7 @@ After closing the editor, to continue editing our map, we must use --vmf my_maps
 
 The file 'config.vdf' defines various game configurations. The default is basic_hl2, which searches the set cwd for a directory named Half-Life 2
 See config.vdf for defining other game configs.
+
+
+/zig-out/bin/mapbuilder --vmf dump.vmf --gamedir Team\ Fortress\ 2 --gamename tf --outputdir tf/maps
 ```
