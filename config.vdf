@@ -125,6 +125,24 @@ games {
         }
     }
 
+    portal {
+        base_dir    "Portal"
+        game_dir    "Portal/portal"
+        fgd_dir     "Portal/bin"
+        fgd         "portal.fgd"
+
+        asset_browser_exclude {
+            prefix "materials/"
+            entry "models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+        }
+    }
+
     portal2 {
         base_dir    "Portal 2"
         game_dir    "Portal 2/portal2"
@@ -144,5 +162,5 @@ games {
     }
 }
 //The name of a game defined in "games"
-default_game  basic_hl2
+default_game  tf2
 

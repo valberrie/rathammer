@@ -43,13 +43,10 @@ const DO_WINE = builtin.target.os.tag != .windows;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    //defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
-
     var arg_it = try std.process.argsWithAllocator(alloc);
     defer arg_it.deinit();
     const Arg = graph.ArgGen.Arg;
-
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("vmf", .string, "vmf to load"),
         Arg("gamedir", .string, "directory to game, 'Half-Life 2'"),
@@ -57,20 +54,37 @@ pub fn main() !void {
         Arg("outputdir", .string, "dir relative to gamedir where bsp is put, 'hl2/maps'"),
         Arg("tmpdir", .string, "directory for map artifacts, default is /tmp/mapcompile"),
     }, &arg_it);
+    try buildmap(alloc, .{
+        .gamename = args.gamename orelse "hl2_complete",
+        .gamedir_pre = args.gamedir orelse "Half-Life 2",
+        .tmpdir = args.tmpdir orelse "/tmp/mapcompile",
+        .outputdir = args.outputdir orelse "hl2/maps",
+        .vmf = args.vmf orelse {
+            std.debug.print("Please specify vmf name with --vmf\n", .{});
+            return;
+        },
+    });
+}
+
+//Does not keep track of memory
+pub fn buildmap(alloc: std.mem.Allocator, args: struct {
+    gamename: []const u8,
+    gamedir_pre: []const u8,
+    tmpdir: []const u8,
+    outputdir: []const u8,
+    vmf: []const u8,
+}) !void {
+    //defer _ = gpa.detectLeaks();
+
     const cwd = std.fs.cwd();
 
-    const game_name = args.gamename orelse "hl2_complete";
-    const gamedir_pre = args.gamedir orelse "./Half-Life 2";
-    const gamedir = try cwd.realpathAlloc(alloc, gamedir_pre);
+    const gamedir = try cwd.realpathAlloc(alloc, args.gamedir_pre);
     std.debug.print("found gamedir: {s}\n", .{gamedir});
 
-    const working_dir = args.tmpdir orelse "/tmp/mapcompile";
-    const outputdir = try catString(alloc, &.{ gamedir, args.outputdir orelse "/hl2/maps" });
+    const working_dir = args.tmpdir;
+    const outputdir = try catString(alloc, &.{ gamedir, "/", args.outputdir });
 
-    const mapname = args.vmf orelse {
-        std.debug.print("Please specify vmf name with --vmf\n", .{});
-        return;
-    };
+    const mapname = args.vmf;
 
     const stripped = splitPath(mapname);
     const map_no_extension = stripExtension(stripped[1]);
@@ -80,7 +94,7 @@ pub fn main() !void {
 
     const output_dir = try std.fs.cwd().openDir(outputdir, .{});
 
-    const game_path = try catString(alloc, &.{ gamedir, "/", game_name });
+    const game_path = try catString(alloc, &.{ gamedir, "/", args.gamename });
     try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension }, working_dir);
     try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
     try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
@@ -113,6 +127,7 @@ fn runCommand(alloc: std.mem.Allocator, argv: []const []const u8, working_dir: [
             std.debug.print("{s}\n", .{line});
         }
     }
+    try getAllTheStuff(child.stderr);
 
     switch (try child.wait()) {
         .Exited => |e| {
@@ -122,4 +137,19 @@ fn runCommand(alloc: std.mem.Allocator, argv: []const []const u8, working_dir: [
         else => {},
     }
     return error.broken;
+}
+
+pub fn getAllTheStuff(fileo: anytype) !void {
+    if (fileo) |file| {
+        var line_buf: [512]u8 = undefined;
+        const r = file.reader();
+        while (true) {
+            const line = r.readUntilDelimiter(&line_buf, '\n') catch |err| switch (err) {
+                error.StreamTooLong => continue,
+                error.EndOfStream => break,
+                else => break,
+            };
+            std.debug.print("{s}\n", .{line});
+        }
+    }
 }
