@@ -245,6 +245,19 @@ pub const InspectorWindow = struct {
             const kvs = self.getKvsPtr() orelse return;
             const val = kvs.map.getPtr(field.name) orelse return;
             const cb_id = self.getId(field.name);
+            const ar = ly.getArea();
+            switch (val.*) { //Put a textbox for all of them
+                .string => |s| {
+                    lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                        .init_string = s.items,
+                        .user_id = cb_id,
+                        .commit_vt = win.area,
+                        .commit_cb = &cb_commitTextbox,
+                    }));
+                },
+                .floats => {},
+            }
+            //Extra stuff for typed fields TODO put in a scroll
             switch (field.type) {
                 .flags => |flags| {
                     try val.toString(kvs.map.allocator);
@@ -259,20 +272,8 @@ pub const InspectorWindow = struct {
                         }, is_set));
                     }
                 },
-                else => {
-                    const ar = ly.getArea();
-                    switch (val.*) {
-                        .string => |s| {
-                            lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
-                                .init_string = s.items,
-                                .user_id = cb_id,
-                                .commit_vt = win.area,
-                                .commit_cb = &cb_commitTextbox,
-                            }));
-                        },
-                        .floats => {},
-                    }
-                },
+                .material => {},
+                else => {},
             }
         }
     }
@@ -329,23 +330,32 @@ pub const InspectorWindow = struct {
                         res.value_ptr.* = .{ .string = new_list };
                     }
                     switch (req_f.type) {
-                        .model => {
+                        .model, .material => {
                             try res.value_ptr.toString(kvs.map.allocator);
                             const H = struct {
-                                fn btn_cb(win_ar: *iArea, id: usize, _: *Gui, _: *iWindow) void {
+                                fn btn_cb(win_ar: *iArea, id: u64, _: *Gui, _: *iWindow) void {
+                                    // if msb of id is set, its a texture not model
+                                    // hacky yea.
                                     const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", win_ar));
+                                    const idd = id << 1 >> 1; //clear msb;
+
+                                    const is_mat = (id & (1 << 63) != 0);
+                                    std.debug.print("is mat {any}\n", .{is_mat});
                                     lself.editor.asset_browser.dialog_state = .{
-                                        .target_id = @intCast(id),
+                                        .target_id = @intCast(idd),
                                         .previous_pane_index = lself.editor.draw_state.tab_index,
-                                        .kind = .model,
+                                        .kind = if (is_mat) .texture else .model,
                                     };
-                                    lself.editor.draw_state.tab_index = lself.editor.draw_state.model_browser_tab_index;
+                                    const ds = &lself.editor.draw_state;
+                                    lself.editor.draw_state.tab_index = if (is_mat) ds.texture_browser_tab_index else ds.model_browser_tab_index;
                                 }
                             };
+                            const mask: u64 = if (req_f.type == .material) 1 << 63 else 0;
+                            const idd: u64 = sel_id | mask;
                             a.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Select", .{
                                 .cb_vt = window_area,
                                 .cb_fn = &H.btn_cb,
-                                .id = sel_id,
+                                .id = idd,
                             }));
                         },
                         .choices => |ch| {
