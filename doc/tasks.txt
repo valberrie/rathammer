@@ -1,9 +1,11 @@
 Outline small tasks.
 
+test gui on different dpis.
+fix the gameinfo loader
+write a test harness thing
 less ugly deffered texture
 Center the camera on model in asset browser
 draw a plane in asset browser.
-prevent numlock, capslock etc from breaking keybinds
 fix depth overdraw of tool icons
 remove the single frame flashing from the gizmos.
 allow rebinding of lmouse and rmouse functions
@@ -14,6 +16,10 @@ fix displacment uv calculation
 properly set gl_line thickness
 Stop the frame hitches when searching in asset browser
     Why do they happen?
+
+write cli frontends to vpkctx
+same for mdl loader maybe.
+be an alternative to the other tools
 
 rotation; 
     make the rotation gizmo more intuitive

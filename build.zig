@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const hammer_exe = b.addExecutable(.{
-        .name = "zig-hammer",
+        .name = "rathammer",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
