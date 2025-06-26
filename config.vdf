@@ -87,6 +87,61 @@ games {
             entry "backpack"
         }
     }
+
+    tf2 {
+        base_dir    "Team Fortress 2"
+        game_dir    "Team Fortress 2/tf"
+        fgd_dir     "Team Fortress 2/bin"
+        fgd         "tf.fgd"
+
+        asset_browser_exclude {
+            prefix "materials/"
+            entry "models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+            entry "backpack"
+        }
+    }
+
+    cstrike {
+        base_dir    "Counter-Strike Source"
+        game_dir    "Counter-Strike Source/cstrike"
+        fgd_dir     "Counter-Strike Source/bin"
+        fgd         "cstrike.fgd"
+
+        asset_browser_exclude {
+            prefix "materials/"
+            entry "models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+        }
+    }
+
+    portal2 {
+        base_dir    "Portal 2"
+        game_dir    "Portal 2/portal2"
+        fgd_dir     "Portal 2/bin"
+        fgd         "portal2.fgd"
+
+        asset_browser_exclude {
+            prefix "materials/"
+            entry "models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+        }
+    }
 }
 //The name of a game defined in "games"
 default_game  basic_hl2
