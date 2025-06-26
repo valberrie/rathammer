@@ -18,6 +18,15 @@ const VisGroups = @import("visgroup.zig");
 //rather than storing a []const u8, put a wrapper struct or typedef atleast to indicate its allocation status.
 //All arraylists should be converted to Unmanaged, registry could have a pub var component_alloc they can call globally.
 
+/// Some notes about ecs.
+/// All components are currently stored in dense arrays mapped by sparse sets. May change this to vtables components which can choose their own alloc.
+/// Each Entity is just an integer Id and a bitset representing the components attached.
+/// The id's are persistant across map save-loads.
+/// When converted to vmf, the entity and solid ids are not mangled so if vbsp gives an error with solid id:xx that maps directly back to the ecs id.
+/// vmf solid side ids have no relation as they are not entities.
+///
+/// Don't take pointers into components as they are not stable, use the entity id instead.
+///
 const Comp = graph.Ecs.Component;
 /// Component fields begining with an _ are not serialized
 // This is a bit messy currently.
@@ -46,6 +55,8 @@ pub const EcsT = graph.Ecs.Registry(&.{
 
 /// Groups are used to group entities together. Any entities can be grouped but it is mainly used for brush entities
 /// An entity can only belong to one group at a time.
+///
+/// The editor creates a Groups which manages the mapping between a owning entity and its groupid
 pub const Groups = struct {
     const Self = @This();
     pub const GroupId = u16;
