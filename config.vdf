@@ -162,5 +162,5 @@ games {
     }
 }
 //The name of a game defined in "games"
-default_game  tf2
+default_game  basic_hl2
 

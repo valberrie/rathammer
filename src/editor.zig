@@ -1034,15 +1034,6 @@ pub const Context = struct {
                 const lp = self.loaded_map_path orelse break :blk;
                 const lm = self.loaded_map_name orelse break :blk;
                 try self.saveAndNotify(lm, lp);
-                //const res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
-                //    "zig-out/bin/jsonmaptovmf",
-                //    "--json",
-                //    try self.printScratch("{s}{s}.json", .{ lp, lm }),
-                //} });
-                //std.debug.print("{s}\n", .{res.stdout});
-                //std.debug.print("{s}\n", .{res.stderr});
-                //self.alloc.free(res.stdout);
-                //self.alloc.free(res.stderr);
 
                 var build_arena = std.heap.ArenaAllocator.init(self.alloc);
                 defer build_arena.deinit();

@@ -334,23 +334,41 @@ pub fn main() !void {
     }
 }
 
+fn ensurePlanar(index: []const u32) ?[3]u32 {
+    if (index.len < 3) return null;
+    var last = index[index.len - 1];
+    var good: [3]u32 = undefined;
+    var count: usize = 0;
+    for (index) |ind| {
+        if (ind == last)
+            continue;
+        good[count] = ind;
+        count += 1;
+        last = ind;
+        if (count >= 3) {
+            return good;
+        }
+    }
+    return null;
+}
+
 fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start: *usize, vpkmapper: anytype) !void {
     try vr.writeKey("solid");
     try vr.beginObject();
     {
         try vr.writeKv("id", ent_id);
         for (solid.sides.items) |side| {
+            if (side.index.items.len < 3) continue;
             try vr.writeKey("side");
             try vr.beginObject();
             {
                 const id = side_id_start.*;
                 side_id_start.* += 1;
-                //const id = ((i + 1) << 12) | solids.i;
                 try vr.writeKv("id", id);
-                if (side.index.items.len >= 3) {
-                    const v1 = solid.verts.items[side.index.items[0]];
-                    const v2 = solid.verts.items[side.index.items[1]];
-                    const v3 = solid.verts.items[side.index.items[2]];
+                if (ensurePlanar(side.index.items)) |inds| {
+                    const v1 = solid.verts.items[inds[0]];
+                    const v2 = solid.verts.items[inds[1]];
+                    const v3 = solid.verts.items[inds[2]];
 
                     try vr.writeKey("plane");
                     try vr.printValue("\"({d} {d} {d}) ({d} {d} {d}) ({d} {d} {d})\"\n", .{
