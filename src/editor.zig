@@ -281,6 +281,8 @@ pub const Context = struct {
 
     /// These are currently only used for baking all tool icons into an atlas.
     asset: graph.AssetBake.AssetMap,
+    //TODO Once the toolbar is written in the new gui AND we can load pngs from vpkctx
+    // just draw normally as the number of drawcalls be amortized with the good gui.
     asset_atlas: graph.Texture,
 
     /// This arena is reset every frame
