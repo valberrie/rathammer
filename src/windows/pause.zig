@@ -23,6 +23,7 @@ pub const PauseWindow = struct {
     vt: iWindow,
     area: iArea,
 
+    text: std.ArrayList(u8),
     editor: *Context,
     should_exit: bool = false,
     ent_select: u32 = 0,
@@ -33,9 +34,15 @@ pub const PauseWindow = struct {
             .area = iArea.init(gui, Rec(0, 0, 0, 0)),
             .vt = iWindow.init(&@This().build, gui, &@This().deinit, &self.area),
             .editor = editor,
+            .text = std.ArrayList(u8).init(gui.alloc),
         };
         self.area.draw_fn = &draw;
         self.area.deinit_fn = &area_deinit;
+
+        if (std.fs.cwd().openFile("pause.txt", .{})) |file| {
+            file.reader().readAllArrayList(&self.text, std.math.maxInt(usize)) catch {};
+            file.close();
+        } else |_| {}
 
         return self;
     }
@@ -43,6 +50,7 @@ pub const PauseWindow = struct {
     pub fn deinit(vt: *iWindow, gui: *Gui) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         //self.layout.deinit(gui, vt);
+        self.text.deinit();
         vt.deinit(gui);
         gui.alloc.destroy(self); //second
     }
@@ -103,6 +111,12 @@ pub const PauseWindow = struct {
         a.addChildOpt(gui, vt, Wg.TextboxNumber.build(gui, ly.getArea(), &self.ent_select, vt, .{
             .commit_vt = &self.area,
             .commit_cb = &commitCb,
+        }));
+
+        //ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        ly.pushRemaining();
+        a.addChildOpt(gui, vt, Wg.TextView.build(gui, ly.getArea(), &.{self.text.items}, vt, .{
+            .mode = .split_on_space,
         }));
         //a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), &self.bool2, "secnd button"));
         //a.addChildOpt(gui, vt, Wg.StaticSlider.build(gui, ly.getArea(), 4, 0, 10));
