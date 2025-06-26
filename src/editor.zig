@@ -30,6 +30,7 @@ const NotifyCtx = @import("notify.zig").NotifyCtx;
 const Selection = @import("selection.zig");
 const VisGroups = @import("visgroup.zig");
 const MapBuilder = @import("map_builder.zig");
+const jsontovmf = @import("jsonToVmf.zig").jsontovmf;
 const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
 const DISABLE_SPLASH = false;
@@ -1033,19 +1034,29 @@ pub const Context = struct {
                 const lp = self.loaded_map_path orelse break :blk;
                 const lm = self.loaded_map_name orelse break :blk;
                 try self.saveAndNotify(lm, lp);
-                const res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
-                    "zig-out/bin/jsonmaptovmf",
-                    "--json",
-                    try self.printScratch("{s}{s}.json", .{ lp, lm }),
-                } });
-                std.debug.print("{s}\n", .{res.stdout});
-                std.debug.print("{s}\n", .{res.stderr});
-                self.alloc.free(res.stdout);
-                self.alloc.free(res.stderr);
+                //const res = try std.process.Child.run(.{ .allocator = self.alloc, .argv = &.{
+                //    "zig-out/bin/jsonmaptovmf",
+                //    "--json",
+                //    try self.printScratch("{s}{s}.json", .{ lp, lm }),
+                //} });
+                //std.debug.print("{s}\n", .{res.stdout});
+                //std.debug.print("{s}\n", .{res.stderr});
+                //self.alloc.free(res.stdout);
+                //self.alloc.free(res.stderr);
 
-                try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
                 var build_arena = std.heap.ArenaAllocator.init(self.alloc);
                 defer build_arena.deinit();
+                if (jsontovmf(
+                    build_arena.allocator(),
+                    &self.ecs,
+                    self.skybox.sky_name,
+                    &self.vpkctx,
+                    &self.groups,
+                )) {
+                    try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
+                } else |_| {}
+                _ = build_arena.reset(.retain_capacity);
+
                 const gname = name_blk: {
                     const game_name = self.game_conf.game_dir;
                     const start = if (std.mem.lastIndexOfScalar(u8, game_name, '/')) |i| i + 1 else 0;

@@ -248,6 +248,19 @@ pub const Context = struct {
         return self.namesFromId_(id);
     }
 
+    pub fn getResource(self: *Self, id: VpkResId) ?[]const u8 {
+        if (self.namesFromId(id)) |names| {
+            self.name_buf.clearRetainingCapacity();
+            self.name_buf.writer().print("{s}/{s}.{s}", .{
+                names.path,
+                names.name,
+                names.ext,
+            }) catch return null;
+            return self.name_buf.items;
+        }
+        return null;
+    }
+
     /// clobbers and returns memory from namebuf
     pub fn resolveId(self: *Self, id: IdOrName) !?IdAndName {
         self.name_buf.clearRetainingCapacity();
