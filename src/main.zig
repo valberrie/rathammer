@@ -64,8 +64,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     var gui = try G.Gui.init(alloc, &win, try std.fs.cwd().openDir("ratgraph", .{}), os9gui.font);
     defer gui.deinit();
-    gui.style.config.default_item_h = scaled_item_height;
-    gui.style.config.text_h = scaled_text_height;
+    gui.style.config.default_item_h = args.gui_item_height orelse scaled_item_height;
+    gui.style.config.text_h = args.gui_font_size orelse scaled_text_height;
     const gui_dstate = G.DrawState{ .ctx = &draw, .font = os9gui.font, .style = &gui.style, .gui = &gui };
     const inspector_win = InspectorWindow.create(&gui, editor);
     const pause_win = PauseWindow.create(&gui, editor);
