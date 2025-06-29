@@ -38,6 +38,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     });
     defer win.destroyWindow();
 
+    const DPI_presets = [_]struct { f32, u32, u32 }{
+        .{ 1, 25, 20 },
+        .{ 1.5, 25, 0 },
+    };
+    _ = DPI_presets;
+
     const sc = try dpiDetect(&win);
     const default_item_height = 25;
     const default_text_height = 20;

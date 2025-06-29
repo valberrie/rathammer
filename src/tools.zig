@@ -1361,3 +1361,9 @@ pub const TranslateFace = struct {
         }
     }
 };
+
+const Clipping = struct {
+    pub threadlocal var tool_id: ToolReg = initToolReg;
+    vt: i3DTool,
+    pub fn create(_: std.mem.Allocator) *i3DTool {}
+};
