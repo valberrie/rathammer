@@ -1010,6 +1010,12 @@ pub const Connections = struct {
 
     list: std.ArrayList(Connection) = undefined,
 
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .list = std.ArrayList(Connection).init(alloc),
+        };
+    }
+
     pub fn initFromVmf(alloc: std.mem.Allocator, con: *const vmf.Connections, strstore: anytype) !Self {
         var ret = .{ .list = std.ArrayList(Connection).init(alloc) };
         if (!con.is_init)
@@ -1025,6 +1031,10 @@ pub const Connections = struct {
         for (self.list.items) |*item|
             item.deinit();
         self.list.deinit();
+    }
+
+    pub fn addEmpty(self: *Self) !void {
+        try self.list.append(Connection.init(self.list.allocator));
     }
 
     pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {

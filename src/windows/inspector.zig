@@ -11,6 +11,7 @@ const iWindow = guis.iWindow;
 const iArea = guis.iArea;
 const Wg = guis.Widget;
 const Context = @import("../editor.zig").Context;
+const fgd = @import("../fgd.zig");
 //TODO
 // to get this to work we need to first add a getptr cb to all existing
 // widgets and use that to obtain our values.
@@ -162,7 +163,10 @@ pub const InspectorWindow = struct {
                 .build_vt = win.area,
             }));
 
-            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Add new", .{}));
+            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Add new", .{
+                .cb_vt = &self.area,
+                .cb_fn = &ioBtnCbAdd,
+            }));
             const cons = self.getConsPtr() orelse return;
             if (self.selected_io_index < cons.list.items.len) {
                 const li = &cons.list.items[self.selected_io_index];
@@ -172,9 +176,11 @@ pub const InspectorWindow = struct {
                     vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
                     switch (i) {
                         1 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{ .init_string = li.target.items })),
+                        2 => self.buildInputCombo(vt, gui, win, sp1[1]),
                         3 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{ .init_string = li.value.items })),
                         4 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.delay, win, .{})),
                         5 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.fire_count, win, .{})),
+                        0 => self.buildOutputCombo(vt, gui, win, sp1[1]),
                         else => {},
                     }
                 }
@@ -307,6 +313,16 @@ pub const InspectorWindow = struct {
         const ed = self.editor;
         if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id|
             return (ed.ecs.getOptPtr(sel_id, .key_values) catch null);
+        return null;
+    }
+
+    pub fn getEntDef(self: *@This()) ?*fgd.EntClass {
+        const ed = self.editor;
+        if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id| {
+            if (ed.ecs.getOptPtr(sel_id, .entity) catch null) |ent| {
+                return ed.fgd_ctx.getPtr(ent.class);
+            }
+        }
         return null;
     }
 
@@ -626,6 +642,93 @@ pub const InspectorWindow = struct {
             lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{d}", .{con.delay}));
             lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{d}", .{con.fire_count}));
         }
+    }
+
+    fn ioBtnCbAdd(vt: *iArea, _: usize, _: *Gui, _: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        const cons = self.getConsPtr() orelse blk: {
+            if (self.editor.selection.getGroupOwnerExclusive(&self.editor.groups)) |sel_id| {
+                self.editor.ecs.attach(sel_id, .connections, ecs.Connections.init(self.editor.alloc)) catch return;
+                break :blk self.getConsPtr() orelse return;
+            }
+            return;
+        };
+        const index = cons.list.items.len;
+        cons.addEmpty() catch return;
+        self.selected_io_index = index;
+        self.vt.needs_rebuild = true;
+    }
+
+    pub fn buildOutputCombo(self: *@This(), lay: *iArea, gui: *Gui, win: *iWindow, aa: graph.Rect) void {
+        const cons = self.getConsPtr() orelse return;
+        if (self.selected_io_index >= cons.list.items.len) return;
+
+        const Lam = struct {
+            fn commit(_: *iArea, _: usize, _: void) void {
+                //const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                //const fields = lself.editor.fgd_ctx.ents.items;
+                //lself.vt.needs_rebuild = true;
+                //if (id >= fields.len) return;
+                //const led = lself.editor;
+                //if (led.selection.getGroupOwnerExclusive(&led.groups)) |lsel_id| {
+                //    if (led.ecs.getOptPtr(lsel_id, .entity) catch null) |lent| {
+                //        lent.setClass(led, fields[id].name) catch return;
+                //    }
+                //}
+            }
+
+            fn name(vtt: *iArea, id: usize, _: *Gui, _: void) []const u8 {
+                const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                const class = lself.getEntDef() orelse return "broken";
+                if (id >= class.outputs.items.len) return "BROKEN";
+                const ind = class.outputs.items[id];
+                return class.io_data.items[ind].name;
+            }
+        };
+
+        const class = self.getEntDef() orelse return;
+
+        lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
+            .user_vt = &self.area,
+            .commit_cb = &Lam.commit,
+            .name_cb = &Lam.name,
+            .current = 0,
+            //.current = self.selected_class_id orelse 0,
+            .count = class.outputs.items.len,
+        }, {}));
+    }
+
+    pub fn buildInputCombo(self: *@This(), lay: *iArea, gui: *Gui, win: *iWindow, aa: graph.Rect) void {
+        const Lam = struct {
+            fn commit(_: *iArea, _: usize, _: void) void {
+                //const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                //const fields = lself.editor.fgd_ctx.ents.items;
+                //lself.vt.needs_rebuild = true;
+                //if (id >= fields.len) return;
+                //const led = lself.editor;
+                //if (led.selection.getGroupOwnerExclusive(&led.groups)) |lsel_id| {
+                //    if (led.ecs.getOptPtr(lsel_id, .entity) catch null) |lent| {
+                //        lent.setClass(led, fields[id].name) catch return;
+                //    }
+                //}
+            }
+
+            fn name(vtt: *iArea, id: usize, _: *Gui, _: void) []const u8 {
+                const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                const list = lself.editor.fgd_ctx.all_inputs.items;
+                if (id >= list.len) return "BROKEN";
+                return list[id].name;
+            }
+        };
+
+        lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
+            .user_vt = &self.area,
+            .commit_cb = &Lam.commit,
+            .name_cb = &Lam.name,
+            .current = 0,
+            //.current = self.selected_class_id orelse 0,
+            .count = self.editor.fgd_ctx.all_inputs.items.len,
+        }, {}));
     }
 };
 

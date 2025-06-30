@@ -391,17 +391,34 @@ pub const EntCtx = struct {
 
     base: std.StringHashMap(usize), // classname -> ents.items[index]
 
+    all_input_map: std.StringHashMap(usize),
+    all_inputs: std.ArrayList(EntClass.Io),
+
     pub fn init(alloc: Allocator) Self {
         return .{
             .string_alloc = std.heap.ArenaAllocator.init(alloc),
             .alloc = alloc,
             .ents = std.ArrayList(EntClass).init(alloc),
             .base = std.StringHashMap(usize).init(alloc),
+            .all_input_map = std.StringHashMap(usize).init(alloc),
+            .all_inputs = std.ArrayList(EntClass.Io).init(alloc),
         };
     }
 
     pub fn dupeString(self: *Self, str: []const u8) ![]const u8 {
         return try self.string_alloc.allocator().dupe(u8, str);
+    }
+
+    pub fn addIo(self: *Self, io: EntClass.Io) !void {
+        switch (io.kind) {
+            .output => {},
+            .input => {
+                if (self.all_input_map.contains(io.name)) return;
+                const index = self.all_inputs.items.len;
+                try self.all_input_map.put(io.name, index);
+                try self.all_inputs.append(io);
+            },
+        }
     }
 
     pub fn deinit(self: *Self) void {
@@ -410,6 +427,8 @@ pub const EntCtx = struct {
         }
         self.base.deinit();
         self.ents.deinit();
+        self.all_input_map.deinit();
+        self.all_inputs.deinit();
         self.string_alloc.deinit();
     }
 
@@ -476,6 +495,10 @@ pub const EntClass = struct {
     };
     io_data: std.ArrayList(Io),
     io: std.StringHashMap(usize),
+    ///Indexes into io_data
+    inputs: std.ArrayList(usize),
+    outputs: std.ArrayList(usize),
+
     field_data: std.ArrayList(Field),
     fields: std.StringHashMap(usize),
     //fields: std.ArrayList(Field),
@@ -486,6 +509,8 @@ pub const EntClass = struct {
 
     pub fn init(alloc: Allocator) Self {
         return .{
+            .inputs = std.ArrayList(usize).init(alloc),
+            .outputs = std.ArrayList(usize).init(alloc),
             .io_data = std.ArrayList(Io).init(alloc),
             .io = std.StringHashMap(usize).init(alloc),
             .field_data = std.ArrayList(Field).init(alloc),
@@ -513,6 +538,10 @@ pub const EntClass = struct {
         const index = self.io_data.items.len;
         try self.io.put(io.name, index);
         try self.io_data.append(io);
+        switch (io.kind) {
+            .input => try self.inputs.append(index),
+            .output => try self.outputs.append(index),
+        }
     }
 
     pub fn inherit(self: *Self, parent: Self) !void {
@@ -528,7 +557,13 @@ pub const EntClass = struct {
             try self.fields.put(item.key_ptr.*, index);
             try self.field_data.append(cc);
         }
-        //TODO also inherit inputs and outputs, maybe check for override?
+
+        var io_it = parent.io.iterator();
+        while (io_it.next()) |item| {
+            if (self.io.contains(item.key_ptr.*)) continue;
+            const io = parent.io_data.items[item.value_ptr.*];
+            try self.addIo(io);
+        }
     }
 
     pub fn deinit(self: *Self) void {
@@ -538,6 +573,8 @@ pub const EntClass = struct {
         self.fields.deinit();
         self.io.deinit();
         self.io_data.deinit();
+        self.inputs.deinit();
+        self.outputs.deinit();
     }
 };
 
@@ -764,6 +801,7 @@ pub const ParseCtx = struct {
                     .kind = fw,
                 };
                 try new_class.addIo(new_io);
+                try ctx.addIo(new_io);
             } else { // A regular field
                 _ = try tkz.expectNext(.l_paren);
                 const type_tok = try tkz.expectNext(.plain_string); //Type must be a plain string
