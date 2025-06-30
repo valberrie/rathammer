@@ -32,6 +32,8 @@ pub const InspectorWindow = struct {
 
     selected_class_id: ?usize = null,
 
+    tab_index: usize = 0,
+
     str: []const u8 = "ass",
 
     pub fn create(gui: *Gui, editor: *Context) *InspectorWindow {
@@ -115,7 +117,7 @@ pub const InspectorWindow = struct {
 
         //self.buildErr(gui, &ly) catch {};
         ly.pushRemaining();
-        a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io", "tool" }, vt, &buildTabs, &self.area));
+        a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io", "tool" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
     }
 
     fn buildTabs(user_vt: *iArea, vt: *iArea, tab_name: []const u8, gui: *Gui, win: *iWindow) void {
@@ -164,6 +166,12 @@ pub const InspectorWindow = struct {
                 const sp1 = ar.split(.vertical, ar.w / 2);
                 vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
             }
+        }
+        if (eql(u8, tab_name, "tool")) {
+            const tool = self.editor.getCurrentTool() orelse return;
+            const cb_fn = tool.gui_build_cb orelse return;
+
+            cb_fn(tool, self.editor, vt, gui, win);
         }
     }
 

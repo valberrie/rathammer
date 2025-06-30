@@ -745,9 +745,9 @@ pub const Context = struct {
     }
 
     pub fn getCurrentTool(self: *Self) ?*tool_def.i3DTool {
-        if (self.edit_state.tool_index >= self.tools.tools.items.len)
+        if (self.edit_state.tool_index >= self.tools.vtables.items.len)
             return null;
-        return self.tools.tools.items[self.edit_state.tool_index];
+        return self.tools.vtables.items[self.edit_state.tool_index];
     }
 
     pub fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {

@@ -18,6 +18,11 @@ const Gizmo = @import("gizmo.zig").Gizmo;
 const ecs = @import("ecs.zig");
 const Solid = ecs.Solid;
 const VtableReg = @import("vtable_reg.zig").VtableReg;
+const guis = graph.RGui;
+const RGui = guis.Gui;
+const iArea = guis.iArea;
+const iWindow = guis.iWindow;
+const Wg = guis.Widget;
 
 //todo
 //extrude tool
@@ -36,6 +41,8 @@ pub const i3DTool = struct {
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
+
+    gui_build_cb: ?*const fn (*@This(), *Editor, *iArea, *RGui, *iWindow) void = null,
 };
 
 const ToolError = error{
@@ -167,6 +174,7 @@ pub const VertexTranslate = struct {
                 .deinit_fn = &deinit,
                 .tool_icon_fn = &drawIcon,
                 .runTool_fn = &runTool,
+                .gui_build_cb = &buildGui,
             },
             .selected = std.AutoHashMap(ecs.EcsT.Id, Sel).init(alloc),
             //.selected_verts = std.ArrayList(SelectedVertex).init(alloc),
@@ -356,6 +364,23 @@ pub const VertexTranslate = struct {
             }
         }
     }
+
+    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        const doc =
+            \\This is the vertex translate tool.
+            \\Select a solid with 'E'
+            \\Mouse over the verticies and left click to add the vertex
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
+            .mode = .split_on_space,
+        }));
+
+        //area_vt.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "select one", .{ .bool_ptr = &self. }, null));
+        area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.selection_mode));
+    }
 };
 //double computeDistance(vec3 A, vec3 B, vec3 C) {
 //    vec3 d = (C - B) / C.distance(B);
@@ -394,6 +419,7 @@ pub const CubeDraw = struct {
             .tool_icon_fn = &@This().drawIcon,
             .guiDoc_fn = &@This().guiDoc,
             .gui_fn = &@This().doGui,
+            .gui_build_cb = &buildGui,
         } };
         return &obj.vt;
     }
@@ -403,6 +429,28 @@ pub const CubeDraw = struct {
         _ = self;
         const rec = editor.asset.getRectFromName("cube_draw.png") orelse graph.Rec(0, 0, 0, 0);
         draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        const doc =
+            \\This is the cube draw tool
+            \\Select a texture with alt-t
+            \\left click to add the start point.
+            \\Click again to finish cube.
+            \\
+            \\Change the height of the draw plane with x and z
+            \\Or, hold q and aim at a entity, left click to set this as the new position.
+            \\Change the grid size with 'R' and 'F'
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        ly.pushHeight(Wg.TextView.heightForN(gui, 7));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
+            .mode = .split_on_space,
+        }));
+
+        area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.post_state));
+        area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Use custom Height", .{ .bool_ptr = &self.use_custom_height }, null));
     }
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
@@ -605,6 +653,7 @@ pub const FastFaceManip = struct {
                 .runTool_fn = &@This().runTool,
                 .tool_icon_fn = &@This().drawIcon,
                 .guiDoc_fn = &@This().guiDoc,
+                .gui_build_cb = &buildGui,
             },
             .selected = std.ArrayList(Selected).init(alloc),
         };
@@ -756,6 +805,23 @@ pub const FastFaceManip = struct {
         }
     }
 
+    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const doc =
+            \\This is the Fast Face tool.
+            \\Select objects with 'E'.
+            \\Left click selects the near face, right click selects the far face
+            \\Click and drag and click the opposite mouse button to commit changes
+            \\If in multi select mode, faces with a common normal will be manipulated
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
+            .mode = .split_on_space,
+        }));
+    }
+
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
         const hl = os9gui.style.config.text_h;
         vl.pushHeight(hl * 10);
@@ -797,6 +863,7 @@ pub const Translate = struct {
                 .runTool_fn = &@This().runTool,
                 .tool_icon_fn = &@This().drawIcon,
                 .guiDoc_fn = &@This().guiDoc,
+                .gui_build_cb = &buildGui,
             },
             .gizmo_rotation = .{},
             .gizmo_translate = .{},
@@ -1018,6 +1085,24 @@ pub const Translate = struct {
             if (ustack != null)
                 undo.applyRedo(ustack.?.items, self);
         }
+    }
+
+    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const doc =
+            \\This is the translate tool.
+            \\Select objects with 'E'.
+            \\Left Click and drag the gizmo.
+            \\Right click to commit the translation.
+            \\Hold 'Shift' to uncapture the mouse.
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "translate tool", null));
+        ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
+            .mode = .split_on_space,
+        }));
     }
 };
 
