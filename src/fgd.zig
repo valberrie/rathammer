@@ -813,7 +813,7 @@ pub const ParseCtx = struct {
                 const new_type = tt[0];
                 const mask_default = tt[1];
                 try new_class.addField(.{
-                    .name = try ctx.dupeString(fsl),
+                    .name = try ctx.dupeString(self.sanitizeIdent(fsl)),
                     .type = new_type,
                     .default = try ctx.dupeString(mask_default orelse dat.def),
                     .doc_string = dat.doc,

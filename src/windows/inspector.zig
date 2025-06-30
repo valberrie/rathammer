@@ -733,7 +733,14 @@ pub const InspectorWindow = struct {
 
         const current_item = cons.list.items[self.selected_io_index].listen_event;
         const class = self.getEntDef() orelse return;
-        const index = if (class.io.get(current_item)) |io| io else 0;
+        var index: usize = 0;
+        for (class.outputs.items, 0..) |out_i, i| {
+            const out = class.io_data.items[out_i];
+            if (std.mem.eql(u8, out.name, current_item)) {
+                index = i;
+                break;
+            }
+        }
 
         lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
             .user_vt = &self.area,
