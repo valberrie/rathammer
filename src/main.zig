@@ -275,6 +275,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 else => try editor_view.drawPane(editor, pane, has_mouse, cam_state, &win, pane_area, &draw, &os9gui),
             }
         }
+        editor.draw_state.grab.endFrame();
+
+        try loadctx.loadedSplash(win.keys.len > 0);
+        {
+            //var time = try std.time.Timer.start();
+            try os9gui.drawGui(&draw);
+            //std.debug.print("draw gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
+        }
         {
             const wins = windows_list[0..win_count];
             //try gui.updateWindowSize(&pause_win.vt, winrect);
@@ -282,14 +290,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             try gui.update(wins);
             try gui.draw(gui_dstate, false, wins);
             gui.drawFbos(&draw, wins);
-            //std.debug.print("draw gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
-        }
-        editor.draw_state.grab.endFrame();
-
-        try loadctx.loadedSplash(win.keys.len > 0);
-        {
-            //var time = try std.time.Timer.start();
-            try os9gui.drawGui(&draw);
             //std.debug.print("draw gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
         }
 

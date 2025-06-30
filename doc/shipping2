@@ -22,10 +22,43 @@ Clipping tool.
 Basic displacement tool.
 Finish the texture tool
     way to "grab" the face and pan aronud.
+    Cycle through a list of textures using scroll?
     spinner box to set angle.
     Texture picker
     Texture painter.
     recent textures and textures used in level pane, maybe way to scroll through recent textures 
     "Apply to selected faces" button
+    How to do the align texture thing to face alt+rightclick from hammer
     All that make sense should apply to all selected
+        in texture viewer, allow creation of groups
+        display all textures currently used
 
+
+Clipping tool
+    hard with undo, how is the newly created entity handled?
+    will require adding verts?
+    who knows
+
+Other primitive generation
+    Arch !important!
+    cylinder
+    wedge
+    spike
+
+    These tools should display a preview in the world before being commited
+
+Displacement editing.
+    See what hammer has.
+    Probably not as hard as you think.
+
+Work time estimation to alpha build.
+primitive gen: 2 days
+clipping tool: 1-5 days
+texture_tools: 2 days
+gui_port:      4 days
+displacments:  3 days
+testing-bugs   4 days
+doc-writing    2 days
+
+total:      17 - 22
+This is *very* conservative

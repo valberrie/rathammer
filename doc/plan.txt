@@ -42,6 +42,7 @@ Interface # All the features for editing
     Vertex tool
     EXTRUDE Tool, create a new solid at face
     Texture manipulation
+    Mirror tool, 
 
     DONE Face translation
     DONE Model placement
