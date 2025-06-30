@@ -36,6 +36,10 @@ pub const InspectorWindow = struct {
 
     str: []const u8 = "ass",
 
+    io_columns_width: [5]f32 = .{ 0.2, 0.4, 0.6, 0.8, 0.9 },
+    selected_io_index: usize = 0,
+    io_scroll_index: usize = 0,
+
     pub fn create(gui: *Gui, editor: *Context) *InspectorWindow {
         const self = gui.create(@This());
         self.* = .{
@@ -150,21 +154,30 @@ pub const InspectorWindow = struct {
             ly.padding.right = 10;
             ly.padding.top = 10;
 
-            const cons = self.getConsPtr() orelse return;
-
-            vt.addChildOpt(gui, win, Wg.VScroll.build(gui, sp[0], .{
-                .build_cb = &buildIoScrollCb,
-                .build_vt = win.area,
-                .win = win,
-                .count = cons.list.items.len,
-                .item_h = gui.style.config.default_item_h,
-            }));
-            //self.buildIoTab(gui, sp[0], vt) catch {};
             const names = [6][]const u8{ "Listen", "target", "input", "value", "delay", "fc" };
-            for (names) |n| {
-                const ar = ly.getArea() orelse break;
-                const sp1 = ar.split(.vertical, ar.w / 2);
-                vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
+            vt.addChildOpt(gui, win, Wg.DynamicTable.build(gui, sp[0], win, .{
+                .column_positions = &self.io_columns_width,
+                .column_names = &names,
+                .build_cb = &buildIo,
+                .build_vt = win.area,
+            }));
+
+            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Add new", .{}));
+            const cons = self.getConsPtr() orelse return;
+            if (self.selected_io_index < cons.list.items.len) {
+                const li = &cons.list.items[self.selected_io_index];
+                for (names, 0..) |n, i| {
+                    const ar = ly.getArea() orelse break;
+                    const sp1 = ar.split(.vertical, ar.w / 2);
+                    vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
+                    switch (i) {
+                        1 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{ .init_string = li.target.items })),
+                        3 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{ .init_string = li.value.items })),
+                        4 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.delay, win, .{})),
+                        5 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.fire_count, win, .{})),
+                        else => {},
+                    }
+                }
             }
         }
         if (eql(u8, tab_name, "tool")) {
@@ -561,26 +574,55 @@ pub const InspectorWindow = struct {
         ));
     }
 
+    fn buildIo(user_vt: *iArea, area_vt: *iArea, gui: *Gui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", user_vt));
+        const cons = self.getConsPtr() orelse return;
+        area_vt.addChildOpt(gui, win, Wg.VScroll.build(gui, area_vt.area, .{
+            .build_cb = &buildIoScrollCb,
+            .build_vt = user_vt,
+            .win = win,
+            .count = cons.list.items.len,
+            .item_h = gui.style.config.default_item_h,
+            .index_ptr = &self.io_scroll_index,
+        }));
+    }
+
     fn buildIoScrollCb(window_area: *iArea, vt: *iArea, index: usize, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", window_area));
         _ = win;
         self.buildIoTab(gui, vt.area, vt, index) catch return;
     }
 
+    fn io_btn_cb(window_area: *iArea, id: usize, _: *Gui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", window_area));
+        self.selected_io_index = id;
+        win.needs_rebuild = true;
+    }
+
     fn buildIoTab(self: *@This(), gui: *Gui, area: Rect, lay: *iArea, index: usize) !void {
         const cons = self.getConsPtr() orelse return;
         const win = &self.vt;
-        const th = gui.style.config.text_h;
-        const num_w = th * 2;
-        const rem4 = @trunc((area.w - num_w * 2) / 4);
-        const col_ws = [6]f32{ rem4, rem4, rem4, rem4, num_w, num_w };
-        var tly = guis.TableLayoutCustom{ .item_height = gui.style.config.default_item_h, .bounds = area, .column_widths = &col_ws };
+        //const th = gui.style.config.text_h;
+        //const num_w = th * 2;
+        //const rem4 = @trunc((area.w - num_w * 2) / 4);
+        var widths: [6]f32 = undefined;
+        //const col_ws = [6]f32{ rem4, rem4, rem4, rem4, num_w, num_w };
+        var tly = Wg.DynamicTable.calcLayout(&self.io_columns_width, &widths, area, gui) orelse return;
+        //var tly1 = guis.TableLayoutCustom{ .item_height = gui.style.config.default_item_h, .bounds = area, .column_widths = &col_ws };
         if (index >= cons.list.items.len) return;
-        for (cons.list.items[index..]) |con| {
-            lay.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), con.listen_event, null));
-            lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{s}", .{con.target.items}));
-            lay.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), con.input, null));
-            lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{s}", .{con.value.items}));
+        for (cons.list.items[index..], index..) |con, ind| {
+            const opts = Wg.Button.Opts{
+                .custom_draw = &customButtonDraw,
+                .id = ind,
+                .cb_fn = &io_btn_cb,
+                .cb_vt = &self.area,
+                .user_1 = if (self.selected_io_index == ind) 1 else 0,
+            };
+            const strs = [4][]const u8{ con.listen_event, con.target.items, con.input, con.value.items };
+            //con.delay, con.fire_count };
+            for (strs) |str|
+                lay.addChildOpt(gui, win, Wg.Button.build(gui, tly.getArea(), str, opts));
+            //TODO make these buttons too
             lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{d}", .{con.delay}));
             lay.addChildOpt(gui, win, Wg.Text.build(gui, tly.getArea(), "{d}", .{con.fire_count}));
         }
