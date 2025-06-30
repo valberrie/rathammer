@@ -175,12 +175,30 @@ pub const InspectorWindow = struct {
                     const sp1 = ar.split(.vertical, ar.w / 2);
                     vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
                     switch (i) {
-                        1 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{ .init_string = li.target.items })),
-                        2 => self.buildInputCombo(vt, gui, win, sp1[1]),
-                        3 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{ .init_string = li.value.items })),
-                        4 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.delay, win, .{})),
-                        5 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.fire_count, win, .{})),
                         0 => self.buildOutputCombo(vt, gui, win, sp1[1]),
+                        1 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{
+                            .init_string = li.target.items,
+                            .user_id = 1,
+                            .commit_vt = &self.area,
+                            .commit_cb = &ioTextboxCb,
+                        })),
+                        2 => self.buildInputCombo(vt, gui, win, sp1[1]),
+                        3 => vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, sp1[1], .{
+                            .init_string = li.value.items,
+                            .user_id = 3,
+                            .commit_vt = &self.area,
+                            .commit_cb = &ioTextboxCb,
+                        })),
+                        4 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.delay, win, .{
+                            .user_id = 4,
+                            .commit_vt = &self.area,
+                            .commit_cb = &ioTextboxCb,
+                        })),
+                        5 => vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp1[1], li.fire_count, win, .{
+                            .user_id = 5,
+                            .commit_vt = &self.area,
+                            .commit_cb = &ioTextboxCb,
+                        })),
                         else => {},
                     }
                 }
@@ -659,22 +677,49 @@ pub const InspectorWindow = struct {
         self.vt.needs_rebuild = true;
     }
 
+    fn ioTextboxCb(this_window: *iArea, _: *Gui, string: []const u8, id: usize) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", this_window));
+        const cons = self.getConsPtr() orelse return;
+        if (self.selected_io_index >= cons.list.items.len) return;
+        const con = &cons.list.items[self.selected_io_index];
+
+        //Numbers are indexes into the table "names"
+        switch (id) {
+            1 => { //Target
+                con.target.clearRetainingCapacity();
+                con.target.appendSlice(string) catch return;
+            },
+            3 => {
+                con.value.clearRetainingCapacity();
+                con.value.appendSlice(string) catch return;
+            },
+            4 => { //delay
+                const num = std.fmt.parseFloat(f32, string) catch return;
+                con.delay = num;
+            },
+            5 => {
+                const num = std.fmt.parseInt(i32, string, 10) catch return;
+                con.fire_count = num;
+            },
+            else => {},
+        }
+    }
+
     pub fn buildOutputCombo(self: *@This(), lay: *iArea, gui: *Gui, win: *iWindow, aa: graph.Rect) void {
         const cons = self.getConsPtr() orelse return;
         if (self.selected_io_index >= cons.list.items.len) return;
 
         const Lam = struct {
-            fn commit(_: *iArea, _: usize, _: void) void {
-                //const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
-                //const fields = lself.editor.fgd_ctx.ents.items;
-                //lself.vt.needs_rebuild = true;
-                //if (id >= fields.len) return;
-                //const led = lself.editor;
-                //if (led.selection.getGroupOwnerExclusive(&led.groups)) |lsel_id| {
-                //    if (led.ecs.getOptPtr(lsel_id, .entity) catch null) |lent| {
-                //        lent.setClass(led, fields[id].name) catch return;
-                //    }
-                //}
+            fn commit(vtt: *iArea, id: usize, _: void) void {
+                const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                const lcons = lself.getConsPtr() orelse return;
+                if (lself.selected_io_index >= lcons.list.items.len) return;
+
+                const class = lself.getEntDef() orelse return;
+                if (id >= class.outputs.items.len) return;
+                const ind = class.outputs.items[id];
+                const lname = class.io_data.items[ind].name;
+                lcons.list.items[lself.selected_io_index].listen_event = lname;
             }
 
             fn name(vtt: *iArea, id: usize, _: *Gui, _: void) []const u8 {
@@ -686,13 +731,15 @@ pub const InspectorWindow = struct {
             }
         };
 
+        const current_item = cons.list.items[self.selected_io_index].listen_event;
         const class = self.getEntDef() orelse return;
+        const index = if (class.io.get(current_item)) |io| io else 0;
 
         lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
             .user_vt = &self.area,
             .commit_cb = &Lam.commit,
             .name_cb = &Lam.name,
-            .current = 0,
+            .current = index,
             //.current = self.selected_class_id orelse 0,
             .count = class.outputs.items.len,
         }, {}));
@@ -700,17 +747,14 @@ pub const InspectorWindow = struct {
 
     pub fn buildInputCombo(self: *@This(), lay: *iArea, gui: *Gui, win: *iWindow, aa: graph.Rect) void {
         const Lam = struct {
-            fn commit(_: *iArea, _: usize, _: void) void {
-                //const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
-                //const fields = lself.editor.fgd_ctx.ents.items;
-                //lself.vt.needs_rebuild = true;
-                //if (id >= fields.len) return;
-                //const led = lself.editor;
-                //if (led.selection.getGroupOwnerExclusive(&led.groups)) |lsel_id| {
-                //    if (led.ecs.getOptPtr(lsel_id, .entity) catch null) |lent| {
-                //        lent.setClass(led, fields[id].name) catch return;
-                //    }
-                //}
+            fn commit(vtt: *iArea, id: usize, _: void) void {
+                const lself: *InspectorWindow = @alignCast(@fieldParentPtr("area", vtt));
+                const lcons = lself.getConsPtr() orelse return;
+                if (lself.selected_io_index >= lcons.list.items.len) return;
+
+                const list = lself.editor.fgd_ctx.all_inputs.items;
+                if (id >= list.len) return;
+                lcons.list.items[lself.selected_io_index].input = list[id].name;
             }
 
             fn name(vtt: *iArea, id: usize, _: *Gui, _: void) []const u8 {
@@ -721,12 +765,16 @@ pub const InspectorWindow = struct {
             }
         };
 
+        const cons = self.getConsPtr() orelse return;
+        if (self.selected_io_index >= cons.list.items.len) return;
+        const current_item = cons.list.items[self.selected_io_index].input;
+
+        const index = if (self.editor.fgd_ctx.all_input_map.get(current_item)) |io| io else 0;
         lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
             .user_vt = &self.area,
             .commit_cb = &Lam.commit,
             .name_cb = &Lam.name,
-            .current = 0,
-            //.current = self.selected_class_id orelse 0,
+            .current = index,
             .count = self.editor.fgd_ctx.all_inputs.items.len,
         }, {}));
     }
