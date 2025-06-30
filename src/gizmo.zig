@@ -3,6 +3,7 @@ const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const util3d = @import("util_3d.zig");
 const BtnState = graph.SDL.ButtonState;
+const Editor = @import("editor.zig").Context;
 
 pub const Gizmo = struct {
     start: Vec3 = Vec3.zero(),
@@ -70,9 +71,9 @@ pub const Gizmo = struct {
         camera_pos: Vec3,
         lmouse: BtnState,
         draw: *graph.ImmediateDrawingContext,
-        screen_area: graph.Vec2f,
+        screen_area: graph.Rect,
         view: graph.za.Mat4,
-        mouse_pos: graph.Vec2f,
+        editor: *Editor,
     ) BtnState {
         //const sa = self.edit_state.selected_axis;
         const gizmo_size = orig.distance(camera_pos) / 64 * 20;
@@ -114,7 +115,7 @@ pub const Gizmo = struct {
         switch (lmouse) {
             .rising => {
                 var caught_one = false;
-                const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
+                const rc = editor.camRay(screen_area, view);
                 //TODO do a depth test
                 for (cubes, 0..) |cu, ci| {
                     const co = cube_orig[ci];
@@ -143,7 +144,7 @@ pub const Gizmo = struct {
             .high => {
                 if (self.selected_axis == .none)
                     return .low;
-                const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
+                const rc = editor.camRay(screen_area, view);
                 if (util3d.doesRayIntersectPlane(
                     rc[0],
                     rc[1],

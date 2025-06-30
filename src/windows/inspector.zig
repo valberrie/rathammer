@@ -92,11 +92,11 @@ pub const InspectorWindow = struct {
         //self.layout.reset(gui, vt);
         //start a vlayout
         //var ly = Vert{ .area = vt.area };
-        const max_w = gui.style.config.default_item_h * 30;
+        //const max_w = gui.style.config.default_item_h * 30;
         const sp1 = vt.area.area;
         //const sp1 = vt.area.area.split(.horizontal, vt.area.area.h * 0.5);
         const inset = GuiHelp.insetAreaForWindowFrame(gui, sp1);
-        const w = @min(max_w, inset.w);
+        const w = inset.w;
         var ly = guis.VerticalLayout{
             .padding = .{},
             .item_height = gui.style.config.default_item_h,
@@ -115,7 +115,7 @@ pub const InspectorWindow = struct {
 
         //self.buildErr(gui, &ly) catch {};
         ly.pushRemaining();
-        a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io" }, vt, &buildTabs, &self.area));
+        a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io", "tool" }, vt, &buildTabs, &self.area));
     }
 
     fn buildTabs(user_vt: *iArea, vt: *iArea, tab_name: []const u8, gui: *Gui, win: *iWindow) void {

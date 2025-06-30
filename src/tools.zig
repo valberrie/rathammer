@@ -303,9 +303,10 @@ pub const VertexTranslate = struct {
                 ed.draw_state.cam3d.pos,
                 ed.edit_state.lmouse,
                 draw_nd,
-                td.screen_area.dim(),
+                td.screen_area,
                 td.view_3d.*,
-                ed.edit_state.mpos,
+                //ed.edit_state.mpos,
+                ed,
             );
 
             const commit = ed.edit_state.rmouse == .rising;
@@ -884,9 +885,10 @@ pub const Translate = struct {
                     self.draw_state.cam3d.pos,
                     self.edit_state.lmouse,
                     draw_nd,
-                    td.screen_area.dim(),
+                    td.screen_area,
                     td.view_3d.*,
-                    self.edit_state.mpos,
+                    //self.edit_state.mpos,
+                    self,
                 );
             };
             const commit = self.edit_state.rmouse == .rising;
@@ -1310,9 +1312,10 @@ pub const TranslateFace = struct {
                         self.draw_state.cam3d.pos,
                         self.edit_state.lmouse,
                         draw_nd,
-                        td.screen_area.dim(),
+                        td.screen_area,
                         td.view_3d.*,
-                        self.edit_state.mpos,
+                        //self.edit_state.mpos,
+                        self,
                     );
                     gizmo_is_active = giz_active != .low;
                     if (giz_active == .rising) {
