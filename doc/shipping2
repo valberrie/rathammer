@@ -1,0 +1,31 @@
+getting to alpha build.
+
+Docs for all the keybindings
+Prevent conflict between workspace switching and tool selection.
+Proper support for gameinfo.txt
+Documentation for setting up on linux.
+Better errormsg for dirs and gameinfo FileNotFound.
+
+IO Panal, only single entity support for now
+Display active texture with cube draw.
+Cancel button for cube draw.
+Prevent invalid solids from being created with cube draw.
+Change cube draw to draw 
+
+Test gui on a variety of dpis
+Allow runtime resizing of panals
+
+Serialization of displacments
+
+Clipping tool.
+    rcast selected, place 2 points,
+Basic displacement tool.
+Finish the texture tool
+    way to "grab" the face and pan aronud.
+    spinner box to set angle.
+    Texture picker
+    Texture painter.
+    recent textures and textures used in level pane, maybe way to scroll through recent textures 
+    "Apply to selected faces" button
+    All that make sense should apply to all selected
+
