@@ -41,7 +41,7 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
     for (fs.obj.list.items) |entry| {
         var tk = std.mem.tokenizeScalar(u8, entry.key, '+');
         while (tk.next()) |t| {
-            if (std.mem.eql(u8, t, "game")) {
+            if (std.mem.startsWith(u8, t, "game")) {
                 if (entry.val != .literal)
                     return error.invalidGameInfo;
                 const l = entry.val.literal;

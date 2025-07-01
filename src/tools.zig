@@ -703,7 +703,7 @@ pub const FastFaceManip = struct {
                         const solid = try editor.ecs.getOptPtr(sel, .solid) orelse continue;
                         const rc = try raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx);
                         if (rc.len > 0) {
-                            const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len) else 0;
+                            const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len - 1) else 0;
                             try self.selected.append(.{ .id = sel, .face_id = @intCast(rc[rci].side_index) });
                             self.main_id = sel;
 
