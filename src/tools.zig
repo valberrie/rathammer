@@ -993,16 +993,19 @@ pub const Translate = struct {
                     const del = Vec3.set(1); //Pad the frame so in doesn't get drawn over by ent frame
                     const coo = bb.a.sub(del);
                     draw_nd.cubeFrame(coo, bb.b.sub(coo).add(del), color);
-                    if (giz_active == .low and angle != null) {
+                    {
                         const switcher_sz = origin.distance(self.draw_state.cam3d.pos) / 64 * 5;
                         const orr = origin.add(Vec3.new(0, 0, switcher_sz * 5));
                         const co = orr.sub(Vec3.set(switcher_sz / 2));
                         const ce = Vec3.set(switcher_sz);
-                        draw_nd.cube(co, ce, 0xffffff88);
-                        const rc = util3d.screenSpaceRay(td.screen_area.dim(), self.edit_state.mpos, td.view_3d.*);
-                        if (self.edit_state.lmouse == .rising) {
-                            if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(ce))) |_| {
-                                tool.mode.next();
+                        if (giz_active != .high)
+                            draw_nd.cube(co, ce, 0xffffff88);
+                        if (giz_active == .low and angle != null) {
+                            const rc = util3d.screenSpaceRay(td.screen_area.dim(), self.edit_state.mpos, td.view_3d.*);
+                            if (self.edit_state.lmouse == .rising) {
+                                if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(ce))) |_| {
+                                    tool.mode.next();
+                                }
                             }
                         }
                     }
