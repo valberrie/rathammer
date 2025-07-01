@@ -27,6 +27,11 @@ pub fn dpiDetect(win: *graph.SDL.Window) !f32 {
     return sc;
 }
 
+var font_ptr: *graph.OnlineFont = undefined;
+fn flush_cb() void {
+    font_ptr.syncBitmapToGL();
+}
+
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const load_timer = try std.time.Timer.start();
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
@@ -67,6 +72,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .item_height = args.gui_item_height orelse scaled_item_height,
     });
     defer os9gui.deinit();
+    draw.preflush_cb = &flush_cb;
+    font_ptr = os9gui.ofont;
 
     var gui = try G.Gui.init(alloc, &win, try std.fs.cwd().openDir("ratgraph", .{}), os9gui.font);
     defer gui.deinit();
