@@ -1,5 +1,12 @@
-This is RatHammer, an editor for source engine maps.
+This is RatHammer, a new editor for source engine maps.
 Written by Niklas Malthouse.
+For bug reports, feature requests, etc: 
+https://github.com/nmalthouse/rathammer
+
+The column to the left has help text for various things.
+Click on a topic for more information.
+<--
+Open and close this menu with 'Escape'
 
 Basics:
 Selections are made by pressing 'E'.

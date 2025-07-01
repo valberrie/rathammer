@@ -1,0 +1,15 @@
+RatHammer is written in Zig by Niklas Malthouse.
+
+It depends on a number of libraries and tools:
+
+The zig programming language
+https://github.com/ziglang/zig
+
+LibEpoxy for OpenGL loading
+https://github.com/anholt/libepoxy
+
+STB single header c-libs
+https://github.com/nothings/stb
+
+SDL3 for window and input
+https://wiki.libsdl.org/SDL3/FrontPage
