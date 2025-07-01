@@ -586,29 +586,32 @@ pub const CubeDraw = struct {
                         tool.end.data[2] += height;
 
                         //Put it into the
-                        const new = try self.ecs.createEntity();
-                        const newsolid = try Solid.initFromCube(self.alloc, tool.start, tool.end, self.asset_browser.selected_mat_vpk_id orelse 0);
-                        try self.ecs.attach(new, .solid, newsolid);
-                        try self.ecs.attach(new, .bounding_box, .{});
-                        const solid_ptr = try self.ecs.getPtr(new, .solid);
-                        try solid_ptr.translate(new, Vec3.zero(), self);
-                        {
-                            const ustack = try self.undoctx.pushNewFmt("draw cube", .{});
-                            try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
-                            undo.applyRedo(ustack.items, self);
-                        }
-                        switch (tool.post_state) {
-                            .reset => tool.state = .start,
-                            .switch_to_fast_face => {
-                                const tid = try self.tools.getId(FastFaceManip);
-                                self.edit_state.tool_index = tid;
-                                try self.selection.setToSingle(new);
-                            },
-                            .switch_to_translate => {
-                                const tid = try self.tools.getId(Translate);
-                                self.edit_state.tool_index = tid;
-                                try self.selection.setToSingle(new);
-                            },
+                        if (Solid.initFromCube(self.alloc, tool.start, tool.end, self.asset_browser.selected_mat_vpk_id orelse 0)) |newsolid| {
+                            const new = try self.ecs.createEntity();
+                            try self.ecs.attach(new, .solid, newsolid);
+                            try self.ecs.attach(new, .bounding_box, .{});
+                            const solid_ptr = try self.ecs.getPtr(new, .solid);
+                            try solid_ptr.translate(new, Vec3.zero(), self);
+                            {
+                                const ustack = try self.undoctx.pushNewFmt("draw cube", .{});
+                                try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
+                                undo.applyRedo(ustack.items, self);
+                            }
+                            switch (tool.post_state) {
+                                .reset => tool.state = .start,
+                                .switch_to_fast_face => {
+                                    const tid = try self.tools.getId(FastFaceManip);
+                                    self.edit_state.tool_index = tid;
+                                    try self.selection.setToSingle(new);
+                                },
+                                .switch_to_translate => {
+                                    const tid = try self.tools.getId(Translate);
+                                    self.edit_state.tool_index = tid;
+                                    try self.selection.setToSingle(new);
+                                },
+                            }
+                        } else |a| {
+                            std.debug.print("Invalid cube {!}\n", .{a});
                         }
                     }
                 }

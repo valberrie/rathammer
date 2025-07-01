@@ -460,6 +460,7 @@ pub const Solid = struct {
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
+        const MIN_VALID_VOLUME = 1;
         var ret = init(alloc);
         //const Va = std.ArrayList(Vec3);
         //const Ia = std.ArrayList(u32);
@@ -467,6 +468,11 @@ pub const Solid = struct {
         const N = Vec3.new;
         const o = cc[0];
         const e = cc[1];
+
+        const volume = e.x() * e.y() * e.z();
+        if (volume < MIN_VALID_VOLUME)
+            return error.invalidCube;
+
         const verts = [8]Vec3{
             o.add(N(0, 0, 0)),
             o.add(N(e.x(), 0, 0)),
