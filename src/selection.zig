@@ -17,7 +17,7 @@ const Mode = enum {
 /// Note that in state .one, more than one entity may be selected if ignore groups is false
 mode: Mode = .one,
 /// Toggling this only effects the behavior of fn put()
-ignore_groups: bool = true,
+ignore_groups: bool = false,
 
 multi: std.ArrayList(Id),
 
