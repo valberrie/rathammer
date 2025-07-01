@@ -23,6 +23,8 @@ Wip
 
 ### Building and running
 ```
+# Install zig version 0.14.1
+# sdl3, freetype2, libepoxy
 git clone https://github.com/nmalthouse/rathammer.git
 cd rathammer
 git submodule update --init --recursive
