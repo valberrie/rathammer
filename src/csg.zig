@@ -365,13 +365,9 @@ pub const Context = struct {
                 const in2: u32 = @intCast(((q_i + 1) * vper_row) + q_j);
                 const in3: u32 = @intCast(((q_i + 1) * vper_row) + q_j + 1);
 
-                //if (left) {
                 try ind.appendSlice(&.{
                     in1, in2, in0, in3, in2, in1,
                 });
-                //} else {
-                //    try ind.appendSlice(&.{ in0, in2, in1, in0, in3, in2 });
-                //}
                 left = !left;
             }
             left = !left;

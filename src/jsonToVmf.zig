@@ -135,6 +135,7 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                         //listen_event   "target,input,value,delay,fire_count"
                         const fmt = "\"{s},{s},{s},{d},{d}\"\n";
                         for (cons.list.items) |con| {
+                            // empty kvs cause a segfault in vbsp lol
                             if (con.listen_event.len == 0) continue;
                             try vr.writeKey(con.listen_event);
                             try vr.printValue(fmt, .{

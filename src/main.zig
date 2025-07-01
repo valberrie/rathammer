@@ -74,7 +74,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     gui.style.config.text_h = args.gui_font_size orelse scaled_text_height;
     const gui_dstate = G.DrawState{ .ctx = &draw, .font = os9gui.font, .style = &gui.style, .gui = &gui };
     const inspector_win = InspectorWindow.create(&gui, editor);
-    const pause_win = PauseWindow.create(&gui, editor);
+    const pause_win = try PauseWindow.create(&gui, editor);
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
     try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
 
