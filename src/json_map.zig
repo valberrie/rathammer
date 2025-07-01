@@ -61,7 +61,7 @@ const JsonCamera = struct {
 
     pub fn setCam(self: @This(), cam: *graph.Camera3D) void {
         const info = @typeInfo(@This());
-        inline for (info.Struct.fields) |f| {
+        inline for (info.@"struct".fields) |f| {
             @field(cam, f.name) = @field(self, f.name);
         }
     }
@@ -188,8 +188,8 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
         else => {},
     }
     switch (info) {
-        .Bool, .Float, .Int => return try std.json.innerParseFromValue(T, ctx.alloc, v, .{}),
-        .Struct => |s| {
+        .bool, .float, .int => return try std.json.innerParseFromValue(T, ctx.alloc, v, .{}),
+        .@"struct" => |s| {
             if (std.meta.hasFn(T, "initFromJson")) {
                 return try T.initFromJson(v, ctx);
             }
@@ -214,7 +214,7 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
             }
             return ret;
         },
-        .Optional => |o| {
+        .optional => |o| {
             if (v == .null)
                 return null;
             return try readComponentFromJson(ctx, v, o.child, vpkctx);

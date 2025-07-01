@@ -763,7 +763,7 @@ pub const EditorInfo = struct {
 
         const str = v.string;
         if (std.mem.indexOfScalar(u8, str, '_')) |ind| {
-            var bits = .{ .vis_mask = VisGroups.BitSetT.initEmpty() };
+            var bits = @This(){ .vis_mask = VisGroups.BitSetT.initEmpty() };
             const first = try std.fmt.parseInt(VisGroups.BitSetT.MaskInt, str[0..ind], 16);
             const second = try std.fmt.parseInt(VisGroups.BitSetT.MaskInt, str[ind + 1 ..], 16);
             bits.vis_mask.masks[0] = first;
@@ -1031,7 +1031,7 @@ pub const Connections = struct {
     }
 
     pub fn initFromVmf(alloc: std.mem.Allocator, con: *const vmf.Connections, strstore: anytype) !Self {
-        var ret = .{ .list = std.ArrayList(Connection).init(alloc) };
+        var ret = @This(){ .list = std.ArrayList(Connection).init(alloc) };
         if (!con.is_init)
             return ret;
 

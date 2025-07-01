@@ -2,18 +2,18 @@ const std = @import("std");
 pub fn parseStruct(comptime T: type, endian: std.builtin.Endian, r: anytype) !T {
     const info = @typeInfo(T);
     switch (info) {
-        .Enum => |e| {
+        .@"enum" => |e| {
             const int = try parseStruct(e.tag_type, endian, r);
             return @enumFromInt(int);
         },
-        .Struct => |s| {
+        .@"struct" => |s| {
             var ret: T = undefined;
             inline for (s.fields) |f| {
                 @field(ret, f.name) = try parseStruct(f.type, endian, r);
             }
             return ret;
         },
-        .Float => {
+        .float => {
             switch (T) {
                 f32 => {
                     const int = try r.readInt(u32, endian);
@@ -22,10 +22,10 @@ pub fn parseStruct(comptime T: type, endian: std.builtin.Endian, r: anytype) !T 
                 else => @compileError("bad float"),
             }
         },
-        .Int => {
+        .int => {
             return try r.readInt(T, endian);
         },
-        .Array => |a| {
+        .array => |a| {
             var ret: T = undefined;
             for (0..a.len) |i| {
                 ret[i] = try parseStruct(a.child, endian, r);

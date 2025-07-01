@@ -190,21 +190,6 @@ pub fn doesRayIntersectConvexPolygondo(ray_origin: V3f, ray_dir: V3f, plane_norm
     return if (cd) plane_int else null;
 }
 
-//pub fn pnpoly(verts: )
-
-//int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy)
-//{
-//  int i, j, c = 0;
-//  for (i = 0, j = nvert-1; i < nvert; j = i++) {
-//    if ( ((verty[i]>testy) != (verty[j]>testy)) &&
-//	 (testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
-//       c = !c;
-//  }
-//  return c;
-//}
-
-//pub fn doesRayIntersectTri(ray_o: V3f, ray_d: V3f, tri: [3]V3f)?{ }
-
 // Translated from Wikipedia
 pub fn mollerTrumboreIntersection(
     r_o: V3f,

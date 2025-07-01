@@ -60,14 +60,14 @@ pub const ValueCtx = struct {
 
 pub fn getArrayListChild(comptime T: type) ?type {
     const in = @typeInfo(T);
-    if (in != .Struct)
+    if (in != .@"struct")
         return null;
     if (@hasDecl(T, "Slice")) {
         const info = @typeInfo(T.Slice);
-        if (info == .Pointer and info.Pointer.size == .Slice) {
-            const t = std.ArrayList(info.Pointer.child);
+        if (info == .pointer and info.pointer.size == .slice) {
+            const t = std.ArrayList(info.pointer.child);
             if (T == t)
-                return info.Pointer.child;
+                return info.pointer.child;
         }
     }
     return null;
@@ -101,7 +101,7 @@ threadlocal var from_value_visit_tracker = KVT.initEmpty();
 pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Allocator, strings: ?*StringStorage) !T {
     const info = @typeInfo(T);
     switch (info) {
-        .Struct => |s| {
+        .@"struct" => |s| {
             if (std.meta.hasFn(T, "parseVdf")) {
                 if (track_visited and value.* == .obj)
                     value.obj.debug_visited = true;
@@ -125,11 +125,11 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                 if (f.type == KVMap) {} else {
                     const child_info = @typeInfo(f.type);
                     const is_alist = getArrayListChild(f.type);
-                    const do_many = (is_alist != null) or (child_info == .Pointer and child_info.Pointer.size == .Slice and child_info.Pointer.child != u8);
-                    if (!do_many and f.default_value != null) {
-                        @field(ret, f.name) = @as(*const f.type, @alignCast(@ptrCast(f.default_value.?))).*;
+                    const do_many = (is_alist != null) or (child_info == .pointer and child_info.pointer.size == .slice and child_info.pointer.child != u8);
+                    if (!do_many and f.default_value_ptr != null) {
+                        @field(ret, f.name) = @as(*const f.type, @alignCast(@ptrCast(f.default_value_ptr.?))).*;
                     }
-                    const ar_c = is_alist orelse if (do_many) child_info.Pointer.child else void;
+                    const ar_c = is_alist orelse if (do_many) child_info.pointer.child else void;
                     var vec = std.ArrayList(ar_c).init(alloc);
 
                     for (value.obj.list.items, 0..) |*item, vi| {
@@ -176,21 +176,17 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
 
             return ret;
         },
-        .Int => {
-            return try std.fmt.parseInt(T, value.literal, 0);
-        },
-        .Float => {
-            return try std.fmt.parseFloat(T, value.literal);
-        },
-        .Bool => {
+        .int => return try std.fmt.parseInt(T, value.literal, 0),
+        .float => return try std.fmt.parseFloat(T, value.literal),
+        .bool => {
             if (std.mem.eql(u8, "true", value.literal))
                 return true;
             if (std.mem.eql(u8, "false", value.literal))
                 return false;
             return error.invalidBool;
         },
-        .Pointer => |p| {
-            if (p.size != .Slice or p.child != u8) @compileError("no ptr");
+        .pointer => |p| {
+            if (p.size != .slice or p.child != u8) @compileError("no ptr");
             if (strings) |strs|
                 return try strs.store(value.literal);
             return value.literal;
@@ -381,7 +377,7 @@ pub fn parse(alloc: std.mem.Allocator, slice: []const u8) !struct {
                 token_state = .key;
             },
             .object_end => {
-                root = object_stack.pop();
+                root = object_stack.pop() orelse return error.invalidVdf;
             },
             .ident => switch (token_state) {
                 .key => {

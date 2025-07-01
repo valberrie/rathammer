@@ -555,13 +555,13 @@ pub const Context = struct {
             else => {},
         }
         switch (info) {
-            .Int, .Float, .Bool => try jw.write(comp),
-            .Optional => {
+            .int, .float, .bool => try jw.write(comp),
+            .optional => {
                 if (comp) |p|
                     return try self.writeComponentToJson(jw, p);
                 return try jw.write(null);
             },
-            .Struct => |s| {
+            .@"struct" => |s| {
                 if (std.meta.hasFn(T, "serial")) {
                     return try comp.serial(self, jw);
                 }

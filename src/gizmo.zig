@@ -24,7 +24,7 @@ pub const Gizmo = struct {
 
         pub fn setFromIndex(self: *@This(), index_: usize) void {
             const info = @typeInfo(@This());
-            const count = info.Enum.fields.len;
+            const count = info.@"enum".fields.len;
             if (index_ > count - 1)
                 return; //Silently fail
             self.* = @enumFromInt(index_);

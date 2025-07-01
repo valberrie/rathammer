@@ -133,7 +133,7 @@ pub fn WriteVdf(out_stream_T: type) type {
 
         pub fn writeInnerStruct(self: *Self, value: anytype) !void {
             const info = @typeInfo(@TypeOf(value));
-            inline for (info.Struct.fields) |field| {
+            inline for (info.@"struct".fields) |field| {
                 try self.writeKv(field.name, @field(value, field.name));
             }
         }
@@ -141,15 +141,15 @@ pub fn WriteVdf(out_stream_T: type) type {
         pub fn writeAnyValue(self: *Self, value: anytype) !void {
             const info = @typeInfo(@TypeOf(value));
             switch (info) {
-                .Int, .ComptimeInt => try self.printValue("\"{d}\"\n", .{value}),
-                .Pointer => |p| {
+                .int, .comptime_int => try self.printValue("\"{d}\"\n", .{value}),
+                .pointer => |p| {
                     if (p.child == u8) {
                         try self.printValue("\"{s}\"\n", .{value});
                         return;
                     }
                     @compileError("not supported on pointers " ++ @typeName(@TypeOf(value)) ++ " " ++ @typeName(p.child));
                 },
-                .Struct => {
+                .@"struct" => {
                     try self.beginObject();
                     try self.writeInnerStruct(value);
                     try self.endObject();
