@@ -628,6 +628,14 @@ pub const Solid = struct {
         }
     }
 
+    pub fn getSidePtr(self: *Self, side_id: ?u32) ?*Side {
+        if (side_id) |si| {
+            if (si >= self.sides.items.len) return null;
+            return &self.sides.items[si];
+        }
+        return null;
+    }
+
     /// only_verts contains a list of vertex indices to apply offset to.
     /// If it is null, all vertices are offset
     pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, only_verts: ?[]const u32) !void {

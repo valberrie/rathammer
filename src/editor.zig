@@ -420,6 +420,7 @@ pub const Context = struct {
         try self.tools.register("fast_face", tool_def.FastFaceManip);
         try self.tools.register("texture", tool_def.TextureTool);
         try self.tools.register("vertex", tool_def.VertexTranslate);
+        try self.tools.register("clip", tool_def.Clipping);
     }
 
     pub fn deinit(self: *Self) void {

@@ -109,4 +109,22 @@ pub const Ctx = struct {
         std.sort.insertion(RcastItem, self.pot.items, {}, RcastItem.lessThan);
         return self.pot.items;
     }
+
+    pub fn reset(self: *Self) void {
+        self.pot_fine.clearRetainingCapacity();
+    }
+
+    pub fn addPotentialSolid(self: *Self, ecs_p: *edit.EcsT, ray_o: Vec3, ray_d: Vec3, csgctx: *csg.Context, pot_id: edit.EcsT.Id) !void {
+        if (try ecs_p.getOptPtr(pot_id, .solid)) |solid| {
+            for (try doesRayIntersectSolid(ray_o, ray_d, solid, csgctx)) |in| {
+                const len = in.point.distance(ray_o);
+                try self.pot_fine.append(.{ .id = pot_id, .dist = len, .point = in.point, .side_id = @intCast(in.side_index) });
+            }
+        }
+    }
+
+    pub fn sortFine(self: *Self) []const RcastItem {
+        std.sort.insertion(RcastItem, self.pot_fine.items, {}, RcastItem.lessThan);
+        return self.pot_fine.items;
+    }
 };

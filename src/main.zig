@@ -75,7 +75,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     draw.preflush_cb = &flush_cb;
     font_ptr = os9gui.ofont;
 
-    var gui = try G.Gui.init(alloc, &win, try std.fs.cwd().openDir("ratgraph", .{}), os9gui.font);
+    var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try std.fs.cwd().openDir("ratgraph", .{}), os9gui.font);
     defer gui.deinit();
     gui.style.config.default_item_h = args.gui_item_height orelse scaled_item_height;
     gui.style.config.text_h = args.gui_font_size orelse scaled_text_height;
@@ -248,7 +248,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const tab = tabs[editor.draw_state.tab_index];
         const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
         {
-            const state_btns = [_]graph.SDL.keycodes.Scancode{ ._1, ._2, ._3, ._4, ._5, ._6, ._7 };
+            const state_btns = [_]graph.SDL.keycodes.Scancode{ ._1, ._2, ._3, ._4, ._5, ._6, ._7, ._8 };
             const num_field = editor.tools.vtables.items.len;
             //const num_field = @typeInfo(@TypeOf(editor.edit_state.state)).Enum.fields.len;
             for (state_btns, 0..) |sbtn, i| {

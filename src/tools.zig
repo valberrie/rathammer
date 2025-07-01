@@ -1455,8 +1455,135 @@ pub const TranslateFace = struct {
     }
 };
 
-const Clipping = struct {
+pub const Clipping = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
+    //How will this work.
+    //Clipping works by defining a plane
+    //if the first two points lie on the same face we can infer the desired plane's normal, this is a good default
+    //
+    //I think hammer only allows planes with a normal perpendicular to cardinal axis
+    //In hammer the clip line can start or end outside the solid
+    //Select a plane in world, put lines on that
+
     vt: i3DTool,
-    pub fn create(_: std.mem.Allocator) *i3DTool {}
+    plane_norm: Vec3 = Vec3.zero(),
+    plane_p0: Vec3 = Vec3.zero(),
+    selected_side: ?raycast.RcastItem = null,
+
+    points: [2]Vec3,
+    state: enum {
+        init,
+        point0,
+        point1,
+        done,
+    } = .init,
+
+    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+        var clip = try alloc.create(@This());
+        clip.* = .{
+            .vt = .{
+                .deinit_fn = &deinit,
+                .tool_icon_fn = &drawIcon,
+                .runTool_fn = &runTool,
+            },
+            .points = undefined,
+        };
+        return &clip.vt;
+    }
+
+    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+
+    fn reset(self: *@This()) void {
+        self.state = .init;
+        self.selected_side = null;
+    }
+
+    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const rec = editor.asset.getRectFromName("vertex.png") orelse graph.Rec(0, 0, 0, 0);
+        draw.rectTex(r, rec, editor.asset_atlas);
+    }
+
+    pub fn runTool(vt: *i3DTool, td: ToolData, ed: *Editor) ToolError!void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.runToolErr(td, ed) catch return error.nonfatal;
+    }
+
+    //TODO put gizmos on the points
+    pub fn runToolErr(self: *@This(), td: ToolData, ed: *Editor) !void {
+        if (td.is_first_frame)
+            self.reset();
+        const draw_nd = &ed.draw_state.ctx;
+        const rc = ed.camRay(td.screen_area, td.view_3d.*);
+        const lm = ed.edit_state.lmouse;
+        switch (self.state) {
+            .init => {
+                if (lm != .rising) return;
+                const sel = ed.selection.getSlice();
+                ed.rayctx.reset();
+
+                for (sel) |s_id| {
+                    try ed.rayctx.addPotentialSolid(&ed.ecs, rc[0], rc[1], &ed.csgctx, s_id);
+                }
+                const pot = ed.rayctx.sortFine();
+                if (pot.len > 0) {
+                    const inter = pot[0];
+                    const solid = try ed.ecs.getPtr(inter.id, .solid);
+                    const side_id = inter.side_id orelse return;
+                    if (side_id >= solid.sides.items.len) return;
+                    self.plane_p0 = inter.point;
+                    self.plane_norm = solid.sides.items[side_id].normal(solid);
+                    self.selected_side = inter;
+                    self.state = .point0;
+                }
+            },
+            .point0, .point1 => {
+                const sel_side = self.selected_side orelse {
+                    self.reset();
+                    return;
+                };
+                const solid = try ed.ecs.getPtr(sel_side.id, .solid);
+                const side_o = solid.getSidePtr(sel_side.side_id) orelse return;
+                draw_nd.convexPolyIndexed(side_o.index.items, solid.verts.items, 0xffff_88, .{});
+                if (self.state == .point1)
+                    draw_nd.point3D(self.points[0], 0xff_0000_ff);
+                if (lm != .rising) return;
+                if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter| {
+                    self.points[if (self.state == .point0) 0 else 1] = inter;
+                    self.state = switch (self.state) {
+                        else => {
+                            self.reset();
+                            return;
+                        },
+                        .point0 => .point1,
+                        .point1 => .done,
+                    };
+                }
+            },
+            .done => {
+                const p0 = self.points[0];
+                const p1 = self.points[1];
+                const diff = p0.sub(p1);
+                const dist = diff.length();
+                const dir = diff.norm();
+                draw_nd.line3D(p0.add(dir.scale(-dist)), p0.add(dir.scale(dist)), 0xffff_ffff);
+                for (self.points) |p|
+                    draw_nd.point3D(p, 0xff0000_ff);
+
+                //const v1 = p0.add(self.plane_norm);
+                //const plane_n = util3d.trianglePlane(.{p0, v1, p1});
+                {
+                    const r0 = p0.add(self.plane_norm.scale(100));
+                    const r1 = p0.add(self.plane_norm.scale(-100));
+                    const r2 = p1.add(self.plane_norm.scale(-100));
+                    const r3 = p1.add(self.plane_norm.scale(100));
+                    draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
+                }
+            },
+        }
+    }
 };
