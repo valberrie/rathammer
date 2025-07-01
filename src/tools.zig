@@ -1469,6 +1469,7 @@ pub const Clipping = struct {
     plane_norm: Vec3 = Vec3.zero(),
     plane_p0: Vec3 = Vec3.zero(),
     selected_side: ?raycast.RcastItem = null,
+    ray_vertex_distance_max: f32 = 5,
 
     points: [2]Vec3,
     state: enum {
@@ -1477,6 +1478,8 @@ pub const Clipping = struct {
         point1,
         done,
     } = .init,
+
+    grabbed: ?struct { ptr: *Vec3, init: Vec3 } = null,
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var clip = try alloc.create(@This());
@@ -1499,6 +1502,7 @@ pub const Clipping = struct {
     fn reset(self: *@This()) void {
         self.state = .init;
         self.selected_side = null;
+        self.grabbed = null;
     }
 
     pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
@@ -1513,11 +1517,33 @@ pub const Clipping = struct {
         self.runToolErr(td, ed) catch return error.nonfatal;
     }
 
+    fn commitGrab(self: *@This()) void {
+        if (self.grabbed) |*g| {
+            g.init = g.ptr.*;
+        }
+    }
+
+    fn cancelGrab(self: *@This()) void {
+        if (self.grabbed) |g| {
+            g.ptr.* = g.init;
+        }
+        self.grabbed = null;
+    }
+
     //TODO put gizmos on the points
     pub fn runToolErr(self: *@This(), td: ToolData, ed: *Editor) !void {
         if (td.is_first_frame)
             self.reset();
+
         const draw_nd = &ed.draw_state.ctx;
+        const selected = ed.selection.getSlice();
+
+        for (selected) |id| {
+            if (try ed.ecs.getOptPtr(id, .solid)) |solid| {
+                solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+            }
+        }
+
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
         const lm = ed.edit_state.lmouse;
         switch (self.state) {
@@ -1565,23 +1591,50 @@ pub const Clipping = struct {
                 }
             },
             .done => {
+                grab_blk: {
+                    const grab = &(self.grabbed orelse break :grab_blk);
+                    if (lm != .high) {
+                        self.cancelGrab();
+                        break :grab_blk;
+                    }
+                    if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter|
+                        grab.ptr.* = snapV3(inter, ed.edit_state.grid_snap);
+                    const rm = ed.edit_state.rmouse;
+                    if (rm == .rising)
+                        self.commitGrab();
+                }
+
                 const p0 = self.points[0];
                 const p1 = self.points[1];
                 const diff = p0.sub(p1);
                 const dist = diff.length();
                 const dir = diff.norm();
                 draw_nd.line3D(p0.add(dir.scale(-dist)), p0.add(dir.scale(dist)), 0xffff_ffff);
-                for (self.points) |p|
-                    draw_nd.point3D(p, 0xff0000_ff);
+                for (self.points, 0..) |p, i| {
+                    const proj = util3d.projectPointOntoRay(rc[0], rc[1], p);
+                    const distance = proj.distance(p);
+                    if (self.grabbed == null and distance < self.ray_vertex_distance_max) {
+                        draw_nd.point3D(p, 0xff_ff);
+                        if (lm == .rising) {
+                            self.grabbed = .{ .ptr = &self.points[i], .init = p };
+                        }
+                    } else {
+                        draw_nd.point3D(p, 0xff0000_ff);
+                    }
+                }
 
                 //const v1 = p0.add(self.plane_norm);
                 //const plane_n = util3d.trianglePlane(.{p0, v1, p1});
-                {
+                { //Draw the cut plane
                     const r0 = p0.add(self.plane_norm.scale(100));
                     const r1 = p0.add(self.plane_norm.scale(-100));
                     const r2 = p1.add(self.plane_norm.scale(-100));
                     const r3 = p1.add(self.plane_norm.scale(100));
-                    draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
+                    td.draw.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
+                    draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
+                }
+                if (td.win.keyRising(.RETURN)) {
+                    std.debug.print("COMMIT\n", .{});
                 }
             },
         }
