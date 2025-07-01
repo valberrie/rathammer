@@ -445,6 +445,20 @@ pub const Solid = struct {
         };
     }
 
+    //TODO make this good
+    pub fn isValid(self: *const Self) bool {
+        // a prism is the simplest valid solid
+        if (self.verts.items.len < 4) return false;
+        var last = self.verts.items[0];
+        var all_same = true;
+        for (self.verts.items[1..]) |vert| {
+            if (!vert.eql(last))
+                all_same = false;
+            last = vert;
+        }
+        return !all_same;
+    }
+
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
         var ret = init(alloc);
         //const Va = std.ArrayList(Vec3);

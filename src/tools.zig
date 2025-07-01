@@ -348,7 +348,7 @@ pub const VertexTranslate = struct {
                 }
             }
             if (real_commit) {
-                const ustack = try ed.undoctx.pushNew();
+                const ustack = try ed.undoctx.pushNewFmt("vertex translate ", .{});
                 for (selected_slice) |id| {
                     const manip_verts = self.selected.getPtr(id) orelse continue;
                     if (manip_verts.items(.index).len == 0) continue;
@@ -593,7 +593,7 @@ pub const CubeDraw = struct {
                         const solid_ptr = try self.ecs.getPtr(new, .solid);
                         try solid_ptr.translate(new, Vec3.zero(), self);
                         {
-                            const ustack = try self.undoctx.pushNew();
+                            const ustack = try self.undoctx.pushNewFmt("draw cube", .{});
                             try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
                             undo.applyRedo(ustack.items, self);
                         }
@@ -774,7 +774,7 @@ pub const FastFaceManip = struct {
 
                                 const commit_btn = if (self.right) lm else rm;
                                 if (commit_btn == .rising) {
-                                    const ustack = editor.undoctx.pushNew() catch return;
+                                    const ustack = editor.undoctx.pushNewFmt("translate {d} faces", .{self.selected.items.len}) catch return;
                                     for (self.selected.items) |sel| {
                                         const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
                                         if (sel.face_id >= solid_o.sides.items.len) continue;
@@ -960,7 +960,6 @@ pub const Translate = struct {
             };
             const commit = self.edit_state.rmouse == .rising;
             const real_commit = giz_active == .high and commit;
-            const ustack = if (real_commit) try self.undoctx.pushNew() else null;
             const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
             const selected = self.selection.getSlice();
             for (selected) |id| {
@@ -1034,12 +1033,13 @@ pub const Translate = struct {
                 //Map old groups to duped groups
                 var group_mapper = std.AutoHashMap(ecs.Groups.GroupId, ecs.Groups.GroupId).init(self.frame_arena.allocator());
 
+                const ustack = try self.undoctx.pushNewFmt("{s} of {d} entities", .{ if (dupe) "Dupe" else "Translation", selected.len });
                 for (selected) |id| {
                     if (dupe) {
                         const duped = try self.ecs.dupeEntity(id);
 
-                        try ustack.?.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
-                        try ustack.?.append(try undo.UndoTranslate.create(
+                        try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
+                        try ustack.append(try undo.UndoTranslate.create(
                             self.undoctx.alloc,
                             dist,
                             angle_delta,
@@ -1056,7 +1056,7 @@ pub const Translate = struct {
                             }
                         }
                     } else {
-                        try ustack.?.append(try undo.UndoTranslate.create(
+                        try ustack.append(try undo.UndoTranslate.create(
                             self.undoctx.alloc,
                             dist,
                             angle_delta,
@@ -1070,7 +1070,7 @@ pub const Translate = struct {
                         if (self.groups.getOwner(item.key_ptr.*)) |owner| {
                             const duped = try self.ecs.dupeEntity(owner);
 
-                            try ustack.?.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
+                            try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
                             try self.groups.setOwner(item.value_ptr.*, duped);
                             //TODO set the group owner with undo stack
                         }
@@ -1078,15 +1078,14 @@ pub const Translate = struct {
                     for (new_ent_list.items) |new_ent| {
                         const old_group = try self.ecs.get(new_ent, .group);
                         const new_group = group_mapper.get(old_group.id) orelse continue;
-                        try ustack.?.append(
+                        try ustack.append(
                             try undo.UndoChangeGroup.create(self.undoctx.alloc, old_group.id, new_group, new_ent),
                         );
                     }
                     //now iterate the new_ent_list and update the group mapping
                 }
+                undo.applyRedo(ustack.items, self);
             }
-            if (ustack != null)
-                undo.applyRedo(ustack.?.items, self);
         }
     }
 
@@ -1206,7 +1205,7 @@ pub const TextureTool = struct {
                         const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id };
                         const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id };
 
-                        const ustack = try editor.undoctx.pushNew();
+                        const ustack = try editor.undoctx.pushNewFmt("texture manip", .{});
                         try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
                         undo.applyRedo(ustack.items, editor);
                     },
@@ -1327,7 +1326,7 @@ pub const PlaceModel = struct {
 
                 try self.ecs.attach(new, .key_values, kvs);
 
-                const ustack = try self.undoctx.pushNew();
+                const ustack = try self.undoctx.pushNewFmt("create entity", .{});
                 try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
                 undo.applyRedo(ustack.items, self);
             }
@@ -1419,7 +1418,7 @@ pub const TranslateFace = struct {
                         try solid.drawImmediate(td.draw, self, dist, side.index.items);
                         if (self.edit_state.rmouse == .rising) {
                             //try solid.translateSide(id, dist, self, s_i);
-                            const ustack = try self.undoctx.pushNew();
+                            const ustack = try self.undoctx.pushNewFmt("translated face", .{});
                             try ustack.append(try undo.UndoSolidFaceTranslate.create(
                                 self.undoctx.alloc,
                                 id,

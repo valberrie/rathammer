@@ -115,14 +115,21 @@ pub fn loadJson(
             inline for (ecs.EcsT.Fields, 0..) |field, f_i| {
                 if (std.mem.eql(u8, field.name, data.key_ptr.*)) {
                     const comp = try readComponentFromJson(ctx, data.value_ptr.*, field.ftype, vpkctx);
-                    try ecs_p.attachComponentAndCreate(@intCast(id), @enumFromInt(f_i), comp);
+                    var should_attach = true;
 
                     switch (field.ftype) {
                         ecs.Entity => {
                             origin = comp.origin;
                         },
+                        ecs.Solid => {
+                            should_attach = comp.isValid();
+                            if (!should_attach)
+                                std.debug.print("omitting invalid solid id: {d}\n", .{id});
+                        },
                         else => {},
                     }
+                    if (should_attach)
+                        try ecs_p.attachComponentAndCreate(@intCast(id), @enumFromInt(f_i), comp);
 
                     continue :outer;
                 }
@@ -171,9 +178,12 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
             };
         },
         vpk.VpkResId => {
-            if (v != .string) return error.value;
+            if (v != .string) {
+                log.warn("invalid vpk id: {}", .{v});
+                return 0;
+            }
             const id = try vpkctx.getResourceIdString(v.string);
-            return id orelse return error.broken;
+            return id orelse return error.unknownId;
         },
         else => {},
     }

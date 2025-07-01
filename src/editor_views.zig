@@ -245,7 +245,7 @@ pub fn draw3Dview(
             try self.notify("{d} owned groups selected, merging!", .{owner_count}, 0xfca7_3fff);
 
         if (selection.len > 0) {
-            const ustack = try self.undoctx.pushNew();
+            const ustack = try self.undoctx.pushNewFmt("Grouping of {d} objects", .{selection.len});
             const group = if (last_owner) |lo| self.groups.getGroup(lo) else null;
             var owner: ?ecs.EcsT.Id = null;
             if (last_owner == null) {
@@ -272,7 +272,7 @@ pub fn draw3Dview(
     if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
         const selection = self.selection.getSlice();
         if (selection.len > 0) {
-            const ustack = try self.undoctx.pushNew();
+            const ustack = try self.undoctx.pushNewFmt("deletion of {d} entities", .{selection.len});
             for (selection) |id| {
                 try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, id, .destroy));
             }

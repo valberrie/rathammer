@@ -35,9 +35,22 @@ pub const iUndo = struct {
     }
 };
 
+pub const UndoGroup = struct {
+    description: []const u8,
+    items: std.ArrayList(*iUndo),
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.description);
+        for (self.items.items) |vt|
+            vt.deinit(alloc);
+        self.items.deinit();
+    }
+};
+
 pub const UndoContext = struct {
     const Self = @This();
-    stack: std.ArrayList(std.ArrayList(*iUndo)),
+
+    stack: std.ArrayList(UndoGroup),
     stack_pointer: usize,
 
     alloc: std.mem.Allocator,
@@ -45,7 +58,7 @@ pub const UndoContext = struct {
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
             .stack_pointer = 0,
-            .stack = std.ArrayList(std.ArrayList(*iUndo)).init(alloc),
+            .stack = std.ArrayList(UndoGroup).init(alloc),
             .alloc = alloc,
         };
     }
@@ -54,44 +67,56 @@ pub const UndoContext = struct {
     /// Each call to UndoContext.undo/redo will apply all the items in the arraylist at index stack_pointer.
     /// That is, the last item appended is the first item undone and the last redone.
     pub fn pushNew(self: *Self) !*std.ArrayList(*iUndo) {
+        return try self.pushNewFmt("GenericUndo", .{});
+    }
+
+    pub fn pushNewFmt(self: *Self, comptime fmt: []const u8, args: anytype) !*std.ArrayList(*iUndo) {
+        var desc = std.ArrayList(u8).init(self.alloc);
+        try desc.writer().print(fmt, args);
         if (self.stack_pointer > self.stack.items.len)
             self.stack_pointer = self.stack.items.len; // Sanity
 
-        for (self.stack.items[self.stack_pointer..]) |item| {
-            for (item.items) |it|
-                it.deinit(self.alloc);
-            item.deinit();
+        for (self.stack.items[self.stack_pointer..]) |*item| {
+            item.deinit(self.alloc);
+            //for (item.items) |it|
+            //    it.deinit(self.alloc);
+            //item.deinit();
         }
         try self.stack.resize(self.stack_pointer); //Discard any
         self.stack_pointer += 1;
         const vec = std.ArrayList(*iUndo).init(self.alloc);
-        try self.stack.append(vec);
-        return &self.stack.items[self.stack.items.len - 1];
+        const new_group = UndoGroup{
+            .items = vec,
+            .description = try desc.toOwnedSlice(),
+        };
+        try self.stack.append(new_group);
+        return &self.stack.items[self.stack.items.len - 1].items;
     }
 
     pub fn undo(self: *Self, editor: *Editor) void {
         if (self.stack_pointer > self.stack.items.len or self.stack_pointer == 0) //What
             return;
         self.stack_pointer -= 1;
-        const ar = self.stack.items[self.stack_pointer].items;
-        var i = ar.len;
+        const ar = self.stack.items[self.stack_pointer];
+        var i = ar.items.items.len;
         while (i > 0) : (i -= 1) {
-            ar[i - 1].undo(editor);
+            ar.items.items[i - 1].undo(editor);
         }
+        editor.notify("undo: {s}", .{ar.description}, 0xFF8C00ff) catch return;
     }
 
     pub fn redo(self: *Self, editor: *Editor) void {
         if (self.stack_pointer >= self.stack.items.len) return; //What to do?
         defer self.stack_pointer += 1;
 
-        applyRedo(self.stack.items[self.stack_pointer].items, editor);
+        const th = self.stack.items[self.stack_pointer];
+        applyRedo(th.items.items, editor);
+        editor.notify("redo: {s}", .{th.description}, 0x8FBC_8F_ff) catch return;
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.stack.items) |item| {
-            for (item.items) |it|
-                it.deinit(self.alloc);
-            item.deinit();
+        for (self.stack.items) |*item| {
+            item.deinit(self.alloc);
         }
         self.stack.deinit();
     }

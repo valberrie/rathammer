@@ -547,6 +547,7 @@ pub const Context = struct {
                 if (self.vpkctx.namesFromId(comp)) |name| {
                     return try jw.print("\"{s}/{s}.{s}\"", .{ name.path, name.name, name.ext });
                 }
+                std.debug.print("THIS IS BAD, trying to serialize an id that has not been loaded yet\n", .{});
                 return try jw.write(null);
             },
             Vec3 => return jw.print("\"{e} {e} {e}\"", .{ comp.x(), comp.y(), comp.z() }),
