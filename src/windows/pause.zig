@@ -36,6 +36,8 @@ pub const PauseWindow = struct {
     texts: std.ArrayList(HelpText),
     selected_text_i: usize = 0,
 
+    tab_index: usize = 0,
+
     pub fn create(gui: *Gui, editor: *Context) !*PauseWindow {
         const self = gui.create(@This());
         self.* = .{
@@ -116,54 +118,74 @@ pub const PauseWindow = struct {
         //self.layout.reset(gui, vt);
         //start a vlayout
         //var ly = Vert{ .area = vt.area };
-        const max_w = gui.style.config.default_item_h * 30;
+        //const max_w = gui.style.config.default_item_h * 30;
+        //const w = @min(max_w, inset.w);
         const inset = GuiHelp.insetAreaForWindowFrame(gui, vt.area.area);
-        const w = @min(max_w, inset.w);
-        var ly = guis.VerticalLayout{
-            .padding = .{},
-            .item_height = gui.style.config.default_item_h,
-            .bounds = Rec(inset.x, inset.y, w, inset.h),
-        };
-        ly.padding.left = 10;
-        ly.padding.right = 10;
-        ly.padding.top = 10;
-        const a = &self.area;
+        _ = self.area.addEmpty(gui, vt, graph.Rec(0, 0, 0, 0));
 
-        const ds = &self.editor.draw_state;
-        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
-        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
-        a.addChildOpt(gui, vt, Wg.Button.build(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
-        a.addChildOpt(gui, vt, Wg.Combo.build(gui, ly.getArea(), &ds.cam3d.fwd_back_kind));
-        a.addChildOpt(gui, vt, Wg.Combo.build(gui, ly.getArea(), &self.editor.edit_state.default_group_entity));
-        a.addChildOpt(gui, vt, Wg.Slider.build(gui, ly.getArea(), &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
+        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{ "main", "keybinds", "crap" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
+    }
 
-        a.addChildOpt(gui, vt, Wg.TextboxNumber.build(gui, ly.getArea(), &self.ent_select, vt, .{
-            .commit_vt = &self.area,
-            .commit_cb = &commitCb,
-        }));
+    fn buildTabs(win_vt: *iArea, vt: *iArea, tab: []const u8, gui: *Gui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", win_vt));
+        const eql = std.mem.eql;
+        if (eql(u8, tab, "main")) {
+            const max_w = gui.style.config.default_item_h * 30;
+            const w = @min(max_w, vt.area.w);
+            const side_l = (vt.area.w - w) / 2;
+            var ly = guis.VerticalLayout{
+                .padding = .{},
+                .item_height = gui.style.config.default_item_h,
+                .bounds = vt.area.replace(side_l, null, w, null),
+            };
+            ly.padding.left = 10;
+            ly.padding.right = 10;
+            ly.padding.top = 10;
 
-        //ly.pushHeight(Wg.TextView.heightForN(gui, 4));
-        ly.pushRemaining();
-        const help_area = ly.getArea() orelse return;
-        const sp = help_area.split(.vertical, gui.style.config.text_h * 9);
+            const ds = &self.editor.draw_state;
+            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
+            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
 
-        if (self.selected_text_i < self.texts.items.len) {
-            a.addChildOpt(gui, vt, Wg.TextView.build(gui, sp[1], &.{self.texts.items[self.selected_text_i].text.items}, vt, .{
-                .mode = .split_on_space,
+            {
+                var hy = guis.HorizLayout{
+                    .bounds = ly.getArea() orelse return,
+                    .count = 4,
+                };
+                vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
+                vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
+                vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
+                vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
+            }
+
+            vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &ds.cam3d.fwd_back_kind));
+            vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.editor.edit_state.default_group_entity));
+            vt.addChildOpt(gui, win, Wg.Slider.build(gui, ly.getArea(), &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
+
+            vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ly.getArea(), &self.ent_select, win, .{
+                .commit_vt = &self.area,
+                .commit_cb = &commitCb,
+            }));
+
+            //ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+            ly.pushRemaining();
+            const help_area = ly.getArea() orelse return;
+            const sp = help_area.split(.vertical, gui.style.config.text_h * 9);
+
+            if (self.selected_text_i < self.texts.items.len) {
+                vt.addChildOpt(gui, win, Wg.TextView.build(gui, sp[1], &.{self.texts.items[self.selected_text_i].text.items}, win, .{
+                    .mode = .split_on_space,
+                }));
+            }
+
+            vt.addChildOpt(gui, win, Wg.VScroll.build(gui, sp[0], .{
+                .build_cb = &buildHelpScroll,
+                .build_vt = &self.area,
+                .win = win,
+                .count = self.texts.items.len,
+                .item_h = ly.item_height,
             }));
         }
-
-        a.addChildOpt(gui, vt, Wg.VScroll.build(gui, sp[0], .{
-            .build_cb = &buildHelpScroll,
-            .build_vt = &self.area,
-            .win = vt,
-            .count = self.texts.items.len,
-            .item_h = ly.item_height,
-        }));
     }
 
     pub fn btn_help_cb(vt: *iArea, id: usize, _: *Gui, _: *iWindow) void {

@@ -179,7 +179,7 @@ pub const Context = struct {
 
     tools: tool_def.ToolRegistry,
     panes: eviews.PaneReg,
-    paused: bool = false,
+    paused: bool = true,
 
     draw_state: struct {
         tab_index: usize = 0,
@@ -1215,20 +1215,16 @@ pub const LoadCtx = struct {
         const sr = graph.Rec(cx - w / 2, cy - h / 2, w, h);
         const tbox = graph.Rec(sr.x + 10, sr.y + 156, 420, 22);
         const pbar = graph.Rec(sr.x + 8, sr.y + 172, 430, 6);
-        _ = self.os9gui.beginTlWindow(sr) catch return;
-        defer self.os9gui.endTlWindow();
-        self.os9gui.gui.drawRectTextured(sr, 0xffffffff, self.splash.rect(), self.splash);
-        self.os9gui.gui.drawTextFmt(
+        self.draw.rectTex(sr, self.splash.rect(), self.splash);
+        self.draw.textClipped(
+            tbox,
             "{s}",
             .{message},
-            tbox,
-            20,
-            0xff,
-            .{},
-            self.os9gui.font,
+            .{ .px_size = 15, .color = 0xff, .font = &self.font.font },
+            .left,
         );
         const p = @min(1, perc);
-        self.os9gui.gui.drawRectFilled(pbar.split(.vertical, pbar.w * p)[0], 0xf7a41dff);
+        self.draw.rect(pbar.split(.vertical, pbar.w * p)[0], 0xf7a41dff);
     }
 
     pub fn loadedSplash(self: *@This(), end: bool) !void {
@@ -1242,7 +1238,8 @@ pub const LoadCtx = struct {
                 @tagName(builtin.target.os.tag),
                 @tagName(builtin.target.cpu.arch),
             });
-            graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
+            graph.c.glEnable(graph.c.GL_BLEND);
+            //graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
             self.draw.rect(graph.Rec(0, 0, self.draw.screen_dimensions.x, self.draw.screen_dimensions.y), 0x88);
             self.drawSplash(1.0, fbs.getWritten());
             if (end)

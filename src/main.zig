@@ -193,8 +193,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     main_loop: while (!win.should_exit) {
         if (win.isBindState(config.keys.quit.b, .rising) or pause_win.should_exit)
             break :main_loop;
-        if (win.isBindState(config.keys.pause.b, .rising))
+        if (win.isBindState(config.keys.pause.b, .rising)) {
             editor.paused = !editor.paused;
+            if (editor.paused)
+                pause_win.vt.needs_rebuild = true;
+        }
 
         if (editor.paused) {
             win.pumpEvents(.wait);
@@ -210,10 +213,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 try gui.draw(gui_dstate, false, wins);
                 gui.drawFbos(&draw, wins);
             }
+            try draw.flush(null, null);
+            try loadctx.loadedSplash(win.keys.len > 0);
 
             try draw.end(editor.draw_state.cam3d);
             win.swap();
-            continue;
+            continue :main_loop;
         }
         try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
 
@@ -309,7 +314,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         }
         editor.draw_state.grab.endFrame();
 
-        try loadctx.loadedSplash(win.keys.len > 0);
         {
             //var time = try std.time.Timer.start();
             try os9gui.drawGui(&draw);
