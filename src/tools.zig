@@ -1564,7 +1564,8 @@ pub const Clipping = struct {
                     self.plane_p0 = inter.point;
                     self.plane_norm = solid.sides.items[side_id].normal(solid);
                     self.selected_side = inter;
-                    self.state = .point0;
+                    self.state = .point1;
+                    self.points[0] = inter.point;
                 }
             },
             .point0, .point1 => {
@@ -1623,8 +1624,8 @@ pub const Clipping = struct {
                     }
                 }
 
-                //const v1 = p0.add(self.plane_norm);
-                //const plane_n = util3d.trianglePlane(.{p0, v1, p1});
+                const v1 = p0.add(self.plane_norm);
+                const plane_n = util3d.trianglePlane(.{ p0, v1, p1 }).norm();
                 { //Draw the cut plane
                     const r0 = p0.add(self.plane_norm.scale(100));
                     const r1 = p0.add(self.plane_norm.scale(-100));
@@ -1634,7 +1635,17 @@ pub const Clipping = struct {
                     draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
                 }
                 if (td.win.keyRising(.RETURN)) {
-                    std.debug.print("COMMIT\n", .{});
+                    const sel_side = self.selected_side orelse return;
+                    const solid = try ed.ecs.getPtr(sel_side.id, .solid);
+                    var ret = try ed.clipctx.clipSolid(solid, self.plane_p0, plane_n);
+
+                    for (&ret) |*r| {
+                        const new = try ed.ecs.createEntity();
+                        try ed.ecs.attach(new, .solid, r.*);
+                        try ed.ecs.attach(new, .bounding_box, .{});
+                        const solid_ptr = try ed.ecs.getPtr(new, .solid);
+                        try solid_ptr.translate(new, Vec3.zero(), ed);
+                    }
                 }
             },
         }

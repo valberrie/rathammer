@@ -66,7 +66,7 @@ test "classify" {
 fn doesSegmentIntersectPlane(p0: Vec3, pn: Vec3, start: Vec3, end: Vec3) Vec3 {
     const dir = end.sub(start);
     const w = pn.dot(p0);
-    const d = w - start.dot(pn) / dir.dot(pn);
+    const d = (w - start.dot(pn)) / dir.dot(pn);
     return start.add(dir.scale(d));
 }
 
@@ -110,6 +110,11 @@ const Mapper = struct {
         };
     }
 
+    pub fn reset(self: *@This()) void {
+        self.map.clearRetainingCapacity();
+        self.index = 0;
+    }
+
     pub fn buildSolid(self: *@This(), solid: *Solid, verts: []const Vec3) !void {
         try solid.verts.resize(self.map.count());
         var it = self.map.iterator();
@@ -150,7 +155,7 @@ pub const ClipCtx = struct {
     pub fn reset(self: *Self) void {
         self.verts.clearRetainingCapacity();
         for (&self.mappers) |*m|
-            m.map.clearRetainingCapacity();
+            m.reset();
         self.vert_map.clearRetainingCapacity();
         self.ret_verts.clearRetainingCapacity();
         self.split_side.index.clearRetainingCapacity();
@@ -280,11 +285,11 @@ test "clip solid" {
     defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
 
-    var sol = try Solid.initFromCube(alloc, Vec3.new(-1, -1, -1), Vec3.new(1, 1, 1), 0);
+    var sol = try Solid.initFromCube(alloc, Vec3.new(-10, -10, -10), Vec3.new(10, 10, 10), 0);
     defer sol.deinit();
     var ctx = ClipCtx.init(alloc);
     defer ctx.deinit();
-    const p0 = Vec3.new(0, 0, 0);
+    const p0 = Vec3.new(-4, -4, -4);
     const pn = Vec3.new(1, 1, 1).norm();
     var ret = try ctx.clipSolid(&sol, p0, pn);
 
