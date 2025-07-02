@@ -30,11 +30,26 @@ sudo pacman -S zig libepoxy freetype2 sdl3
 sudo pacman -S wine
 ```
 
+## Info for linux
 When installing source engine games on Linux, the version using proton must be used in order to get the 
 development tools such as vvis, vbsp etc. The fgd files are also only available in the windows builds.
+For half-life 2 do the following:
+* Own half-life 2 and the episodes
+* Enable 'tools' checkbox in your steam library, this will show both the sourcesdk and Half-life 2 episodes
+* Install Half-life 2 as a native Linux game
+* Install Half-life 2:Episode 2 with proton. Right click -> properties -> compatibility -> check and select latest stable proton (9.0-4 as of writing)
+* Instal source sdk using proton as well.
+If you cd into your steamapps/common/Half-Life 2/ directory, you should see both a hl2_linux and hl2.exe binary
 
-For Half-Life 2 specifically, because more than one game exist, installing base Half-Life 2 with proton and Episode 2 native
-will allow you to play the game natively and compile maps with wine.
+
+If running on linux a few helpful tips.
+In the ./scripts directory there is a script named run_hl2.sh.
+This script will launch hl2 without needing steam open. If you send suspend signal 'ctrl-z in terminal', 
+hl2 will be suspended and not use cpu/gpu while you map. unsuspend with 'fg' command
+You will need to manually edit this script so the paths are correct.
+
+Second, wine is very slow to startup by default, 'running wineserver --persistent' will speed up compile times significantly.
+
 
 ### Building and running
 ```
