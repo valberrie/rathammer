@@ -145,7 +145,6 @@ pub const InspectorWindow = struct {
                 ly.padding.top = 10;
                 self.buildValueEditor(gui, &ly, vt) catch {};
             }
-            std.debug.print("Done big props\n", .{});
             return;
         }
         if (eql(u8, tab_name, "io")) {
@@ -352,7 +351,6 @@ pub const InspectorWindow = struct {
     }
 
     pub fn buildScrollItemsErr(window_area: *iArea, vt: *iArea, index: usize, gui: *Gui, _: *iWindow) !void {
-        var time = std.time.Timer.start() catch return;
         const self: *@This() = @alignCast(@fieldParentPtr("area", window_area));
         self.resetIds();
         var ly = guis.TableLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area, .columns = 2 };
@@ -472,7 +470,6 @@ pub const InspectorWindow = struct {
                 }
             }
         }
-        std.debug.print("Built scroll in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
     }
 
     fn setBrightness(this_w: *iArea, _: *Gui, value: []const u8, id: usize) void {

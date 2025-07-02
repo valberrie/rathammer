@@ -66,7 +66,6 @@ pub const ToolData = struct {
     view_3d: *const graph.za.Mat4,
     screen_area: graph.Rect,
     draw: *DrawCtx,
-    win: *graph.SDL.Window,
     is_first_frame: bool,
 };
 
@@ -431,7 +430,7 @@ pub const CubeDraw = struct {
         draw.rectTex(r, rec, editor.asset_atlas);
     }
 
-    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+    pub fn buildGui(vt: *i3DTool, ed: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         const doc =
             \\This is the cube draw tool
@@ -451,6 +450,13 @@ pub const CubeDraw = struct {
 
         area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.post_state));
         area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Use custom Height", .{ .bool_ptr = &self.use_custom_height }, null));
+        if (ed.asset_browser.selected_mat_vpk_id) |id| {
+            const tex = ed.getTexture(id) catch return;
+            const tex_w = area_vt.area.w / 2;
+            ly.pushHeight(tex_w);
+            const ar = ly.getArea() orelse return;
+            area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, ar.replace(null, null, ar.h, null), tex, tex.rect(), .{}));
+        }
     }
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
@@ -542,9 +548,9 @@ pub const CubeDraw = struct {
         const ray = self.camRay(td.screen_area, td.view_3d.*);
         switch (tool.state) {
             .start => {
-                const plane_up = td.win.isBindState(self.config.keys.cube_draw_plane_up.b, .rising);
-                const plane_down = td.win.isBindState(self.config.keys.cube_draw_plane_down.b, .rising);
-                const send_raycast = td.win.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high);
+                const plane_up = self.isBindState(self.config.keys.cube_draw_plane_up.b, .rising);
+                const plane_down = self.isBindState(self.config.keys.cube_draw_plane_down.b, .rising);
+                const send_raycast = self.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high);
                 if (plane_up)
                     tool.plane_z += snap;
                 if (plane_down)
@@ -912,7 +918,7 @@ pub const Translate = struct {
     pub fn translate(tool: *Translate, self: *Editor, td: ToolData) !void {
         const draw_nd = &self.draw_state.ctx;
         const draw = td.draw;
-        const dupe = td.win.isBindState(self.config.keys.duplicate.b, .high);
+        const dupe = self.isBindState(self.config.keys.duplicate.b, .high);
         const COLOR_MOVE = 0xe8a130_ee;
         const COLOR_DUPE = 0xfc35ac_ee;
         const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
@@ -1180,14 +1186,14 @@ pub const TextureTool = struct {
         }
         blk: {
             if (editor.edit_state.rmouse == .rising) {
-                const dupe = td.win.isBindState(editor.config.keys.duplicate.b, .high);
+                const dupe = editor.isBindState(editor.config.keys.duplicate.b, .high);
                 const res_id = (editor.asset_browser.selected_mat_vpk_id) orelse break :blk;
                 const pot = editor.screenRay(td.screen_area, td.view_3d.*);
                 if (pot.len == 0) break :blk;
                 const solid = try editor.ecs.getOptPtr(pot[0].id, .solid) orelse break :blk;
                 if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
                 const side = &solid.sides.items[pot[0].side_id.?];
-                const pick = td.win.isBindState(editor.config.keys.cube_draw_plane_raycast.b, .high);
+                const pick = editor.isBindState(editor.config.keys.cube_draw_plane_raycast.b, .high);
                 self.state = if (pick) .pick else .apply;
                 switch (self.state) {
                     .apply => {
@@ -1638,7 +1644,7 @@ pub const Clipping = struct {
                     td.draw.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
                     draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
                 }
-                if (td.win.keyRising(.RETURN)) {
+                if (ed.isBindState(ed.config.keys.clip_commit.b, .rising)) {
                     const sel_side = self.selected_side orelse return;
                     const solid = try ed.ecs.getPtr(sel_side.id, .solid);
                     var ret = try ed.clipctx.clipSolid(solid, p0, plane_n);

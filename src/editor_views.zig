@@ -47,7 +47,8 @@ pub const Main3DView = struct {
 
     pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, draw: *DrawCtx, win: *graph.SDL.Window) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        draw3Dview(editor, screen_area, draw, win, self.font, self.fh) catch return;
+        _ = win;
+        draw3Dview(editor, screen_area, draw, self.font, self.fh) catch return;
     }
 
     pub fn create(alloc: std.mem.Allocator, os9gui: *Os9Gui) !*iPane {
@@ -157,7 +158,6 @@ pub fn draw3Dview(
     self: *Context,
     screen_area: graph.Rect,
     draw: *graph.ImmediateDrawingContext,
-    win: *graph.SDL.Window,
     font: *graph.FontUtil.PublicFontInterface,
     fh: f32,
 ) !void {
@@ -209,26 +209,26 @@ pub fn draw3Dview(
         }
     }
 
-    if (win.isBindState(self.config.keys.undo.b, .rising)) {
+    if (self.isBindState(self.config.keys.undo.b, .rising)) {
         self.undoctx.undo(self);
     }
-    if (win.isBindState(self.config.keys.redo.b, .rising)) {
+    if (self.isBindState(self.config.keys.redo.b, .rising)) {
         self.undoctx.redo(self);
     }
 
-    if (win.isBindState(self.config.keys.toggle_select_mode.b, .rising))
+    if (self.isBindState(self.config.keys.toggle_select_mode.b, .rising))
         self.selection.toggle();
 
-    if (win.isBindState(self.config.keys.select.b, .rising)) {
+    if (self.isBindState(self.config.keys.select.b, .rising)) {
         const pot = self.screenRay(screen_area, view_3d);
         if (pot.len > 0) {
             try self.selection.put(pot[0].id, self);
         }
     }
-    if (win.isBindState(self.config.keys.clear_selection.b, .rising))
+    if (self.isBindState(self.config.keys.clear_selection.b, .rising))
         self.selection.clear();
 
-    if (win.isBindState(self.config.keys.group_selection.b, .rising)) {
+    if (self.isBindState(self.config.keys.group_selection.b, .rising)) {
         var kit = self.selection.groups.keyIterator();
         var owner_count: usize = 0;
         var last_owner: ?Editor.EcsT.Id = null;
@@ -269,7 +269,7 @@ pub fn draw3Dview(
         }
     }
 
-    if (win.isBindState(self.config.keys.delete_selected.b, .rising)) {
+    if (self.isBindState(self.config.keys.delete_selected.b, .rising)) {
         const selection = self.selection.getSlice();
         if (selection.len > 0) {
             const ustack = try self.undoctx.pushNewFmt("deletion of {d} entities", .{selection.len});
@@ -285,7 +285,6 @@ pub fn draw3Dview(
         .screen_area = screen_area,
         .view_3d = &view_3d,
         .draw = draw,
-        .win = win,
         .is_first_frame = self.edit_state.last_frame_tool_index != self.edit_state.tool_index,
     };
     if (self.edit_state.tool_index < self.tools.vtables.items.len) {
@@ -309,6 +308,7 @@ pub fn draw3Dview(
     //Crosshair
     const cw = 4;
     const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
+    graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     try draw_nd.flush(null, self.draw_state.cam3d);
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     { // text stuff
@@ -325,6 +325,7 @@ pub fn draw3Dview(
             .one => SINGLE_COLOR,
             .many => MANY_COLOR,
         });
+        mt.textFmt("{s}, {any}", .{ @tagName(self.draw_state.grab_pane.owner), self.draw_state.grab_pane.grabbed }, fh, col);
         if (self.selection.mode == .many)
             mt.textFmt("Selected: {d}", .{self.selection.multi.items.len}, fh, col);
         {
@@ -378,19 +379,27 @@ const CamState = graph.ptypes.Camera3D.MoveState;
 pub fn drawPane(
     editor: *Context,
     pane: Pane,
-    has_mouse: bool,
     cam_state: CamState,
     win: *graph.SDL.Window,
     pane_area: graph.Rect,
     draw: *graph.ImmediateDrawingContext,
     os9gui: *graph.Os9Gui,
 ) !void {
+    const owns = editor.draw_state.grab_pane.tryOwn(pane_area, win, pane);
     switch (pane) {
         .none, .new_inspector => {},
         .main_3d_view => {
             const vt = try editor.panes.getVt(Main3DView);
-            editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab.is or has_mouse) cam_state else .{});
-            editor.draw_state.grab.setGrab(has_mouse, win.keyHigh(.LSHIFT), win, pane_area.center());
+            //editor.draw_state.grab_pane.tryOwn(pane_area, win, pane);
+            switch (editor.draw_state.grab_pane.trySetGrab(pane, !win.keyHigh(.LSHIFT))) {
+                else => {},
+                .ungrabbed => {
+                    const center = pane_area.center();
+                    graph.c.SDL_WarpMouseInWindow(win.win, center.x, center.y);
+                },
+            }
+
+            editor.draw_state.cam3d.updateDebugMove(if (owns) cam_state else .{});
             if (vt.draw_fn) |drawf|
                 drawf(vt, pane_area, editor, draw, win);
 
@@ -404,7 +413,9 @@ pub fn drawPane(
                 os9gui.label("Hello this is the rat hammer", .{});
             }
         },
-        .model_browser => try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .model),
+        .model_browser => {
+            try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .model);
+        },
         .asset_browser => {
             try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .texture);
         },
@@ -415,10 +426,10 @@ pub fn drawPane(
         },
         //.inspector => try inspector.drawInspector(editor, pane_area, os9gui),
         .model_preview => {
+            _ = editor.draw_state.grab_pane.trySetGrab(pane, win.mouse.left == .high);
             try editor.asset_browser.drawModelPreview(
                 win,
                 pane_area,
-                has_mouse,
                 cam_state,
                 editor,
                 draw,

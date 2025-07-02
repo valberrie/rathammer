@@ -207,27 +207,45 @@ pub const Context = struct {
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,
 
-        /// This state determines if sdl.grabMouse is true. each view that wants to grab mouse should call setGrab
-        grab: struct {
-            is: bool = false,
-            was: bool = false,
-            claimed: bool = false,
+        grab_pane: struct {
+            owner: eviews.Pane = .none,
+            grabbed: bool = false,
+            was_grabbed: bool = false,
 
-            pub fn setGrab(self: *@This(), area_has_mouse: bool, ungrab_key_down: bool, win: *graph.SDL.Window, center: graph.Vec2f) void {
-                if (self.is or area_has_mouse) {
-                    self.is = !ungrab_key_down;
-                    self.claimed = true;
+            //if the mouse is ungrabbed, the pane who contains it gets own
+            //if the mouse is ungrabbed, and a pane contain it, it can grab it
+            //nobody else can own it until the owner calls ungrab
+
+            pub fn tryOwn(self: *@This(), area: graph.Rect, win: *graph.SDL.Window, own: eviews.Pane) bool {
+                if (self.was_grabbed) return self.owner == own;
+                if (area.containsPoint(win.mouse.pos)) {
+                    self.owner = own;
                 }
-                if (self.was and !self.is) {
-                    graph.c.SDL_WarpMouseInWindow(win.win, center.x, center.y);
-                }
+                return self.owner == own;
             }
 
             pub fn endFrame(self: *@This()) void {
-                self.was = self.is;
-                if (!self.claimed)
-                    self.is = false;
-                self.claimed = false;
+                self.was_grabbed = self.grabbed;
+                self.grabbed = false;
+            }
+
+            pub fn trySetGrab(self: *@This(), own: eviews.Pane, should_grab: bool) enum { ungrabbed, grabbed, none } {
+                if (self.was_grabbed) {
+                    if (own == self.owner) {
+                        self.grabbed = should_grab;
+                        if (!self.grabbed)
+                            return .ungrabbed;
+                    }
+                    return .none;
+                }
+                if (own == self.owner) {
+                    if (self.grabbed != should_grab) {
+                        self.grabbed = should_grab;
+                        self.was_grabbed = self.grabbed;
+                        return if (should_grab) .grabbed else .ungrabbed;
+                    }
+                }
+                return .none;
             }
         } = .{},
     },
@@ -280,6 +298,7 @@ pub const Context = struct {
         pref: Dir,
         autosave: Dir,
     },
+    win: *graph.SDL.Window,
 
     /// These are currently only used for baking all tool icons into an atlas.
     asset: graph.AssetBake.AssetMap,
@@ -328,7 +347,7 @@ pub const Context = struct {
         //self.loaded_map_name = try self.storeString(pruned);
     }
 
-    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config, args: anytype) !*Self {
+    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config, args: anytype, win_ptr: *graph.SDL.Window) !*Self {
         var ret = try alloc.create(Context);
         ret.* = .{
             //These are initilized in editor.postInit
@@ -337,6 +356,7 @@ pub const Context = struct {
             .asset = undefined,
             .asset_atlas = undefined,
 
+            .win = win_ptr,
             .file_selection = .{
                 .file_buf = std.ArrayList(u8).init(alloc),
             },
@@ -489,6 +509,11 @@ pub const Context = struct {
         const outfile = try path.createFile(filename, .{});
         defer outfile.close();
         try self.writeToJson(outfile);
+    }
+
+    pub fn isBindState(self: *const Self, bind: graph.SDL.NewBind, state: graph.SDL.ButtonState) bool {
+        if (self.draw_state.grab_pane.owner != .main_3d_view) return false;
+        return self.win.isBindState(bind, state);
     }
 
     pub fn writeToJson(self: *Self, outfile: std.fs.File) !void {
@@ -744,7 +769,7 @@ pub const Context = struct {
     pub fn screenRay(self: *Self, screen_area: graph.Rect, view_3d: Mat4) []const raycast.RcastItem {
         const rc = util3d.screenSpaceRay(
             screen_area.dim(),
-            if (self.draw_state.grab.was) screen_area.center() else self.edit_state.mpos,
+            if (self.draw_state.grab_pane.was_grabbed) screen_area.center() else self.edit_state.mpos,
             view_3d,
         );
         return self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false) catch &.{};
@@ -957,7 +982,7 @@ pub const Context = struct {
     pub fn camRay(self: *Self, area: graph.Rect, view: Mat4) [2]Vec3 {
         return util3d.screenSpaceRay(
             area.dim(),
-            if (self.draw_state.grab.was) area.center() else self.edit_state.mpos,
+            if (self.draw_state.grab_pane.was_grabbed) area.center() else self.edit_state.mpos,
             view,
         );
     }
@@ -1154,6 +1179,32 @@ pub const Context = struct {
             try self.rebuildMeshesIfDirty();
         }
     }
+
+    pub fn handleMisc3DKeys(ed: *Self, tabs: []const eviews.Tab) void {
+        const config = &ed.config;
+        const ds = &ed.draw_state;
+
+        { //key binding stuff
+            for (config.keys.workspace.items, 0..) |b, i| {
+                if (ed.win.isBindState(b.b, .rising))
+                    ds.tab_index = i;
+            }
+
+            if (ed.isBindState(config.keys.grid_inc.b, .rising))
+                ed.edit_state.grid_snap *= 2;
+            if (ed.isBindState(config.keys.grid_dec.b, .rising))
+                ed.edit_state.grid_snap /= 2;
+            ed.edit_state.grid_snap = std.math.clamp(ed.edit_state.grid_snap, 1, 4096);
+            ds.tab_index = @min(ds.tab_index, tabs.len - 1);
+
+            {
+                for (config.keys.tool.items, 0..) |b, i| {
+                    if (ed.isBindState(b.b, .rising))
+                        ed.edit_state.tool_index = i;
+                }
+            }
+        }
+    }
 };
 
 pub const LoadCtx = struct {
@@ -1166,7 +1217,6 @@ pub const LoadCtx = struct {
     timer: std.time.Timer,
     draw: *graph.ImmediateDrawingContext,
     win: *graph.SDL.Window,
-    os9gui: *graph.Os9Gui,
     font: *graph.Font,
     splash: graph.Texture,
     draw_splash: bool = true,
@@ -1199,11 +1249,9 @@ pub const LoadCtx = struct {
         self.timer.reset();
         self.win.pumpEvents(.poll);
         self.draw.begin(0x678caaff, self.win.screen_dimensions.toF()) catch return;
-        self.os9gui.resetFrame(.{}, self.win) catch return;
         //self.draw.text(.{ .x = 0, .y = 0 }, message, &self.font.font, 100, 0xffffffff);
         const perc: f32 = @as(f32, @floatFromInt(self.cb_count)) / @as(f32, @floatFromInt(self.expected_cb));
         self.drawSplash(perc, message);
-        self.os9gui.drawGui(self.draw) catch return;
         self.draw.end(null) catch return;
         self.win.swap(); //So the window doesn't look too broken while loading
     }

@@ -44,7 +44,7 @@ keys {
     //Currently this maps to tools in the order they are registered in editor.zig.Context.postInit
     tool           1
     tool           2
-    tool           shift+scancode:E
+    tool           shift+scancode:G //place ent
     tool           shift+scancode:B //cube draw
     tool           3
     tool           shift+scancode:T //texture

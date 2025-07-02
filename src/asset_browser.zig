@@ -142,7 +142,6 @@ pub const AssetBrowserGui = struct {
         self: *Self,
         win: *graph.SDL.Window,
         pane_area: graph.Rect,
-        has_mouse: bool,
         cam_state: graph.ptypes.Camera3D.MoveState,
         editor: *edit.Context,
         draw: *graph.ImmediateDrawingContext,
@@ -150,12 +149,6 @@ pub const AssetBrowserGui = struct {
         const selected_index = self.selected_index_model;
         if (selected_index < self.model_list_sub.items.len) {
             const sp = pane_area;
-            editor.draw_state.grab.setGrab(
-                has_mouse,
-                !(win.mouse.left == .high),
-                win,
-                pane_area.center(),
-            );
             self.model_cam.updateDebugMove(if (win.mouse.left == .high) cam_state else .{});
             const screen_area = pane_area;
             const x: i32 = @intFromFloat(screen_area.x);

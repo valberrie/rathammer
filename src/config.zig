@@ -58,6 +58,8 @@ pub const Config = struct {
 
         undo: Keybind = .{ .b = KC(.z, 0) },
         redo: Keybind = .{ .b = KC(.s, 0) },
+
+        clip_commit: Keybind = .{ .b = SC(.RETURN, 0) },
     },
     window: struct {
         height_px: i32 = 600,
@@ -107,6 +109,7 @@ pub const ConfigCtx = struct {
             item.asset_browser_exclude.entry.deinit();
         self.config.games.map.deinit();
         self.config.keys.workspace.deinit();
+        self.config.keys.tool.deinit();
         self.strings.deinit();
     }
 };
