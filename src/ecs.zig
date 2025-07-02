@@ -344,6 +344,22 @@ pub const Side = struct {
         self.index.deinit();
     }
 
+    pub fn dupe(self: *@This()) !@This() {
+        var ret = self.*;
+        ret.index = try self.index.clone();
+        return ret;
+    }
+
+    pub fn flipNormal(self: *@This()) void {
+        std.mem.reverse(u32, self.index.items);
+    }
+
+    pub fn init(alloc: std.mem.Allocator) @This() {
+        return .{
+            .index = std.ArrayList(u32).init(alloc),
+        };
+    }
+
     pub fn normal(self: *@This(), solid: *Solid) Vec3 {
         const ind = self.index.items;
         if (ind.len < 3) return Vec3.zero();
@@ -678,6 +694,27 @@ pub const Solid = struct {
             const indexs = try editor.csgctx.triangulateIndex(@intCast(side.index.items.len), @intCast(ioffset));
             try batch.indicies.appendSlice(indexs);
         }
+    }
+
+    /// Returns the number of verticies serialized
+    pub fn printObj(self: *const Self, vert_offset: usize, name: []const u8, out: anytype) usize {
+        out.print("o {s}\n", .{name});
+        for (self.verts.items) |v|
+            out.print("v {d} {d} {d}\n", .{ v.x(), v.y(), v.z() });
+
+        for (self.sides.items) |side| {
+            const in = side.index.items;
+
+            for (1..side.index.items.len - 1) |i| {
+                std.debug.print("f {d} {d} {d}\n", .{
+                    1 + in[0] + vert_offset,
+                    1 + in[i + 1] + vert_offset,
+                    1 + in[i] + vert_offset,
+                });
+            }
+        }
+
+        return self.verts.items.len;
     }
 };
 
