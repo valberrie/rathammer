@@ -1508,7 +1508,7 @@ pub const Clipping = struct {
     pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         _ = self;
-        const rec = editor.asset.getRectFromName("vertex.png") orelse graph.Rec(0, 0, 0, 0);
+        const rec = editor.asset.getRectFromName("clipping.png") orelse graph.Rec(0, 0, 0, 0);
         draw.rectTex(r, rec, editor.asset_atlas);
     }
 
