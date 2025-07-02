@@ -23,6 +23,7 @@ const RGui = guis.Gui;
 const iArea = guis.iArea;
 const iWindow = guis.iWindow;
 const Wg = guis.Widget;
+const AssetBrowser = @import("asset_browser.zig").AssetBrowserGui;
 
 //todo
 //extrude tool
@@ -450,12 +451,26 @@ pub const CubeDraw = struct {
 
         area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.post_state));
         area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Use custom Height", .{ .bool_ptr = &self.use_custom_height }, null));
+        const tex_w = area_vt.area.w / 2;
+        ly.pushHeight(tex_w);
+        const ar = ly.getArea() orelse return;
+        const sp = ar.split(.vertical, ar.w / 2);
         if (ed.asset_browser.selected_mat_vpk_id) |id| {
             const tex = ed.getTexture(id) catch return;
-            const tex_w = area_vt.area.w / 2;
-            ly.pushHeight(tex_w);
-            const ar = ly.getArea() orelse return;
-            area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, ar.replace(null, null, ar.h, null), tex, tex.rect(), .{}));
+            area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], tex, tex.rect(), .{}));
+        }
+        {
+            const max = 16;
+            var tly = guis.TableLayout{ .columns = 4, .item_height = sp[1].h / 4, .bounds = sp[1] };
+            const recent_list = ed.asset_browser.recent_mats.list.items;
+            for (recent_list[0..@min(max, recent_list.len)], 0..) |rec, id| {
+                const tex = ed.getTexture(rec) catch return;
+                area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, tly.getArea(), tex, tex.rect(), .{
+                    .cb_vt = &ed.asset_browser.gui_vt,
+                    .cb_fn = AssetBrowser.recent_texture_btn_cb,
+                    .id = id,
+                }));
+            }
         }
     }
 

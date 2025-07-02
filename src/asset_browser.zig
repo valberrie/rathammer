@@ -8,6 +8,8 @@ const edit = @import("editor.zig");
 const Config = @import("config.zig");
 const ecs = @import("ecs.zig");
 const Gui = graph.Gui;
+const guis = graph.RGui;
+const RGui = guis.Gui;
 //TODO center camera view on model on new model load
 
 pub const DialogState = struct {
@@ -16,6 +18,38 @@ pub const DialogState = struct {
     previous_pane_index: usize,
 
     kind: enum { texture, model },
+};
+
+pub const RecentsList = struct {
+    max: usize = 16,
+    list: std.ArrayList(vpk.VpkResId),
+    __index: usize = 0,
+
+    pub fn init(alloc: std.mem.Allocator, max: usize) @This() {
+        return .{
+            .list = std.ArrayList(vpk.VpkResId).init(alloc),
+            .max = max,
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.list.deinit();
+    }
+
+    pub fn put(self: *@This(), id: vpk.VpkResId) !void {
+        for (self.list.items) |item| {
+            if (item == id)
+                return;
+        }
+
+        if (self.__index >= self.max)
+            self.__index = 0;
+        if (self.__index >= self.list.items.len)
+            try self.list.resize(self.__index + 1);
+        self.list.items[self.__index] = id;
+
+        self.__index += 1;
+    }
 };
 
 const log = std.log.scoped(.asset_browser);
@@ -56,8 +90,14 @@ pub const AssetBrowserGui = struct {
 
     dialog_state: ?DialogState = null,
 
+    recent_mats: RecentsList,
+    /// This is a bit hacky, only used to get a pointer into this struct
+    /// In the future , gui should use a cb_handle or something pointer instead
+    gui_vt: guis.iArea = undefined,
+
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
+            .recent_mats = RecentsList.init(alloc, 16),
             .name_buf = std.ArrayList(u8).init(alloc),
             .model_list = IdVec.init(alloc),
             .mat_list = IdVec.init(alloc),
@@ -69,6 +109,7 @@ pub const AssetBrowserGui = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.recent_mats.deinit();
         self.model_list.deinit();
         self.mat_list.deinit();
         self.model_list_sub.deinit();
@@ -345,6 +386,7 @@ pub const AssetBrowserGui = struct {
                         if (click == .click) {
                             self.selected_index_mat = i;
                             self.selected_mat_vpk_id = model;
+                            try self.recent_mats.put(model);
                         }
                         //os9gui.gui.drawRectFilled(area, 0xffff);
                         os9gui.gui.drawRectTextured(area, 0xffffffff, tex.rect(), tex);
@@ -370,5 +412,11 @@ pub const AssetBrowserGui = struct {
             }
             //os9gui.endTabs();
         }
+    }
+
+    pub fn recent_texture_btn_cb(vt: *guis.iArea, id: usize, _: *RGui, _: *guis.iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("gui_vt", vt));
+        if (id >= self.recent_mats.list.items.len) return;
+        self.selected_mat_vpk_id = self.recent_mats.list.items[id];
     }
 };
