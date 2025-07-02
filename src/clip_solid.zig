@@ -227,6 +227,10 @@ pub const ClipCtx = struct {
                         }
                     },
                     .on => {
+                        if (!self.vert_map.contains(self.ret_verts.items[vi])) {
+                            try self.vert_map.put(self.ret_verts.items[vi], 0);
+                            try self.split_side.index.append(vi);
+                        }
                         try self.putBoth(vi);
                     },
                 }
@@ -241,6 +245,10 @@ pub const ClipCtx = struct {
         }
         if (self.split_side.index.items.len > 0) {
             sortPolygonPoints(self.split_side.index.items, plane_norm, self.ret_verts.items);
+            std.debug.print("SIDE START\n", .{});
+            for (self.split_side.index.items) |item| {
+                std.debug.print("{d} :{any}\n", .{ item, self.ret_verts.items[item] });
+            }
             try ret[0].sides.append(try self.split_side.dupe());
             var duped = try self.split_side.dupe();
             duped.flipNormal();

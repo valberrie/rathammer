@@ -1,4 +1,5 @@
 const std = @import("std");
+//Contains random things
 
 threadlocal var real_path_buffer: [1024]u8 = undefined;
 pub fn openFileFatal(
@@ -29,4 +30,18 @@ pub fn openDirFatal(
         std.debug.print("{s}\n", .{message});
         std.process.exit(1);
     };
+}
+
+//Perform a linear search for closest match, returning index
+pub fn nearest(comptime T: type, items: []const T, context: anytype, comptime distanceFn: fn (@TypeOf(context), item: T, key: T) f32, key: T) ?usize {
+    var nearest_i: ?usize = null;
+    var dist: f32 = std.math.floatMax(f32);
+    for (items, 0..) |item, i| {
+        const d = distanceFn(context, item, key);
+        if (d < dist) {
+            nearest_i = i;
+            dist = d;
+        }
+    }
+    return nearest_i;
 }

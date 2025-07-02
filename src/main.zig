@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const IS_DEBUG = builtin.mode == .Debug;
+const util = @import("util.zig");
 
 const graph = @import("graph");
 const Rec = graph.Rec;
@@ -43,18 +44,37 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     });
     defer win.destroyWindow();
 
-    const DPI_presets = [_]struct { f32, u32, u32 }{
-        .{ 1, 25, 20 },
-        .{ 1.5, 25, 0 },
-    };
-    _ = DPI_presets;
+    const Preset = struct {
+        dpi: f32 = 1,
+        fh: f32 = 25,
+        ih: f32 = 14,
+        scale: f32 = 2,
 
-    const sc = try dpiDetect(&win);
-    const default_item_height = 25;
-    const default_text_height = 20;
-    const scaled_item_height = args.gui_item_height orelse @trunc(default_item_height * sc);
-    const scaled_text_height = args.gui_font_size orelse @trunc(default_text_height * sc);
+        pub fn distance(_: void, item: @This(), key: @This()) f32 {
+            return @abs(item.dpi - key.dpi);
+        }
+    };
+
+    const DPI_presets = [_]Preset{
+        .{ .dpi = 1, .fh = 14, .ih = 25, .scale = 1 },
+        .{ .dpi = 1.7, .fh = 24, .ih = 42 },
+    };
+    const sc = args.display_scale orelse try dpiDetect(&win);
     edit.log.info("Detected a display scale of {d}", .{sc});
+    const dpi_preset = blk: {
+        const default_scaled = Preset{ .fh = 20 * sc, .ih = 25 * sc, .scale = 2 };
+        const max_dpi_diff = 0.3;
+        const index = util.nearest(Preset, &DPI_presets, {}, Preset.distance, .{ .dpi = sc }) orelse break :blk default_scaled;
+        const p = DPI_presets[index];
+        if (@abs(p.dpi - sc) > max_dpi_diff)
+            break :blk default_scaled;
+        edit.log.info("Matching dpi preset number: {d}, display scale: {d}, font_height {d}, item_height {d},", .{ index, p.dpi, p.fh, p.ih });
+        break :blk p;
+    };
+
+    const scaled_item_height = args.gui_item_height orelse @trunc(dpi_preset.ih);
+    const scaled_text_height = args.gui_font_size orelse @trunc(dpi_preset.fh);
+    const gui_scale = args.gui_scale orelse dpi_preset.scale;
     edit.log.info("gui Size: {d} text ", .{scaled_text_height});
 
     if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
@@ -69,7 +89,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer font.deinit();
 
     const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{}) catch edit.missingTexture();
-    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, .{
+    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), gui_scale, .{
         .cache_dir = editor.dirs.pref,
         .font_size_px = scaled_text_height,
         .item_height = scaled_item_height,
@@ -80,9 +100,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try std.fs.cwd().openDir("ratgraph", .{}), &font.font);
     defer gui.deinit();
-    gui.style.config.default_item_h = args.gui_item_height orelse scaled_item_height;
-    gui.style.config.text_h = args.gui_font_size orelse scaled_text_height;
-    const gui_dstate = G.DrawState{ .ctx = &draw, .font = &font.font, .style = &gui.style, .gui = &gui };
+    gui.style.config.default_item_h = scaled_item_height;
+    gui.style.config.text_h = scaled_text_height;
+    gui.scale = gui_scale;
+    const gui_dstate = G.DrawState{ .ctx = &draw, .font = &font.font, .style = &gui.style, .gui = &gui, .scale = gui_scale };
     const inspector_win = InspectorWindow.create(&gui, editor);
     const pause_win = try PauseWindow.create(&gui, editor);
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
@@ -332,6 +353,7 @@ pub fn main() !void {
         Arg("game", .string, "Name of a game defined in config.vdf"),
         Arg("custom_cwd", .string, "override the directory used for game"),
         Arg("fontfile", .string, "load custom font"),
+        Arg("display_scale", .number, "override detected display scale, should be ~ 0.2-3"),
     }, &arg_it);
     try wrappedMain(alloc, args);
 

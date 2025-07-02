@@ -1548,7 +1548,6 @@ pub const Clipping = struct {
         const lm = ed.edit_state.lmouse;
         switch (self.state) {
             .init => {
-                if (lm != .rising) return;
                 const sel = ed.selection.getSlice();
                 ed.rayctx.reset();
 
@@ -1559,13 +1558,16 @@ pub const Clipping = struct {
                 if (pot.len > 0) {
                     const inter = pot[0];
                     const solid = try ed.ecs.getPtr(inter.id, .solid);
+                    const snapped = snapV3(inter.point, ed.edit_state.grid_snap);
+                    draw_nd.point3D(snapped, 0xff_0000_ff);
+                    if (lm != .rising) return;
                     const side_id = inter.side_id orelse return;
                     if (side_id >= solid.sides.items.len) return;
-                    self.plane_p0 = inter.point;
+                    self.plane_p0 = snapped;
                     self.plane_norm = solid.sides.items[side_id].normal(solid);
                     self.selected_side = inter;
                     self.state = .point1;
-                    self.points[0] = inter.point;
+                    self.points[0] = snapped;
                 }
             },
             .point0, .point1 => {
@@ -1578,9 +1580,11 @@ pub const Clipping = struct {
                 draw_nd.convexPolyIndexed(side_o.index.items, solid.verts.items, 0xffff_88, .{});
                 if (self.state == .point1)
                     draw_nd.point3D(self.points[0], 0xff_0000_ff);
-                if (lm != .rising) return;
                 if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter| {
-                    self.points[if (self.state == .point0) 0 else 1] = inter;
+                    const snapped = snapV3(inter, ed.edit_state.grid_snap);
+                    draw_nd.point3D(snapped, 0xff_0000_ff);
+                    if (lm != .rising) return;
+                    self.points[if (self.state == .point0) 0 else 1] = snapped;
                     self.state = switch (self.state) {
                         else => {
                             self.reset();
@@ -1637,7 +1641,7 @@ pub const Clipping = struct {
                 if (td.win.keyRising(.RETURN)) {
                     const sel_side = self.selected_side orelse return;
                     const solid = try ed.ecs.getPtr(sel_side.id, .solid);
-                    var ret = try ed.clipctx.clipSolid(solid, self.plane_p0, plane_n);
+                    var ret = try ed.clipctx.clipSolid(solid, p0, plane_n);
 
                     for (&ret) |*r| {
                         const new = try ed.ecs.createEntity();
