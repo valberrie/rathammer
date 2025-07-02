@@ -21,17 +21,30 @@ Wip
 
 ![d1_trainstation_01](doc/photo1.jpg)
 
+### Arch linux
+```
+# install dependencies zig 0.14.1
+sudo pacman -S zig libepoxy freetype2 sdl3
+
+# optionally, for map compilation
+sudo pacman -S wine
+```
+
+When installing source engine games on Linux, the version using proton must be used in order to get the 
+development tools such as vvis, vbsp etc. The fgd files are also only available in the windows builds.
+
+For Half-Life 2 specifically, because more than one game exist, installing base Half-Life 2 with proton and Episode 2 native
+will allow you to play the game natively and compile maps with wine.
+
 ### Building and running
 ```
-# Install zig version 0.14.1
-# sdl3, freetype2, libepoxy
 git clone https://github.com/nmalthouse/rathammer.git
 cd rathammer
 git submodule update --init --recursive
 zig build
 
 # Example, running with hl2
-./zig-out/bin/zig-hammer --custom_cwd ~/.local/share/Steam/steamapps/common --vmf my_maps/my_hl2map.vmf
+./zig-out/bin/rathammer --custom_cwd ~/.local/share/Steam/steamapps/common --vmf my_maps/my_hl2map.vmf
 
 # This will load a vmf map. When we save the map with ctrl+s, a file named my_hl2_map.json will be written to the my_maps directory.
 The vmf file is not touched.
