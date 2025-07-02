@@ -40,6 +40,18 @@ keys {
     workspace      alt+2
     workspace      alt+3
 
+    //TODO, specify tool names,
+    //Currently this maps to tools in the order they are registered in editor.zig.Context.postInit
+    tool           1
+    tool           2
+    tool           shift+scancode:E
+    tool           shift+scancode:B //cube draw
+    tool           3
+    tool           shift+scancode:T //texture
+    tool           shift+scancode:V //vertex
+    tool           shift+scancode:X //clip
+
+
     cube_draw_plane_up      scancode:x
     cube_draw_plane_down    scancode:z
 }

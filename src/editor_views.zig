@@ -306,16 +306,11 @@ pub fn draw3Dview(
     }
 
     try draw.flush(null, self.draw_state.cam3d);
-    graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     //Crosshair
     const cw = 4;
     const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
-    draw_nd.rect(graph.Rec(
-        crossp.x,
-        crossp.y,
-        cw * 2,
-        cw * 2,
-    ), 0xffffffff);
+    try draw_nd.flush(null, self.draw_state.cam3d);
+    graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     { // text stuff
         const col = 0xff_ff_ffff;
         const p = self.draw_state.cam3d.pos;
@@ -341,8 +336,13 @@ pub fn draw3Dview(
         }
         mt.drawBgRect(0x99, fh * 30);
     }
-    try draw_nd.flush(null, self.draw_state.cam3d);
-    self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw);
+    self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw, font);
+    draw.rect(graph.Rec(
+        crossp.x,
+        crossp.y,
+        cw * 2,
+        cw * 2,
+    ), 0xffffffff);
     try draw.flush(null, null);
 }
 

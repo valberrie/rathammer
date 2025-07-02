@@ -872,7 +872,7 @@ pub const Context = struct {
         loadctx.cb("csg generated");
     }
 
-    pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx) void {
+    pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx, font: *graph.FontInterface) void {
         const start = area.pos();
         const w = 100;
         const tool_index = self.edit_state.tool_index;
@@ -880,6 +880,9 @@ pub const Context = struct {
             const fi: f32 = @floatFromInt(i);
             const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
             tool.tool_icon_fn(tool, draw, self, rec);
+            var buf: [32]u8 = undefined;
+            const n = if (i < self.config.keys.tool.items.len) self.config.keys.tool.items[i].b.nameFull(&buf) else "NONE";
+            draw.textClipped(rec, "{s}", .{n}, .{ .px_size = 32, .font = font, .color = 0xff }, .left);
             if (tool_index == i) {
                 draw.rectBorder(rec, 3, 0x00ff00ff);
             }
