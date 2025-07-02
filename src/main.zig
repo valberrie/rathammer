@@ -52,9 +52,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const sc = try dpiDetect(&win);
     const default_item_height = 25;
     const default_text_height = 20;
-    const scaled_item_height = @trunc(default_item_height * sc);
-    const scaled_text_height = @trunc(default_text_height * sc);
+    const scaled_item_height = args.gui_item_height orelse @trunc(default_item_height * sc);
+    const scaled_text_height = args.gui_font_size orelse @trunc(default_text_height * sc);
     edit.log.info("Detected a display scale of {d}", .{sc});
+    edit.log.info("gui Size: {d} text ", .{scaled_text_height});
 
     if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
 
@@ -62,24 +63,26 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer editor.deinit();
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
-    var font = try graph.Font.init(alloc, std.fs.cwd(), "ratgraph/asset/fonts/roboto.ttf", scaled_text_height, .{});
+    var font = try graph.Font.init(alloc, std.fs.cwd(), args.fontfile orelse "ratgraph/asset/fonts/roboto.ttf", scaled_text_height, .{
+        .codepoints_to_load = &(graph.Font.CharMaps.Default),
+    });
     defer font.deinit();
 
     const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{}) catch edit.missingTexture();
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), args.gui_scale orelse 2, .{
         .cache_dir = editor.dirs.pref,
-        .font_size_px = args.gui_font_size orelse scaled_text_height,
-        .item_height = args.gui_item_height orelse scaled_item_height,
+        .font_size_px = scaled_text_height,
+        .item_height = scaled_item_height,
     });
     defer os9gui.deinit();
     draw.preflush_cb = &flush_cb;
     font_ptr = os9gui.ofont;
 
-    var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try std.fs.cwd().openDir("ratgraph", .{}), os9gui.font);
+    var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try std.fs.cwd().openDir("ratgraph", .{}), &font.font);
     defer gui.deinit();
     gui.style.config.default_item_h = args.gui_item_height orelse scaled_item_height;
     gui.style.config.text_h = args.gui_font_size orelse scaled_text_height;
-    const gui_dstate = G.DrawState{ .ctx = &draw, .font = os9gui.font, .style = &gui.style, .gui = &gui };
+    const gui_dstate = G.DrawState{ .ctx = &draw, .font = &font.font, .style = &gui.style, .gui = &gui };
     const inspector_win = InspectorWindow.create(&gui, editor);
     const pause_win = try PauseWindow.create(&gui, editor);
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
@@ -328,6 +331,7 @@ pub fn main() !void {
         Arg("gui_item_height", .number, "item height in pixels / gui_scale"),
         Arg("game", .string, "Name of a game defined in config.vdf"),
         Arg("custom_cwd", .string, "override the directory used for game"),
+        Arg("fontfile", .string, "load custom font"),
     }, &arg_it);
     try wrappedMain(alloc, args);
 
