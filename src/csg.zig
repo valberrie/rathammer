@@ -379,8 +379,8 @@ pub fn conVec(v: anytype) @TypeOf(v) {
     return @TypeOf(v).new(v.x(), v.z(), -v.y());
 }
 
-const VecMap = struct {
-    const HashCtx = struct {
+pub const VecMap = struct {
+    pub const HashCtx = struct {
         const off = 100;
         pub fn hash(self: HashCtx, k: Vec3_32) u64 {
             _ = self;
@@ -403,7 +403,7 @@ const VecMap = struct {
         }
     };
 
-    const MapT = std.HashMap(Vec3_32, u32, HashCtx, 80);
+    pub const MapT = std.HashMap(Vec3_32, u32, HashCtx, 80);
     verts: std.ArrayList(Vec3_32),
     map: MapT,
 

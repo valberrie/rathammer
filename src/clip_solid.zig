@@ -2,6 +2,7 @@ const std = @import("std");
 const ecs = @import("ecs.zig");
 const Solid = ecs.Solid;
 const graph = @import("graph");
+const csg = @import("csg.zig");
 const Vec3 = graph.za.Vec3;
 const Side = ecs.Side;
 //
@@ -93,74 +94,154 @@ test "line segment plane" {
     try ex(thing(p0, pn, st, end), Vec3.new(0, 0, 0));
 }
 
+const Mapper = struct {
+    map: std.AutoHashMap(u32, u32),
+    index: u32 = 0,
+
+    pub fn put(self: *@This(), vi: u32) !void {
+        if (self.map.contains(vi)) return;
+        defer self.index += 1;
+        try self.map.put(vi, self.index);
+    }
+
+    pub fn init(alloc: std.mem.Allocator) @This() {
+        return .{
+            .map = std.AutoHashMap(u32, u32).init(alloc),
+        };
+    }
+
+    pub fn buildSolid(self: *@This(), solid: *Solid, verts: []const Vec3) !void {
+        try solid.verts.resize(self.map.count());
+        var it = self.map.iterator();
+        while (it.next()) |item|
+            solid.verts.items[item.value_ptr.*] = verts[item.key_ptr.*];
+
+        for (solid.sides.items) |*side| {
+            for (side.index.items) |*index| {
+                index.* = self.map.get(index.*) orelse return error.broken;
+            }
+        }
+    }
+};
+
 pub const ClipCtx = struct {
     const Self = @This();
 
     verts: std.ArrayList(VertKind),
     alloc: std.mem.Allocator,
+    mappers: [2]Mapper,
+    vert_map: csg.VecMap.MapT,
+    ret_verts: std.ArrayList(Vec3),
+    sides: [2]Side,
+    split_side: Side,
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .verts = std.ArrayList(VertKind).init(alloc),
+            .alloc = alloc,
+            .mappers = .{ Mapper.init(alloc), Mapper.init(alloc) },
+            .vert_map = csg.VecMap.MapT.init(alloc),
+            .ret_verts = std.ArrayList(Vec3).init(alloc),
+            .sides = .{ Side.init(alloc), Side.init(alloc) },
+            .split_side = Side.init(alloc),
+        };
+    }
+
+    pub fn reset(self: *Self) void {
+        self.verts.clearRetainingCapacity();
+        for (&self.mappers) |*m|
+            m.map.clearRetainingCapacity();
+        self.vert_map.clearRetainingCapacity();
+        self.ret_verts.clearRetainingCapacity();
+        self.split_side.index.clearRetainingCapacity();
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.verts.deinit();
+        for (&self.mappers) |*m|
+            m.map.deinit();
+        self.vert_map.deinit();
+        self.ret_verts.deinit();
+        self.split_side.index.deinit();
+    }
+
+    pub fn putOne(self: *Self, i: u8, ind: u32) !void {
+        try self.sides[i].index.append(ind);
+        try self.mappers[i].put(ind);
+    }
+
+    pub fn putBoth(self: *Self, ind: u32) !void {
+        try self.putOne(0, ind);
+        try self.putOne(1, ind);
+    }
 
     pub fn clipSolid(self: *Self, solid: *const Solid, plane_p0: Vec3, plane_norm: Vec3) ![2]Solid {
-        self.verts.clearRetainingCapacity();
+        self.reset();
         const w = VertKind.getW(plane_p0, plane_norm);
-        var ret_verts = std.ArrayList(Vec3).init(self.alloc);
         for (solid.verts.items) |v| {
             try self.verts.append(VertKind.classify(plane_norm, w, v));
-            try ret_verts.append(v);
+            try self.ret_verts.append(v);
         }
 
         var ret: [2]Solid = .{ Solid.init(self.alloc), Solid.init(self.alloc) };
+        //Track verticies used by each
 
-        var split_side = Side.init(self.alloc);
+        //TODO don't add the pointless verticies
 
-        for (solid.sides.items) |side| {
-            var left_side: Side = Side.init(self.alloc);
-            var right_side: Side = Side.init(self.alloc);
+        for (solid.sides.items) |*side| {
+            for (&self.sides) |*s| {
+                s.* = try side.dupe();
+                try s.index.resize(0);
+            }
             for (side.index.items, 0..) |vi, ii| {
                 const k = self.verts.items[vi];
                 switch (k) {
                     .left, .right => {
-                        const si = switch (k) {
-                            .left => &left_side,
-                            .right => &right_side,
+                        switch (k) {
+                            .left => try self.putOne(0, vi),
+                            .right => try self.putOne(1, vi),
                             else => unreachable,
-                        };
-                        try si.index.append(vi);
+                        }
                         const n_i = (ii + 1) % side.index.items.len;
                         const next_kind = self.verts.items[side.index.items[n_i]];
                         if (next_kind != .on and next_kind != k) {
                             const start = solid.verts.items[side.index.items[n_i]];
                             const end = solid.verts.items[vi];
                             const int = doesSegmentIntersectPlane(plane_p0, plane_norm, start, end);
-                            const index: u32 = @intCast(ret_verts.items.len);
-                            try ret_verts.append(int);
-                            try left_side.index.append(index);
-                            try right_side.index.append(index);
-                            try split_side.index.append(index);
+                            if (!self.vert_map.contains(int)) {
+                                const index: u32 = @intCast(self.ret_verts.items.len);
+                                try self.vert_map.put(int, index);
+                                try self.ret_verts.append(int);
+                            }
+                            const in = self.vert_map.get(int) orelse return error.broken;
+                            try self.putBoth(in);
+                            try self.split_side.index.append(in);
                             //Make a new vertex;
 
                         }
                     },
                     .on => {
-                        //Put a new vert
-                        try left_side.index.append(vi);
-                        try right_side.index.append(vi);
+                        try self.putBoth(vi);
                     },
                 }
             }
-            if (left_side.index.items.len > 0)
-                try ret[0].sides.append(left_side);
-            if (right_side.index.items.len > 0)
-                try ret[1].sides.append(right_side);
+            for (&self.sides, 0..) |*s, i| {
+                if (s.index.items.len > 0) {
+                    try ret[i].sides.append(s.*);
+                } else {
+                    s.deinit();
+                }
+            }
         }
-        try ret[0].verts.appendSlice(ret_verts.items);
-        try ret[1].verts.appendSlice(ret_verts.items);
-        if (split_side.index.items.len > 0) {
-            sortPolygonPoints(split_side.index.items, plane_norm, ret_verts.items);
-            try ret[0].sides.append(split_side);
-            var duped = try split_side.dupe();
+        if (self.split_side.index.items.len > 0) {
+            sortPolygonPoints(self.split_side.index.items, plane_norm, self.ret_verts.items);
+            try ret[0].sides.append(try self.split_side.dupe());
+            var duped = try self.split_side.dupe();
             duped.flipNormal();
             try ret[1].sides.append(duped);
         }
+        for (&self.mappers, 0..) |*m, i|
+            try m.buildSolid(&ret[i], self.ret_verts.items);
         return ret;
     }
 };
@@ -196,19 +277,22 @@ pub fn sortPolygonPoints(points: []u32, pn: Vec3, verts: []const Vec3) void {
 
 test "clip solid" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.detectLeaks();
     const alloc = gpa.allocator();
 
-    const sol = try Solid.initFromCube(alloc, Vec3.new(-1, -1, -1), Vec3.new(1, 1, 1), 0);
-    var ctx = ClipCtx{
-        .verts = std.ArrayList(VertKind).init(alloc),
-        .alloc = alloc,
-    };
+    var sol = try Solid.initFromCube(alloc, Vec3.new(-1, -1, -1), Vec3.new(1, 1, 1), 0);
+    defer sol.deinit();
+    var ctx = ClipCtx.init(alloc);
+    defer ctx.deinit();
     const p0 = Vec3.new(0, 0, 0);
     const pn = Vec3.new(1, 1, 1).norm();
-    const ret = try ctx.clipSolid(&sol, p0, pn);
+    var ret = try ctx.clipSolid(&sol, p0, pn);
 
     std.debug.print("\n", .{});
     const o = std.debug;
     const off = ret[0].printObj(0, "crass", o);
     _ = ret[1].printObj(off, "crass2", o);
+
+    for (&ret) |*r|
+        r.deinit();
 }

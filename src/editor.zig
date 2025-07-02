@@ -11,6 +11,7 @@ const csg = @import("csg.zig");
 const vtf = @import("vtf.zig");
 const fgd = @import("fgd.zig");
 const vvd = @import("vvd.zig");
+const clipper = @import("clip_solid.zig");
 const gameinfo = @import("gameinfo.zig");
 const profile = @import("profile.zig");
 const Gui = graph.Gui;
@@ -130,9 +131,10 @@ pub const Context = struct {
     /// Only real state is a timer, has helper functions for naming and pruning autosaves.
     autosaver: Autosaver,
 
-    /// These two have no real state, just exist to prevent excessive memory allocation.
+    /// These have no real state, just exist to prevent excessive memory allocation.
     rayctx: raycast.Ctx,
     csgctx: csg.Context,
+    clipctx: clipper.ClipCtx,
 
     /// Manages mounting of vpks and assigning a unique id to all resource string paths.
     vpkctx: vpk.Context,
@@ -353,6 +355,7 @@ pub const Context = struct {
             .tools = tool_def.ToolRegistry.init(alloc),
             .panes = eviews.PaneReg.init(alloc),
             .csgctx = try csg.Context.init(alloc),
+            .clipctx = clipper.ClipCtx.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
             .visgroups = VisGroups.init(alloc),
             .meshmap = ecs.MeshMap.init(alloc),
@@ -441,6 +444,7 @@ pub const Context = struct {
         self.scratch_buf.deinit();
         self.asset_browser.deinit();
         self.csgctx.deinit();
+        self.clipctx.deinit();
         self.vpkctx.deinit();
         self.skybox.deinit();
         self.frame_arena.deinit();
