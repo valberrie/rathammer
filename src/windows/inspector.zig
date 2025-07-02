@@ -207,7 +207,7 @@ pub const InspectorWindow = struct {
             const tool = self.editor.getCurrentTool() orelse return;
             const cb_fn = tool.gui_build_cb orelse return;
 
-            cb_fn(tool, self.editor, vt, gui, win);
+            cb_fn(tool, self, vt, gui, win);
         }
     }
 
@@ -781,6 +781,36 @@ pub const InspectorWindow = struct {
             .current = index,
             .count = self.editor.fgd_ctx.all_inputs.items.len,
         }, {}));
+    }
+
+    pub fn selectedTextureWidget(self: *Self, lay: *iArea, gui: *Gui, win: *iWindow, area: graph.Rect) void {
+        const ed = self.editor;
+        const sp = area.split(.vertical, area.w / 2);
+        if (ed.asset_browser.selected_mat_vpk_id) |id| {
+            const tex = ed.getTexture(id) catch return;
+            lay.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], tex, tex.rect(), .{}));
+        }
+        {
+            const max = 16;
+            var tly = guis.TableLayout{ .columns = 4, .item_height = sp[1].h / 4, .bounds = sp[1] };
+            const recent_list = ed.asset_browser.recent_mats.list.items;
+            for (recent_list[0..@min(max, recent_list.len)], 0..) |rec, id| {
+                const tex = ed.getTexture(rec) catch return;
+                lay.addChildOpt(gui, win, Wg.GLTexture.build(gui, tly.getArea(), tex, tex.rect(), .{
+                    .cb_vt = &self.area,
+                    .cb_fn = recent_texture_btn_cb,
+                    .id = id,
+                }));
+            }
+        }
+    }
+
+    pub fn recent_texture_btn_cb(vt: *guis.iArea, id: usize, _: *Gui, _: *guis.iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        const asb = &self.editor.asset_browser;
+        if (id >= asb.recent_mats.list.items.len) return;
+        asb.selected_mat_vpk_id = asb.recent_mats.list.items[id];
+        self.vt.needs_rebuild = true;
     }
 };
 

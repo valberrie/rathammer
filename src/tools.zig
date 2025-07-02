@@ -23,8 +23,8 @@ const RGui = guis.Gui;
 const iArea = guis.iArea;
 const iWindow = guis.iWindow;
 const Wg = guis.Widget;
-const AssetBrowser = @import("asset_browser.zig").AssetBrowserGui;
 
+const Inspector = @import("windows/inspector.zig").InspectorWindow;
 //todo
 //extrude tool
 //clipping tool
@@ -43,7 +43,7 @@ pub const i3DTool = struct {
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
 
-    gui_build_cb: ?*const fn (*@This(), *Editor, *iArea, *RGui, *iWindow) void = null,
+    gui_build_cb: ?*const fn (*@This(), *Inspector, *iArea, *RGui, *iWindow) void = null,
 };
 
 const ToolError = error{
@@ -365,7 +365,7 @@ pub const VertexTranslate = struct {
         }
     }
 
-    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+    pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         const doc =
             \\This is the vertex translate tool.
@@ -431,7 +431,7 @@ pub const CubeDraw = struct {
         draw.rectTex(r, rec, editor.asset_atlas);
     }
 
-    pub fn buildGui(vt: *i3DTool, ed: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+    pub fn buildGui(vt: *i3DTool, inspector: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         const doc =
             \\This is the cube draw tool
@@ -454,24 +454,26 @@ pub const CubeDraw = struct {
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
         const ar = ly.getArea() orelse return;
-        const sp = ar.split(.vertical, ar.w / 2);
-        if (ed.asset_browser.selected_mat_vpk_id) |id| {
-            const tex = ed.getTexture(id) catch return;
-            area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], tex, tex.rect(), .{}));
-        }
-        {
-            const max = 16;
-            var tly = guis.TableLayout{ .columns = 4, .item_height = sp[1].h / 4, .bounds = sp[1] };
-            const recent_list = ed.asset_browser.recent_mats.list.items;
-            for (recent_list[0..@min(max, recent_list.len)], 0..) |rec, id| {
-                const tex = ed.getTexture(rec) catch return;
-                area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, tly.getArea(), tex, tex.rect(), .{
-                    .cb_vt = &ed.asset_browser.gui_vt,
-                    .cb_fn = AssetBrowser.recent_texture_btn_cb,
-                    .id = id,
-                }));
-            }
-        }
+        inspector.selectedTextureWidget(area_vt, gui, win, ar);
+
+        //const sp = ar.split(.vertical, ar.w / 2);
+        //if (ed.asset_browser.selected_mat_vpk_id) |id| {
+        //    const tex = ed.getTexture(id) catch return;
+        //    area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], tex, tex.rect(), .{}));
+        //}
+        //{
+        //    const max = 16;
+        //    var tly = guis.TableLayout{ .columns = 4, .item_height = sp[1].h / 4, .bounds = sp[1] };
+        //    const recent_list = ed.asset_browser.recent_mats.list.items;
+        //    for (recent_list[0..@min(max, recent_list.len)], 0..) |rec, id| {
+        //        const tex = ed.getTexture(rec) catch return;
+        //        area_vt.addChildOpt(gui, win, Wg.GLTexture.build(gui, tly.getArea(), tex, tex.rect(), .{
+        //            .cb_vt = &ed.asset_browser.gui_vt,
+        //            .cb_fn = AssetBrowser.recent_texture_btn_cb,
+        //            .id = id,
+        //        }));
+        //    }
+        //}
     }
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
@@ -829,7 +831,7 @@ pub const FastFaceManip = struct {
         }
     }
 
-    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+    pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         _ = self;
         const doc =
@@ -1113,7 +1115,7 @@ pub const Translate = struct {
         }
     }
 
-    pub fn buildGui(vt: *i3DTool, _: *Editor, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+    pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         _ = self;
         const doc =
@@ -1149,6 +1151,7 @@ pub const TextureTool = struct {
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
             .gui_fn = &@This().doGui,
+            .gui_build_cb = &buildGui,
         } };
         return &obj.vt;
     }
@@ -1173,6 +1176,23 @@ pub const TextureTool = struct {
     pub fn doGui(vt: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         self.doGuiErr(os9gui, editor, vl) catch return;
+    }
+
+    pub fn buildGui(vt: *i3DTool, inspector: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const doc =
+            \\This is the Texture tool.
+            \\Right click applies the selected texture
+            \\Holding q and right clicking picks the texture
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{ .mode = .split_on_space }));
+        const tex_w = area_vt.area.w / 2;
+        ly.pushHeight(tex_w);
+        const ar = ly.getArea() orelse return;
+        inspector.selectedTextureWidget(area_vt, gui, win, ar);
     }
 
     pub fn doGuiErr(self: *@This(), os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) !void {

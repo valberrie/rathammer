@@ -91,9 +91,6 @@ pub const AssetBrowserGui = struct {
     dialog_state: ?DialogState = null,
 
     recent_mats: RecentsList,
-    /// This is a bit hacky, only used to get a pointer into this struct
-    /// In the future , gui should use a cb_handle or something pointer instead
-    gui_vt: guis.iArea = undefined,
 
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
@@ -412,11 +409,5 @@ pub const AssetBrowserGui = struct {
             }
             //os9gui.endTabs();
         }
-    }
-
-    pub fn recent_texture_btn_cb(vt: *guis.iArea, id: usize, _: *RGui, _: *guis.iWindow) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("gui_vt", vt));
-        if (id >= self.recent_mats.list.items.len) return;
-        self.selected_mat_vpk_id = self.recent_mats.list.items[id];
     }
 };
