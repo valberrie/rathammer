@@ -217,10 +217,11 @@ pub const ClipCtx = struct {
                                 const index: u32 = @intCast(self.ret_verts.items.len);
                                 try self.vert_map.put(int, index);
                                 try self.ret_verts.append(int);
+                                // ! only put the vertex into new side once
+                                try self.split_side.index.append(index);
                             }
                             const in = self.vert_map.get(int) orelse return error.broken;
                             try self.putBoth(in);
-                            try self.split_side.index.append(in);
                             //Make a new vertex;
 
                         }

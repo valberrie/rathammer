@@ -330,8 +330,8 @@ pub const Side = struct {
     u: UVaxis = .{},
     v: UVaxis = .{},
     tex_id: vpk.VpkResId = 0,
-    tw: i32 = 0,
-    th: i32 = 0,
+    tw: i32 = 10,
+    th: i32 = 10,
 
     lightmapscale: i32 = 16,
     smoothing_groups: i32 = 0,
