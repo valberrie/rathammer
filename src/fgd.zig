@@ -594,6 +594,7 @@ pub fn loadFgd(ctx: *EntCtx, base_dir: std.fs.Dir, path: []const u8) !void {
     };
 }
 
+var mask_default_buf: [100]u8 = undefined;
 pub const ParseCtx = struct {
     const Self = @This();
     tkz: FgdTokenizer,
@@ -809,7 +810,7 @@ pub const ParseCtx = struct {
                 try self.parseModifier();
 
                 const dat = try self.parseKVCommon(ctx);
-                const tt = try self.parseKvType(ctx, type_tok);
+                const tt = try self.parseKvType(ctx, type_tok, &mask_default_buf);
                 const new_type = tt[0];
                 const mask_default = tt[1];
                 try new_class.addField(.{
@@ -895,7 +896,7 @@ pub const ParseCtx = struct {
     }
 
     /// Some kvs define extra type data like choices flags etc, this parses that
-    pub fn parseKvType(self: *Self, ctx: *EntCtx, type_tok: Token) !struct { EntClass.Field.Type, ?[]const u8 } {
+    pub fn parseKvType(self: *Self, ctx: *EntCtx, type_tok: Token, default_buf: []u8) !struct { EntClass.Field.Type, ?[]const u8 } {
         const buf = &self.scratch_buf;
         const tkz = &self.tkz;
         var default_str: ?[]const u8 = null;
@@ -958,6 +959,7 @@ pub const ParseCtx = struct {
                     buf.clearRetainingCapacity();
                     try buf.writer().print("{d}", .{def_mask});
                     default_str = buf.items;
+                    std.debug.print("DEFAULT FLAGS {s}\n", .{default_str.?});
                     new_type = .{ .flags = new_flags };
                 },
                 .color255 => new_type = .{ .color255 = {} },
@@ -970,7 +972,16 @@ pub const ParseCtx = struct {
             //std.debug.print("TYPE {s}\n", .{tkz.getSlice(type_tok)});
             //_ = try tkz.expectNext(.newline);
         }
-        return .{ new_type, default_str };
+        const defalt = blk: {
+            if (default_str) |dstr| {
+                const len = @min(dstr.len, default_buf.len);
+                @memcpy(default_buf[0..len], dstr);
+                break :blk default_buf[0..len];
+            } else {
+                break :blk null;
+            }
+        };
+        return .{ new_type, defalt };
     }
 };
 

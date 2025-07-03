@@ -10,6 +10,7 @@ const iWindow = guis.iWindow;
 const iArea = guis.iArea;
 const Wg = guis.Widget;
 const Context = @import("../editor.zig").Context;
+const label = guis.label;
 pub const PauseWindow = struct {
     const Buttons = enum {
         unpause,
@@ -158,14 +159,17 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
             }
 
-            vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &ds.cam3d.fwd_back_kind));
-            vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.editor.edit_state.default_group_entity));
+            if (guis.label(vt, gui, win, ly.getArea(), "Camera move kind", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &ds.cam3d.fwd_back_kind, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "New entity type", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.edit_state.default_group_entity, .{}));
             vt.addChildOpt(gui, win, Wg.Slider.build(gui, ly.getArea(), &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
 
-            vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ly.getArea(), &self.ent_select, win, .{
-                .commit_vt = &self.area,
-                .commit_cb = &commitCb,
-            }));
+            if (label(vt, gui, win, ly.getArea(), "Select entity id", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ar, &self.ent_select, win, .{
+                    .commit_vt = &self.area,
+                    .commit_cb = &commitCb,
+                }));
 
             //ly.pushHeight(Wg.TextView.heightForN(gui, 4));
             ly.pushRemaining();

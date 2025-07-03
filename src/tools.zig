@@ -379,7 +379,8 @@ pub const VertexTranslate = struct {
         }));
 
         //area_vt.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "select one", .{ .bool_ptr = &self. }, null));
-        area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.selection_mode));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Selection mode", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.selection_mode, .{}));
     }
 };
 //double computeDistance(vec3 A, vec3 B, vec3 C) {
@@ -449,7 +450,8 @@ pub const CubeDraw = struct {
             .mode = .split_on_space,
         }));
 
-        area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ly.getArea(), &self.post_state));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Post draw state", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.post_state, .{}));
         area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Use custom Height", .{ .bool_ptr = &self.use_custom_height }, null));
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);

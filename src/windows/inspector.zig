@@ -115,11 +115,17 @@ pub const InspectorWindow = struct {
         const a = &self.area;
 
         const ds = &self.editor.draw_state;
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
-        a.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
-
+        {
+            var hy = guis.HorizLayout{
+                .bounds = ly.getArea() orelse return,
+                .count = 4,
+            };
+            const CB = Wg.Checkbox.build;
+            a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
+            a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
+            a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
+            a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
+        }
         //self.buildErr(gui, &ly) catch {};
         ly.pushRemaining();
         a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io", "tool" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
@@ -155,6 +161,7 @@ pub const InspectorWindow = struct {
             ly.padding.top = 10;
 
             const names = [6][]const u8{ "Listen", "target", "input", "value", "delay", "fc" };
+            const BetterNames = [names.len][]const u8{ "My output named", "Target entities named", "Via this input", "With a parameter of", "After a delay is seconds of", "Limit to this many fires" };
             vt.addChildOpt(gui, win, Wg.DynamicTable.build(gui, sp[0], win, .{
                 .column_positions = &self.io_columns_width,
                 .column_names = &names,
@@ -169,9 +176,10 @@ pub const InspectorWindow = struct {
             const cons = self.getConsPtr() orelse return;
             if (self.selected_io_index < cons.list.items.len) {
                 const li = &cons.list.items[self.selected_io_index];
-                for (names, 0..) |n, i| {
+                for (BetterNames, 0..) |n, i| {
                     const ar = ly.getArea() orelse break;
                     const sp1 = ar.split(.vertical, ar.w / 2);
+
                     vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, sp1[0], n, null));
                     switch (i) {
                         0 => self.buildOutputCombo(vt, gui, win, sp1[1]),
@@ -241,13 +249,14 @@ pub const InspectorWindow = struct {
                     }
                 };
                 self.selected_class_id = ed.fgd_ctx.getId(ent.class);
-                lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, aa, .{
-                    .user_vt = &self.area,
-                    .commit_cb = &Lam.commit,
-                    .name_cb = &Lam.name,
-                    .current = self.selected_class_id orelse 0,
-                    .count = self.editor.fgd_ctx.ents.items.len,
-                }, {}));
+                if (guis.label(lay, gui, win, aa, "Ent Class", .{})) |ar|
+                    lay.addChildOpt(gui, win, Wg.ComboUser(void).build(gui, ar, .{
+                        .user_vt = &self.area,
+                        .commit_cb = &Lam.commit,
+                        .name_cb = &Lam.name,
+                        .current = self.selected_class_id orelse 0,
+                        .count = self.editor.fgd_ctx.ents.items.len,
+                    }, {}));
                 lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ly.getArea(), .{ .init_string = ent.class }));
                 const eclass = ed.fgd_ctx.getPtr(ent.class) orelse return;
                 const fields = eclass.field_data.items;
