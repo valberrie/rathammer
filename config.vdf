@@ -13,7 +13,7 @@ keys {
 
     select          scancode:E
     clear_selection ctrl+scancode:E
-    delete_selected scancode:X
+    delete_selected ctrl+scancode:X
 
     grid_inc        scancode:R
     grid_dec        scancode:F

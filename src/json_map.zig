@@ -76,6 +76,7 @@ const JsonMap = struct {
     editor: JsonEditor,
     sky_name: []const u8,
     objects: []const std.json.Value,
+    extra: std.json.Value = .{ .null = {} },
 };
 
 pub const InitFromJsonCtx = struct {
@@ -94,7 +95,7 @@ pub fn loadJson(
 ) !std.json.Parsed(JsonMap) {
     var aa = std.heap.ArenaAllocator.init(ctx.alloc);
     defer aa.deinit();
-    const parsed = try std.json.parseFromSlice(JsonMap, ctx.alloc, slice, .{});
+    const parsed = try std.json.parseFromSlice(JsonMap, ctx.alloc, slice, .{ .ignore_unknown_fields = true });
     loadctx.cb("json parsed");
 
     const obj_o = parsed.value.objects;

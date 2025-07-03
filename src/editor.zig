@@ -524,10 +524,19 @@ pub const Context = struct {
         try jwr.beginObject();
         {
             try jwr.objectField("editor");
-            try jwr.write(.{
+            try jwr.write(JsonEditor{
                 .cam = JsonCamera.fromCam(self.draw_state.cam3d),
                 .map_json_version = "0.0.1",
             });
+
+            try jwr.objectField("extra");
+            {
+                try jwr.beginObject();
+                try jwr.objectField("recent_mat");
+                try self.writeComponentToJson(&jwr, self.asset_browser.recent_mats.list);
+                try jwr.endObject();
+            }
+
             try jwr.objectField("sky_name");
             try jwr.write(self.skybox.sky_name);
             try jwr.objectField("objects");
@@ -801,6 +810,17 @@ pub const Context = struct {
 
         try self.skybox.loadSky(try self.storeString(parsed.value.sky_name), &self.vpkctx);
         parsed.value.editor.cam.setCam(&self.draw_state.cam3d);
+        if (parsed.value.extra == .object) {
+            const ex = &parsed.value.extra;
+            if (std.json.parseFromValue(struct { recent_mat: [][]const u8 }, self.alloc, ex.*, .{})) |v| {
+                defer v.deinit();
+                for (v.value.recent_mat) |mat| {
+                    if (try self.vpkctx.resolveId(.{ .name = mat })) |id| {
+                        try self.asset_browser.recent_mats.put(id.id);
+                    }
+                }
+            } else |_| {} //This data is not essential to parse
+        }
 
         loadctx.cb("Building meshes}");
         try self.rebuildAllDependentState();
