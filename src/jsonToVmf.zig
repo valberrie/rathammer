@@ -28,7 +28,8 @@ fn sanatizeMaterialName(name: []const u8) []const u8 {
     const end_offset = if (std.mem.endsWith(u8, name, ".vmt")) ".vmt".len else 0;
     return name[start .. name.len - end_offset];
 }
-
+//TODO load fgd and prune fields
+//omit deleted entities!
 pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8, vpkmapper: anytype, groups: *ecs.Groups) !void {
     const outfile = try std.fs.cwd().createFile("dump.vmf", .{});
     defer outfile.close();
@@ -185,14 +186,6 @@ pub fn main() !void {
     var loadctx = LoadCtx{};
 
     if (args.json) |mapname| {
-        //const outfile = try std.fs.cwd().createFile("dump.vmf", .{});
-        //defer outfile.close();
-        //const wr = outfile.writer();
-        //var bwr = std.io.bufferedWriter(wr);
-        //defer bwr.flush() catch {};
-        //const bb = bwr.writer();
-        //var vr = vdf_serial.WriteVdf(@TypeOf(bb)).init(alloc, bb);
-
         const infile = std.fs.cwd().openFile(mapname, .{}) catch |err| {
             std.debug.print("Unable to open file: {s}, {!}\n", .{ mapname, err });
             std.process.exit(1);
