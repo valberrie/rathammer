@@ -190,7 +190,7 @@ pub const UndoTranslate = struct {
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
             ent.origin = ent.origin.add(self.vec.scale(-1));
-            ent.angle = ent.angle.sub(self.angle_delta);
+            ent.setAngle(editor, self.id, ent.angle.sub(self.angle_delta)) catch return;
             bb.setFromOrigin(ent.origin);
         }
     }
@@ -201,7 +201,7 @@ pub const UndoTranslate = struct {
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
             ent.origin = ent.origin.add(self.vec);
-            ent.angle = ent.angle.add(self.angle_delta);
+            ent.setAngle(editor, self.id, ent.angle.add(self.angle_delta)) catch return;
             bb.setFromOrigin(ent.origin);
         }
     }

@@ -249,6 +249,12 @@ pub const Entity = struct {
         return self.*;
     }
 
+    pub fn setAngle(self: *@This(), editor: *Editor, self_id: EcsT.Id, angle: Vec3) !void {
+        self.angle = angle;
+        if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs|
+            try kvs.putString("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
+    }
+
     pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
         const idAndName = try editor.vpkctx.resolveId(model) orelse return;
         self._model_id = idAndName.id;
