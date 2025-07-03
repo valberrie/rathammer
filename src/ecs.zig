@@ -360,7 +360,7 @@ pub const Side = struct {
         };
     }
 
-    pub fn normal(self: *@This(), solid: *Solid) Vec3 {
+    pub fn normal(self: *@This(), solid: *const Solid) Vec3 {
         const ind = self.index.items;
         if (ind.len < 3) return Vec3.zero();
         const v = solid.verts.items;
@@ -430,6 +430,28 @@ pub const Side = struct {
             try editor.writeComponentToJson(jw, self.smoothing_groups);
         }
         try jw.endObject();
+    }
+
+    pub fn resetUv(self: *@This(), norm: Vec3) void {
+        var n: u8 = 0;
+        var dist: f32 = 0;
+        const vs = [3]Vec3{ Vec3.new(1, 0, 0), Vec3.new(0, 1, 0), Vec3.new(0, 0, 1) };
+        for (vs, 0..) |v, i| {
+            const d = @abs(norm.dot(v));
+            if (d > dist) {
+                n = @intCast(i);
+                dist = d;
+            }
+        }
+        //0 -> 1 2
+        //1 -> 0 2
+        //2 -> 1 0
+
+        const v: u8 = if (n == 2) 0 else 2;
+        const u: u8 = if (n == 1) 0 else 1;
+
+        self.u = .{ .axis = vs[u], .trans = 0, .scale = 0.25 };
+        self.v = .{ .axis = vs[v], .trans = 0, .scale = 0.25 };
     }
 };
 

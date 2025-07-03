@@ -423,6 +423,9 @@ pub const Context = struct {
         const ORG = "rathammer";
         const APP = "";
         const path = graph.c.SDL_GetPrefPath(ORG, APP);
+        if (path == null) {
+            log.err("Unable to make pref path", .{});
+        }
         const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
         const autosave = try pref.makeOpenPath("autosave", .{});
 
@@ -441,7 +444,7 @@ pub const Context = struct {
         try self.tools.register("place_model", tool_def.PlaceModel);
         try self.tools.register("cube_draw", tool_def.CubeDraw);
         try self.tools.register("fast_face", tool_def.FastFaceManip);
-        try self.tools.register("texture", tool_def.TextureTool);
+        try self.tools.registerCustom("texture", tool_def.TextureTool, try tool_def.TextureTool.create(self.alloc, self));
         try self.tools.register("vertex", tool_def.VertexTranslate);
         try self.tools.register("clip", tool_def.Clipping);
     }

@@ -5,6 +5,8 @@ const graph = @import("graph");
 const csg = @import("csg.zig");
 const Vec3 = graph.za.Vec3;
 const Side = ecs.Side;
+const vpk = @import("vpk.zig");
+const util_3d = @import("util_3d.zig");
 //
 // planes intersect if n1 cross n2 != 0
 
@@ -180,7 +182,7 @@ pub const ClipCtx = struct {
         try self.putOne(1, ind);
     }
 
-    pub fn clipSolid(self: *Self, solid: *const Solid, plane_p0: Vec3, plane_norm: Vec3) ![2]Solid {
+    pub fn clipSolid(self: *Self, solid: *const Solid, plane_p0: Vec3, plane_norm: Vec3, tex_id: ?vpk.VpkResId) ![2]Solid {
         self.reset();
         const w = VertKind.getW(plane_p0, plane_norm);
         for (solid.verts.items) |v| {
@@ -243,12 +245,14 @@ pub const ClipCtx = struct {
                 }
             }
         }
-        if (self.split_side.index.items.len > 0) {
+        if (self.split_side.index.items.len >= 3) {
             sortPolygonPoints(self.split_side.index.items, plane_norm, self.ret_verts.items);
-            std.debug.print("SIDE START\n", .{});
-            for (self.split_side.index.items) |item| {
-                std.debug.print("{d} :{any}\n", .{ item, self.ret_verts.items[item] });
-            }
+            const rv = self.ret_verts.items;
+            const it = self.split_side.index.items;
+            const plane = util_3d.trianglePlane(.{ rv[it[0]], rv[it[1]], rv[it[2]] });
+            self.split_side.tex_id = tex_id orelse 0;
+
+            self.split_side.resetUv(plane);
             try ret[0].sides.append(try self.split_side.dupe());
             var duped = try self.split_side.dupe();
             duped.flipNormal();

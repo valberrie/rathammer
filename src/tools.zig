@@ -1136,23 +1136,34 @@ pub const Translate = struct {
 
 pub const TextureTool = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
+    const GuiBtnEnum = enum {
+        reset,
+    };
     vt: i3DTool,
     id: ?ecs.EcsT.Id = null,
     face_index: ?u32 = 0,
 
     state: enum { pick, apply } = .apply,
+    ed: *Editor,
+
+    // Only used for a pointer
+    // todo, fix the gui stuff
+    cb_vt: iArea = undefined,
 
     //Left click to select a face,
     //right click to apply texture to any face
-    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+    pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
         var obj = try alloc.create(@This());
-        obj.* = .{ .vt = .{
-            .deinit_fn = &@This().deinit,
-            .runTool_fn = &@This().runTool,
-            .tool_icon_fn = &@This().drawIcon,
-            .gui_fn = &@This().doGui,
-            .gui_build_cb = &buildGui,
-        } };
+        obj.* = .{
+            .vt = .{
+                .deinit_fn = &@This().deinit,
+                .runTool_fn = &@This().runTool,
+                .tool_icon_fn = &@This().drawIcon,
+                .gui_fn = &@This().doGui,
+                .gui_build_cb = &buildGui,
+            },
+            .ed = ed,
+        };
         return &obj.vt;
     }
 
@@ -1180,7 +1191,6 @@ pub const TextureTool = struct {
 
     pub fn buildGui(vt: *i3DTool, inspector: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
         const doc =
             \\This is the Texture tool.
             \\Right click applies the selected texture
@@ -1189,10 +1199,57 @@ pub const TextureTool = struct {
         var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
         ly.pushHeight(Wg.TextView.heightForN(gui, 4));
         area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{ .mode = .split_on_space }));
+        area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Reset face", .{
+            .cb_vt = &self.cb_vt,
+            .cb_fn = &btn_cb,
+            .id = @intFromEnum(GuiBtnEnum.reset),
+        }));
+        const e_id = self.id orelse return;
+        const f_id = self.face_index orelse return;
+        const solid = (self.ed.ecs.getOptPtr(e_id, .solid) catch null) orelse return;
+        if (f_id >= solid.sides.items.len) return;
+        const side = &solid.sides.items[f_id];
+        area_vt.addChildOpt(gui, win, Wg.Text.build(gui, ly.getArea(), "u {d} {d} {d}, {d}, {d}", .{
+            side.u.axis.x(),
+            side.u.axis.y(),
+            side.u.axis.z(),
+            side.u.trans,
+            side.u.scale,
+        }));
+        area_vt.addChildOpt(gui, win, Wg.Text.build(gui, ly.getArea(), "v {d} {d} {d}, {d}, {d}", .{
+            side.v.axis.x(),
+            side.v.axis.y(),
+            side.v.axis.z(),
+            side.v.trans,
+            side.v.scale,
+        }));
+        const norm = side.normal(solid);
+        area_vt.addChildOpt(gui, win, Wg.Text.build(gui, ly.getArea(), "norm {d} {d} {d}", .{
+            norm.x(),
+            norm.y(),
+            norm.z(),
+        }));
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
         const ar = ly.getArea() orelse return;
         inspector.selectedTextureWidget(area_vt, gui, win, ar);
+    }
+
+    pub fn btn_cb(vt: *iArea, id: usize, _: *RGui, _: *guis.iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+        switch (@as(GuiBtnEnum, @enumFromInt(id))) {
+            .reset => {
+                const e_id = self.id orelse return;
+                const f_id = self.face_index orelse return;
+                const solid = (self.ed.ecs.getOptPtr(e_id, .solid) catch null) orelse return;
+                if (f_id >= solid.sides.items.len) return;
+                const side = &solid.sides.items[f_id];
+                const norm = side.normal(solid);
+                side.resetUv(norm);
+                solid.rebuild(e_id, self.ed) catch return;
+                self.ed.draw_state.meshes_dirty = true;
+            },
+        }
     }
 
     pub fn doGuiErr(self: *@This(), os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) !void {
@@ -1682,7 +1739,7 @@ pub const Clipping = struct {
                 if (ed.isBindState(ed.config.keys.clip_commit.b, .rising)) {
                     const sel_side = self.selected_side orelse return;
                     const solid = try ed.ecs.getPtr(sel_side.id, .solid);
-                    var ret = try ed.clipctx.clipSolid(solid, p0, plane_n);
+                    var ret = try ed.clipctx.clipSolid(solid, p0, plane_n, ed.asset_browser.selected_mat_vpk_id);
 
                     for (&ret) |*r| {
                         const new = try ed.ecs.createEntity();
