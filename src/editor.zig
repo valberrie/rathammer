@@ -270,6 +270,8 @@ pub const Context = struct {
     edit_state: struct {
         default_group_entity: enum { none, func_detail } = .func_detail,
         tool_index: usize = 0,
+        /// Set when the currently selected tool is selected again
+        tool_reinit: bool = false,
         /// used to determine if the tool has changed
         last_frame_tool_index: usize = 0,
 
@@ -1220,10 +1222,15 @@ pub const Context = struct {
             ed.edit_state.grid_snap = std.math.clamp(ed.edit_state.grid_snap, 1, 4096);
             ds.tab_index = @min(ds.tab_index, tabs.len - 1);
 
+            ed.edit_state.tool_reinit = false;
             {
                 for (config.keys.tool.items, 0..) |b, i| {
-                    if (ed.isBindState(b.b, .rising))
+                    if (ed.isBindState(b.b, .rising)) {
+                        if (ed.edit_state.tool_index == i) {
+                            ed.edit_state.tool_reinit = true;
+                        }
                         ed.edit_state.tool_index = i;
+                    }
                 }
             }
         }

@@ -67,7 +67,7 @@ pub const ToolData = struct {
     view_3d: *const graph.za.Mat4,
     screen_area: graph.Rect,
     draw: *DrawCtx,
-    is_first_frame: bool,
+    state: enum { init, reinit, normal },
 };
 
 pub const ToolRegistryOld = struct {
@@ -244,7 +244,7 @@ pub const VertexTranslate = struct {
     }
 
     pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
-        if (td.is_first_frame)
+        if (td.state == .init)
             self.reset();
         const draw_nd = &ed.draw_state.ctx;
         const selected_slice = ed.selection.getSlice();
@@ -537,8 +537,9 @@ pub const CubeDraw = struct {
     }
     pub fn cubeDraw(tool: *@This(), self: *Editor, td: ToolData) !void {
         const draw = td.draw;
-        if (td.is_first_frame) { //First frame, reset state
-            tool.state = .start;
+        switch (td.state) {
+            .init, .reinit => tool.state = .start,
+            .normal => {},
         }
         const helper = struct {
             fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
@@ -706,7 +707,7 @@ pub const FastFaceManip = struct {
     }
 
     pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
-        if (td.is_first_frame)
+        if (td.state == .init)
             self.reset();
 
         const draw_nd = &editor.draw_state.ctx;
@@ -914,7 +915,7 @@ pub const Translate = struct {
 
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (td.is_first_frame)
+        if (td.state == .init)
             self.gizmo_rotation.reset();
 
         translate(self, editor, td) catch return error.fatal;
@@ -1632,7 +1633,7 @@ pub const Clipping = struct {
 
     //TODO put gizmos on the points
     pub fn runToolErr(self: *@This(), td: ToolData, ed: *Editor) !void {
-        if (td.is_first_frame)
+        if (td.state == .init)
             self.reset();
 
         const draw_nd = &ed.draw_state.ctx;
@@ -1739,17 +1740,23 @@ pub const Clipping = struct {
                     draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
                 }
                 if (ed.isBindState(ed.config.keys.clip_commit.b, .rising)) {
+                    self.state = .init;
                     const sel_side = self.selected_side orelse return;
                     const solid = try ed.ecs.getPtr(sel_side.id, .solid);
                     var ret = try ed.clipctx.clipSolid(solid, p0, plane_n, ed.asset_browser.selected_mat_vpk_id);
 
+                    const ustack = try ed.undoctx.pushNewFmt("Clip", .{});
+                    try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, sel_side.id, .destroy));
+
                     for (&ret) |*r| {
                         const new = try ed.ecs.createEntity();
+                        try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
                         try ed.ecs.attach(new, .solid, r.*);
                         try ed.ecs.attach(new, .bounding_box, .{});
                         const solid_ptr = try ed.ecs.getPtr(new, .solid);
                         try solid_ptr.translate(new, Vec3.zero(), ed);
                     }
+                    undo.applyRedo(ustack.items, ed);
                 }
             },
         }

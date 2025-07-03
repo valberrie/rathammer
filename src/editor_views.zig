@@ -285,7 +285,7 @@ pub fn draw3Dview(
         .screen_area = screen_area,
         .view_3d = &view_3d,
         .draw = draw,
-        .is_first_frame = self.edit_state.last_frame_tool_index != self.edit_state.tool_index,
+        .state = if (self.edit_state.last_frame_tool_index != self.edit_state.tool_index) .init else if (self.edit_state.tool_reinit) .reinit else .normal,
     };
     if (self.edit_state.tool_index < self.tools.vtables.items.len) {
         const vt = self.tools.vtables.items[self.edit_state.tool_index];
