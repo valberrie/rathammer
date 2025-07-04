@@ -77,7 +77,7 @@ window {
 games {
     basic_hl2 {
         base_dir    "Half-Life 2" 
-        game_dir    "Half-Life 2/hl2" 
+        game_dir    "Half-Life 2/hl2_complete" 
         fgd_dir     "Half-Life 2/bin"
 
         //Relative to fgd_dir. fgd's can include other fgd's so setting 

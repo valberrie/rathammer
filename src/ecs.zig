@@ -393,15 +393,16 @@ pub const Side = struct {
         const offset = mesh.vertices.items.len;
         for (side.index.items, 0..) |v_i, i| {
             const v = solid.verts.items[v_i];
+            const norm = side.normal(solid);
             try mesh.vertices.append(.{
                 .x = v.x(),
                 .y = v.y(),
                 .z = v.z(),
                 .u = uvs[i].x(),
                 .v = uvs[i].y(),
-                .nx = 0,
-                .ny = 0,
-                .nz = 0,
+                .nx = norm.x(),
+                .ny = norm.y(),
+                .nz = norm.z(),
                 .color = 0xffffffff,
             });
         }

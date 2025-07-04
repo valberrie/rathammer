@@ -163,7 +163,8 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &ds.cam3d.fwd_back_kind, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "New entity type", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.edit_state.default_group_entity, .{}));
-            vt.addChildOpt(gui, win, Wg.Slider.build(gui, ly.getArea(), &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
+            if (guis.label(vt, gui, win, ly.getArea(), "Entity render distance", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
 
             if (label(vt, gui, win, ly.getArea(), "Select entity id", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ar, &self.ent_select, win, .{
