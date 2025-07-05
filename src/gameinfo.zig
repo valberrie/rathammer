@@ -61,7 +61,7 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
                 if (std.mem.endsWith(u8, path, ".vpk")) {
                     loadctx.printCb("mounting: {s}", .{path});
                     if ((std.mem.indexOfPos(u8, path, 0, "sound") == null)) {
-                        vpkctx.addDir(dir, path) catch |err| {
+                        vpkctx.addDir(dir, path, loadctx) catch |err| {
                             log.err("Failed to mount vpk {s} with error {}", .{ path, err });
                         };
                     }

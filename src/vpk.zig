@@ -300,7 +300,7 @@ pub const Context = struct {
 
     /// the vpk_set: hl2_pak.vpk -> hl2_pak_dir.vpk . This matches the way gameinfo.txt does it
     /// The passed in root dir must remain alive.
-    pub fn addDir(self: *Self, root: std.fs.Dir, vpk_set: []const u8) !void {
+    pub fn addDir(self: *Self, root: std.fs.Dir, vpk_set: []const u8, loadctx: anytype) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
         if (!std.mem.endsWith(u8, vpk_set, ".vpk")) {
@@ -365,7 +365,9 @@ pub const Context = struct {
 
                 //std.debug.print("{d} {d} {d} {d}\n", .{ tree_size, filedata_section_size, archive_md5_sec_size, sig_sec_size });
 
+                loadctx.addExpected(10);
                 while (true) {
+                    loadctx.printCb("Dir mounted {d:.2}%", .{@as(f32, @floatFromInt(fbs.pos)) / @as(f32, @floatFromInt(self.filebuf.items.len + 1)) * 100});
                     const ext = try readString(r, &strbuf);
                     if (ext.len == 0)
                         break;

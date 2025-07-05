@@ -34,10 +34,10 @@ fn flush_cb() void {
 }
 
 pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, pause_win: *PauseWindow, gui: *G.Gui, gui_dstate: G.DrawState, loadctx: *edit.LoadCtx, editor: *Editor) !enum { cont, exit, unpause } {
-    if (pause_win.should_exit)
-        return .exit;
     if (!editor.paused)
         return .unpause;
+    if (win.isBindState(editor.config.keys.quit.b, .rising) or pause_win.should_exit)
+        return .exit;
     win.pumpEvents(.wait);
     win.grabMouse(false);
     try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
@@ -135,6 +135,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     draw.preflush_cb = &flush_cb;
     font_ptr = os9gui.ofont;
 
+    loadctx.cb("Loading gui");
     var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try std.fs.cwd().openDir("ratgraph", .{}), &font.font);
     defer gui.deinit();
     gui.style.config.default_item_h = scaled_item_height;
@@ -173,7 +174,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
                 .exit => break,
                 .unpause => break,
-                else => {},
+                .cont => continue,
             }
         }
     }
