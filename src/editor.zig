@@ -726,8 +726,8 @@ pub const Context = struct {
             try res.contains.put(new, {});
 
             if (side.dispinfo.power != -1) {
-                for (newsolid.sides.items) |*sp|
-                    sp.omit_from_batch = true;
+                //for (newsolid.sides.items) |*sp|
+                //    sp.Displacement_id = true;
                 const disp_id = try self.ecs.createEntity();
                 var disp_gen = try Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
                 try disp_gen.genVerts(&newsolid, self);

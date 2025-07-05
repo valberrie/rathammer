@@ -73,6 +73,15 @@ pub fn WriteVdf(out_stream_T: type) type {
             self.state = .expecting_value;
         }
 
+        pub fn printKey(self: *Self, comptime fmt: []const u8, args: anytype) !void {
+            if (self.state != .expecting_key)
+                return error.invalidState;
+            try self.indent();
+            try self.out_stream.print(fmt, args);
+            _ = try self.out_stream.write(" ");
+            self.state = .expecting_value;
+        }
+
         pub fn beginObject(self: *Self) !void {
             if (self.state != .expecting_value)
                 return error.invalidState;
@@ -141,7 +150,7 @@ pub fn WriteVdf(out_stream_T: type) type {
         pub fn writeAnyValue(self: *Self, value: anytype) !void {
             const info = @typeInfo(@TypeOf(value));
             switch (info) {
-                .int, .comptime_int => try self.printValue("\"{d}\"\n", .{value}),
+                .int, .comptime_int, .float => try self.printValue("\"{d}\"\n", .{value}),
                 .pointer => |p| {
                     if (p.child == u8) {
                         try self.printValue("\"{s}\"\n", .{value});

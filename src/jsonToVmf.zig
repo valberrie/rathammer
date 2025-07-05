@@ -28,8 +28,10 @@ fn sanatizeMaterialName(name: []const u8) []const u8 {
     const end_offset = if (std.mem.endsWith(u8, name, ".vmt")) ".vmt".len else 0;
     return name[start .. name.len - end_offset];
 }
+//How do we do the thing with disp
+//Rathammer stores disp as seperate entity
+
 //TODO load fgd and prune fields
-//omit deleted entities!
 pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8, vpkmapper: anytype, groups: *ecs.Groups) !void {
     const outfile = try std.fs.cwd().createFile("dump.vmf", .{});
     defer outfile.close();
@@ -92,7 +94,7 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
 
             //if (solid._parent_entity != null) continue;
 
-            try writeSolid(&vr, solids.i, solid, &side_id_start, vpkmapper);
+            try writeSolid(&vr, solids.i, solid, &side_id_start, vpkmapper, ecs_p);
         }
         try vr.endObject(); //world
 
@@ -165,7 +167,7 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                 if (group_ent_map.get(group)) |list| {
                     for (list.items) |solid_i| {
                         const solid = try ecs_p.getOptPtr(solid_i, .solid) orelse continue;
-                        try writeSolid(&vr, solid_i, solid, &side_id_start, vpkmapper);
+                        try writeSolid(&vr, solid_i, solid, &side_id_start, vpkmapper, ecs_p);
                     }
                 }
             }
@@ -229,7 +231,7 @@ fn ensurePlanar(index: []const u32) ?[3]u32 {
     return null;
 }
 
-fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start: *usize, vpkmapper: anytype) !void {
+fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start: *usize, vpkmapper: anytype, ecs_p: *ecs.EcsT) !void {
     try vr.writeKey("solid");
     try vr.beginObject();
     {
@@ -263,9 +265,60 @@ fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start
                 try vr.writeKv("rotation", @as(i32, 0));
                 try vr.writeKv("lightmapscale", side.lightmapscale);
                 try vr.writeKv("smoothing_groups", side.smoothing_groups);
+
+                if (side.displacement_id) |disp_id| {
+                    if (try ecs_p.getOptPtr(disp_id, .displacement)) |disp|
+                        try writeDisp(vr, disp);
+                }
             }
             try vr.endObject();
         }
+    }
+    try vr.endObject();
+}
+
+fn writeDisp(vr: anytype, disp: *ecs.Displacement) !void {
+    try vr.writeKey("dispinfo");
+    try vr.beginObject();
+    {
+        try vr.writeKv("power", disp.power);
+        try vr.writeKey("startposition");
+        try vr.printValue("\"[{d} {d} {d}]\"\n", .{ disp.start_pos.x(), disp.start_pos.y(), disp.start_pos.z() });
+        try vr.writeKv("elevation", disp.elevation);
+        const vper_row = std.math.pow(u32, 2, disp.power) + 1;
+        try vr.writeKey("normals");
+        try writeDispRow(graph.za.Vec3, vr, disp.normals.items, vper_row);
+        try vr.writeKey("offset_normals");
+        try writeDispRow(graph.za.Vec3, vr, disp.normal_offsets.items, vper_row);
+        try vr.writeKey("offsets");
+        try writeDispRow(graph.za.Vec3, vr, disp.offsets.items, vper_row);
+        try vr.writeKey("distances");
+        try writeDispRow(f32, vr, disp.dists.items, vper_row);
+        try vr.writeKey("alphas");
+        try writeDispRow(f32, vr, disp.alphas.items, vper_row);
+    }
+    try vr.endObject();
+}
+
+fn writeDispRow(comptime T: type, vr: anytype, items: []const T, row_w: usize) !void {
+    try vr.beginObject();
+    if (items.len != row_w * row_w) return error.notSquare;
+    for (0..row_w) |row_i| {
+        try vr.printKey("row{d}", .{row_i});
+        try vr.beginValue();
+        const c_i = row_i * row_w;
+        switch (T) {
+            graph.za.Vec3 => {
+                for (items[c_i .. c_i + row_w]) |vec|
+                    try vr.printInnerValue("{d} {d} {d} ", .{ vec.x(), vec.y(), vec.z() });
+            },
+            f32 => {
+                for (items[c_i .. c_i + row_w]) |vec|
+                    try vr.printInnerValue("{d} ", .{vec});
+            },
+            else => @compileError("implement"),
+        }
+        try vr.endValue();
     }
     try vr.endObject();
 }

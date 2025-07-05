@@ -334,8 +334,7 @@ pub const Side = struct {
         trans: f32 = 0,
         scale: f32 = 0.25,
     };
-    //Used to disable when a displacment is created on a side
-    omit_from_batch: bool = false,
+    displacement_id: ?EcsT.Id = null,
     index: std.ArrayList(u32) = undefined,
     u: UVaxis = .{},
     v: UVaxis = .{},
@@ -378,7 +377,7 @@ pub const Side = struct {
     }
 
     pub fn rebuild(side: *@This(), solid: *Solid, batch: *MeshBatch, editor: *Editor) !void {
-        if (side.omit_from_batch)
+        if (side.displacement_id != null) //don't draw this sideit
             return;
         side.tex_id = batch.tex_res_id;
         side.tw = batch.tex.w;
@@ -834,7 +833,7 @@ pub const Displacement = struct {
         self.tex_id = batch.tex_res_id;
         const solid = try editor.ecs.getOptPtr(self.parent_id, .solid) orelse return;
         if (self.parent_side_i >= solid.sides.items.len) return;
-        solid.sides.items[self.parent_side_i].omit_from_batch = true;
+        solid.sides.items[self.parent_side_i].displacement_id = id;
 
         self._verts.clearRetainingCapacity();
         self._index.clearRetainingCapacity();
