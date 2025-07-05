@@ -65,15 +65,16 @@ pub fn main() !void {
         },
     });
 }
-
-//Does not keep track of memory
-pub fn buildmap(alloc: std.mem.Allocator, args: struct {
+pub const Paths = struct {
     gamename: []const u8,
     gamedir_pre: []const u8,
     tmpdir: []const u8,
     outputdir: []const u8,
     vmf: []const u8,
-}) !void {
+};
+
+//Does not keep track of memory
+pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
     //defer _ = gpa.detectLeaks();
 
     const cwd = std.fs.cwd();

@@ -37,6 +37,7 @@ const json_map = @import("json_map.zig");
 const DISABLE_SPLASH = false;
 const GroupId = ecs.Groups.GroupId;
 const eviews = @import("editor_views.zig");
+const path_guess = @import("path_guess.zig");
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
@@ -320,6 +321,7 @@ pub const Context = struct {
         args: anytype,
         win_ptr: *graph.SDL.Window,
         loadctx: *LoadCtx,
+        env: *std.process.EnvMap,
     ) !*Self {
         var ret = try alloc.create(Context);
         ret.* = .{
@@ -368,12 +370,12 @@ pub const Context = struct {
         };
         //If an error occurs during initilization it is fatal so there is no reason to clean up resources.
         //Thus we call, defer editor.deinit(); after all is initialized..
-        try ret.postInit(args, loadctx);
+        try ret.postInit(args, loadctx, env);
         return ret;
     }
 
     /// Called by init
-    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx) !void {
+    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx, env: *std.process.EnvMap) !void {
         if (self.config.default_game.len == 0) {
             std.debug.print("config.vdf must specify a default_game!\n", .{});
             return error.incompleteConfig;
@@ -385,7 +387,22 @@ pub const Context = struct {
         };
         self.game_conf = game_conf;
 
-        const cwd = if (args.custom_cwd) |cc| util.openDirFatal(std.fs.cwd(), cc, .{}, "") else std.fs.cwd();
+        //args.custom_cwd overrides everything
+        const cwd = if (args.custom_cwd) |cc| util.openDirFatal(std.fs.cwd(), cc, .{}, "") else blk: {
+            if (self.config.paths.steam_dir.len > 0) {
+                const p = self.config.paths.steam_dir;
+                if (std.fs.cwd().openDir(p, .{})) |steam_dir| {
+                    log.info("Opened config.paths.steam_dir: {s}", .{p});
+                    break :blk steam_dir;
+                } else |err| {
+                    log.err("Failed to open config.paths.steam_dir: {s}, with error {!}", .{ p, err });
+                }
+            }
+            break :blk try path_guess.guessSteamPath(env, self.alloc) orelse {
+                log.info("Failed to guess steam path, defaulting to exe cwd ", .{});
+                break :blk std.fs.cwd();
+            };
+        };
         const custom_cwd_msg = "Set a custom cwd with --custom_cwd flag";
         const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, custom_cwd_msg);
         const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, custom_cwd_msg);
@@ -1073,7 +1090,6 @@ pub const Context = struct {
                 )) {
                     try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
                 } else |_| {}
-                _ = build_arena.reset(.retain_capacity);
 
                 const gname = name_blk: {
                     const game_name = self.game_conf.game_dir;
@@ -1081,17 +1097,13 @@ pub const Context = struct {
                     break :name_blk game_name[start..];
                 };
 
-                if (MapBuilder.buildmap(build_arena.allocator(), .{
+                try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
                     .vmf = "dump.vmf",
                     .gamedir_pre = self.game_conf.base_dir,
                     .gamename = gname,
                     .outputdir = try self.printScratch("hl2/maps", .{}),
                     .tmpdir = "/tmp/mapcompile",
-                })) {
-                    try self.notify("built map", .{}, 0x00ff00ff);
-                } else |_| {
-                    try self.notify("Error building Map", .{}, 0xff0000ff);
-                }
+                });
             }
         }
 

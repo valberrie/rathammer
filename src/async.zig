@@ -93,3 +93,66 @@ pub const SdlFileData = struct {
         _ = index;
     }
 };
+
+//TODO, make this a singleton, if user tries spawning a second, kill the first and replace
+//This will a require mapbuild to have a mutex and callback in its 'runCommand' to kill it
+const map_builder = @import("map_builder.zig");
+pub const MapCompile = struct {
+    job: thread_pool.iJob,
+    pool_ptr: *thread_pool.Context,
+
+    alloc: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
+
+    build_time: std.time.Timer,
+
+    status: enum { failed, built, nothing } = .nothing,
+
+    pub fn spawn(alloc: std.mem.Allocator, pool: *thread_pool.Context, paths: map_builder.Paths) !void {
+        const self = try alloc.create(@This());
+        self.* = .{
+            .job = .{
+                .user_id = 0,
+                .onComplete = &onComplete,
+            },
+            .build_time = try std.time.Timer.start(),
+            .arena = std.heap.ArenaAllocator.init(alloc),
+            .alloc = alloc,
+            .pool_ptr = pool,
+        };
+        const aa = self.arena.allocator();
+        try pool.spawnJob(workFunc, .{ self, map_builder.Paths{
+            .gamename = try aa.dupe(u8, paths.gamename),
+            .gamedir_pre = try aa.dupe(u8, paths.gamedir_pre),
+            .tmpdir = try aa.dupe(u8, paths.tmpdir),
+            .outputdir = try aa.dupe(u8, paths.outputdir),
+            .vmf = try aa.dupe(u8, paths.vmf),
+        } });
+    }
+
+    pub fn destroy(self: *@This()) void {
+        self.arena.deinit();
+        const alloc = self.alloc;
+        alloc.destroy(self);
+    }
+
+    pub fn onComplete(vt: *thread_pool.iJob, edit: *Context) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("job", vt));
+        defer self.destroy();
+        const t = self.build_time.read();
+        switch (self.status) {
+            .failed => edit.notify("Error building Map", .{}, 0xff0000ff) catch {},
+            .built => edit.notify("built map in {d} s", .{t / std.time.ns_per_s}, 0x00ff00ff) catch {},
+            .nothing => edit.notify("Something bad happend when building the map", .{}, 0xffff_00_ff) catch {},
+        }
+    }
+
+    pub fn workFunc(self: *@This(), args: map_builder.Paths) void {
+        defer self.pool_ptr.insertCompletedJob(&self.job) catch {};
+        if (map_builder.buildmap(self.arena.allocator(), args)) {
+            self.status = .built;
+        } else |_| {
+            self.status = .failed;
+        }
+    }
+};

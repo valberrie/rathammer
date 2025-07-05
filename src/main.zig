@@ -122,8 +122,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .gtimer = load_timer,
         .expected_cb = 100,
     };
+    var env = try std.process.getEnvMap(alloc);
+    defer env.deinit();
 
-    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx);
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx, &env);
     defer editor.deinit();
 
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), gui_scale, .{

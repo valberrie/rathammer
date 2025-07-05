@@ -56,6 +56,11 @@ keys {
     cube_draw_plane_down    scancode:z
 }
 
+paths {
+    //Set the directory rathammer searchs for games. if unset, searches default steam directory
+    //steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"
+}
+
 autosave {
     interval_min    5   //Minutes between autosaves
     max             10  //How many autosaves of a given map name before pruning
