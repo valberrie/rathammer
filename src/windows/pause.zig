@@ -11,11 +11,14 @@ const iArea = guis.iArea;
 const Wg = guis.Widget;
 const Context = @import("../editor.zig").Context;
 const label = guis.label;
+const async_util = @import("../async.zig");
 pub const PauseWindow = struct {
     const Buttons = enum {
         unpause,
         quit,
         force_autosave,
+        new_map,
+        pick_map,
 
         pub fn id(self: @This()) usize {
             return @intFromEnum(self);
@@ -103,6 +106,19 @@ pub const PauseWindow = struct {
             .unpause => self.editor.paused = false,
             .quit => self.should_exit = true,
             .force_autosave => self.editor.autosaver.force = true,
+            .new_map => {
+                self.vt.needs_rebuild = true;
+                const ed = self.editor;
+                ed.skybox.loadSky(ed.storeString("sky_day01_01") catch return, &ed.vpkctx) catch {
+                    std.debug.print("ERROR LOADING SKY, PUT A BETTER MSG HERE\n", .{});
+                };
+                ed.has_loaded_map = true;
+                self.editor.paused = false;
+            },
+            .pick_map => {
+                self.vt.needs_rebuild = true;
+                async_util.SdlFileData.spawn(self.editor.alloc, &self.editor.async_asset_load, .pick_map) catch return;
+            },
         }
     }
 
@@ -144,7 +160,17 @@ pub const PauseWindow = struct {
             ly.padding.top = 10;
 
             const ds = &self.editor.draw_state;
-            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+            if (self.editor.has_loaded_map) {
+                vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+            } else {
+                var hy = guis.HorizLayout{
+                    .bounds = ly.getArea() orelse return,
+                    .count = 2,
+                };
+                vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "New map", .{ .cb_fn = &btnCb, .id = Buttons.id(.new_map), .cb_vt = &self.area }));
+                vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Load map", .{ .cb_fn = &btnCb, .id = Buttons.id(.pick_map), .cb_vt = &self.area }));
+            }
+
             vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
             vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
 

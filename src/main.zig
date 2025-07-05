@@ -33,6 +33,33 @@ fn flush_cb() void {
     font_ptr.syncBitmapToGL();
 }
 
+pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, pause_win: *PauseWindow, gui: *G.Gui, gui_dstate: G.DrawState, loadctx: *edit.LoadCtx, editor: *Editor) !enum { cont, exit, unpause } {
+    if (pause_win.should_exit)
+        return .exit;
+    if (!editor.paused)
+        return .unpause;
+    win.pumpEvents(.wait);
+    win.grabMouse(false);
+    try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
+    try editor.update(win);
+
+    {
+        const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
+        const wins = &.{&pause_win.vt};
+        try gui.pre_update(wins);
+        try gui.updateWindowSize(&pause_win.vt, winrect);
+        try gui.update(wins);
+        try gui.draw(gui_dstate, false, wins);
+        gui.drawFbos(draw, wins);
+    }
+    try draw.flush(null, null);
+    try loadctx.loadedSplash(win.keys.len > 0);
+
+    try draw.end(editor.draw_state.cam3d);
+    win.swap();
+    return .cont;
+}
+
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const load_timer = try std.time.Timer.start();
     var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
@@ -78,17 +105,27 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     edit.log.info("gui Size: {d} text ", .{scaled_text_height});
 
     if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
-
-    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win);
-    defer editor.deinit();
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
     var font = try graph.Font.init(alloc, std.fs.cwd(), args.fontfile orelse "ratgraph/asset/fonts/roboto.ttf", scaled_text_height, .{
         .codepoints_to_load = &(graph.Font.CharMaps.Default),
     });
     defer font.deinit();
-
     const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{}) catch edit.missingTexture();
+
+    var loadctx = edit.LoadCtx{
+        .draw = &draw,
+        .font = &font,
+        .win = &win,
+        .splash = splash,
+        .timer = try std.time.Timer.start(),
+        .gtimer = load_timer,
+        .expected_cb = 100,
+    };
+
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx);
+    defer editor.deinit();
+
     var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), gui_scale, .{
         .cache_dir = editor.dirs.pref,
         .font_size_px = scaled_text_height,
@@ -111,16 +148,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     try editor.panes.registerCustom("main_3d_view", editor_view.Main3DView, try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
 
-    var loadctx = edit.LoadCtx{
-        .draw = &draw,
-        .font = &font,
-        .win = &win,
-        .splash = splash,
-        .timer = try std.time.Timer.start(),
-        .gtimer = load_timer,
-        .expected_cb = 100,
-    };
-
     loadctx.cb("Loading");
 
     var my_var: i32 = 0;
@@ -140,16 +167,15 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var win_count: usize = 0;
 
     if (args.vmf) |mapname| {
-        if (std.mem.endsWith(u8, mapname, ".json")) {
-            try editor.loadJson(std.fs.cwd(), mapname, &loadctx);
-            //try editor.writeToJsonFile(std.fs.cwd(), "serial2.json");
-        } else {
-            try editor.loadVmf(std.fs.cwd(), mapname, &loadctx);
-            //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
-        }
+        try editor.loadMap(std.fs.cwd(), mapname, &loadctx);
     } else {
-        //Put a default sky
-        try editor.skybox.loadSky(try editor.storeString("sky_day01_01"), &editor.vpkctx);
+        while (!win.should_exit) {
+            switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
+                .exit => break,
+                .unpause => break,
+                else => {},
+            }
+        }
     }
 
     //TODO with assets loaded dynamically, names might not be correct when saving before all loaded
@@ -197,25 +223,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         }
 
         if (editor.paused) {
-            win.pumpEvents(.wait);
-            win.grabMouse(false);
-            try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
-
-            {
-                const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
-                const wins = &.{&pause_win.vt};
-                try gui.pre_update(wins);
-                try gui.updateWindowSize(&pause_win.vt, winrect);
-                try gui.update(wins);
-                try gui.draw(gui_dstate, false, wins);
-                gui.drawFbos(&draw, wins);
+            switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
+                .cont => continue :main_loop,
+                .exit => break :main_loop,
+                .unpause => editor.paused = false,
             }
-            try draw.flush(null, null);
-            try loadctx.loadedSplash(win.keys.len > 0);
-
-            try draw.end(editor.draw_state.cam3d);
-            win.swap();
-            continue :main_loop;
         }
         try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
 
@@ -298,6 +310,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         gui.drawFbos(&draw, wins);
 
         draw.setViewport(null);
+        try loadctx.loadedSplash(win.keys.len > 0);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
     }

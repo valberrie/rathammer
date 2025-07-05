@@ -10,7 +10,7 @@ fn readFromFile(alloc: std.mem.Allocator, dir: std.fs.Dir, filename: []const u8)
     return slice;
 }
 
-pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkctx: *VpkCtx) !void {
+pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkctx: *VpkCtx, loadctx: anytype) !void {
     const sl = readFromFile(alloc, game_dir, "gameinfo.txt") catch |err| {
         var out_path_buf: [512]u8 = undefined;
         const rp = game_dir.realpath(".", &out_path_buf) catch return err;
@@ -59,6 +59,7 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
                 }
                 //std.debug.print("Path {s}\n", .{path});
                 if (std.mem.endsWith(u8, path, ".vpk")) {
+                    loadctx.printCb("mounting: {s}", .{path});
                     if ((std.mem.indexOfPos(u8, path, 0, "sound") == null)) {
                         vpkctx.addDir(dir, path) catch |err| {
                             log.err("Failed to mount vpk {s} with error {}", .{ path, err });

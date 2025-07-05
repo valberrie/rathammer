@@ -6,6 +6,13 @@ const graph = @import("graph");
 pub const SdlFileData = struct {
     pub const Action = enum {
         save_map,
+        pick_map,
+    };
+    const map_filters = [_]graph.c.SDL_DialogFileFilter{
+        .{ .name = "maps", .pattern = "json;vmf" },
+        .{ .name = "vmf maps", .pattern = "vmf" },
+        .{ .name = "RatHammer json maps", .pattern = "json" },
+        .{ .name = "All files", .pattern = "*" },
     };
     action: Action,
 
@@ -45,11 +52,21 @@ pub const SdlFileData = struct {
                     edit.saveAndNotify(basename, edit.loaded_map_path orelse "") catch return;
                 }
             },
+            .pick_map => {
+                edit.loadctx.draw_splash = true; // Renable it
+                edit.paused = false;
+                edit.loadMap(std.fs.cwd(), self.name_buffer.items, edit.loadctx) catch |err| {
+                    std.debug.print("load failed because {!}\n", .{err});
+                };
+            },
         }
     }
 
     pub fn workFunc(self: *@This()) void {
-        graph.c.SDL_ShowSaveFileDialog(&saveFileCallback2, self, null, null, 0, null);
+        switch (self.action) {
+            .save_map => graph.c.SDL_ShowSaveFileDialog(&saveFileCallback2, self, null, null, 0, null),
+            .pick_map => graph.c.SDL_ShowOpenFileDialog(&saveFileCallback2, self, null, &map_filters, map_filters.len, null, false),
+        }
     }
 
     export fn saveFileCallback2(opaque_self: ?*anyopaque, filelist: [*c]const [*c]const u8, index: c_int) void {

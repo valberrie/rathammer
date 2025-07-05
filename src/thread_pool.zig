@@ -26,9 +26,6 @@ pub const DeferredNotifyVtable = struct {
     }
 };
 
-//2 things, we need to submit arbitrary jobs
-//When finished put an item into a list main thread can then read
-
 pub const iJob = struct {
     /// Store whatever you want in here
     user_id: usize,

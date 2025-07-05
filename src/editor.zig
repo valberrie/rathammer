@@ -153,9 +153,12 @@ pub const Context = struct {
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
     visgroups: VisGroups,
 
+    loadctx: *LoadCtx,
+
     tools: tool_def.ToolRegistry,
     panes: eviews.PaneReg,
     paused: bool = true,
+    has_loaded_map: bool = false,
 
     draw_state: struct {
         tab_index: usize = 0,
@@ -310,7 +313,14 @@ pub const Context = struct {
         //self.loaded_map_name = try self.storeString(pruned);
     }
 
-    pub fn init(alloc: std.mem.Allocator, num_threads: ?u32, config: Conf.Config, args: anytype, win_ptr: *graph.SDL.Window) !*Self {
+    pub fn init(
+        alloc: std.mem.Allocator,
+        num_threads: ?u32,
+        config: Conf.Config,
+        args: anytype,
+        win_ptr: *graph.SDL.Window,
+        loadctx: *LoadCtx,
+    ) !*Self {
         var ret = try alloc.create(Context);
         ret.* = .{
             //These are initilized in editor.postInit
@@ -319,6 +329,7 @@ pub const Context = struct {
             .asset = undefined,
             .asset_atlas = undefined,
 
+            .loadctx = loadctx,
             .win = win_ptr,
             .notifier = NotifyCtx.init(alloc, 4000),
             .autosaver = try Autosaver.init(config.autosave.interval_min * std.time.ms_per_min, config.autosave.max, config.autosave.enable, alloc),
@@ -357,12 +368,12 @@ pub const Context = struct {
         };
         //If an error occurs during initilization it is fatal so there is no reason to clean up resources.
         //Thus we call, defer editor.deinit(); after all is initialized..
-        try ret.postInit(args);
+        try ret.postInit(args, loadctx);
         return ret;
     }
 
     /// Called by init
-    fn postInit(self: *Self, args: anytype) !void {
+    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx) !void {
         if (self.config.default_game.len == 0) {
             std.debug.print("config.vdf must specify a default_game!\n", .{});
             return error.incompleteConfig;
@@ -380,6 +391,7 @@ pub const Context = struct {
         const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, custom_cwd_msg);
         const fgd_dir = util.openDirFatal(cwd, args.fgddir orelse game_conf.fgd_dir, .{}, "");
 
+        loadctx.cb("Dir's opened");
         const ORG = "rathammer";
         const APP = "";
         const path = graph.c.SDL_GetPrefPath(ORG, APP);
@@ -390,12 +402,13 @@ pub const Context = struct {
         const autosave = try pref.makeOpenPath("autosave", .{});
 
         try graph.AssetBake.assetBake(self.alloc, std.fs.cwd(), "ratasset", pref, "packed", .{});
+        loadctx.cb("Asset's baked");
 
         self.asset = try graph.AssetBake.AssetMap.initFromManifest(self.alloc, pref, "packed");
         self.asset_atlas = try graph.AssetBake.AssetMap.initTextureFromManifest(self.alloc, pref, "packed");
 
         self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir, .pref = pref, .autosave = autosave };
-        try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx);
+        try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx, loadctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
 
@@ -752,7 +765,20 @@ pub const Context = struct {
         return self.tools.vtables.items[self.edit_state.tool_index];
     }
 
-    pub fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+    pub fn loadMap(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        if (std.mem.endsWith(u8, filename, ".json")) {
+            try self.loadJson(path, filename, loadctx);
+        } else {
+            try self.loadVmf(path, filename, loadctx);
+        }
+    }
+
+    fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        if (self.has_loaded_map) {
+            log.err("Map already loaded", .{});
+            return error.multiMapLoadNotSupported;
+        }
+        defer self.has_loaded_map = true;
         var timer = try std.time.Timer.start();
         defer log.info("Loaded json in {d}ms", .{timer.read() / std.time.ns_per_ms});
         const infile = try path.openFile(filename, .{});
@@ -790,7 +816,12 @@ pub const Context = struct {
 
     //TODO write a vmf -> json utility like jsonToVmf.zig
     //Then, only have a single function to load serialized data into engine "loadJson"
-    pub fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+    fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        if (self.has_loaded_map) {
+            log.err("Map already loaded", .{});
+            return error.multiMapLoadNotSupported;
+        }
+        defer self.has_loaded_map = true;
         var timer = try std.time.Timer.start();
         const infile = util.openFileFatal(path, filename, .{}, "");
         defer infile.close();
