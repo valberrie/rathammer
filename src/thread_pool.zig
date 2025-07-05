@@ -26,6 +26,18 @@ pub const DeferredNotifyVtable = struct {
     }
 };
 
+//2 things, we need to submit arbitrary jobs
+//When finished put an item into a list main thread can then read
+
+pub const iJob = struct {
+    /// Store whatever you want in here
+    user_id: usize,
+
+    /// Called from the main thread 'editor'
+    /// User is responsible for dealloc
+    onComplete: *const fn (*iJob, editor: *edit.Context) void,
+};
+
 pub const CompletedVtfItem = struct { data: vtf.VtfBuf, vpk_res_id: vpk.VpkResId };
 const log = std.log.scoped(.vtf);
 
@@ -36,8 +48,11 @@ pub const Context = struct {
     map: std.AutoHashMap(std.Thread.Id, *ThreadState),
     map_mutex: Mutex = .{},
 
+    //TODO these names are misleading, completed is textures, models
     completed: std.ArrayList(CompletedVtfItem),
     completed_models: std.ArrayList(vvd.MeshDeferred),
+    completed_generic: std.ArrayList(*iJob),
+    ///this mutex is used by all the completed_* fields
     completed_mutex: Mutex = .{},
 
     //TODO this pool should be global or this context should represent all worker thread operations
@@ -55,6 +70,7 @@ pub const Context = struct {
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),
             .alloc = alloc,
             .completed = std.ArrayList(CompletedVtfItem).init(alloc),
+            .completed_generic = std.ArrayList(*iJob).init(alloc),
             .completed_models = std.ArrayList(vvd.MeshDeferred).init(alloc),
             .pool = pool,
             .texture_notify = std.AutoHashMap(vpk.VpkResId, std.ArrayList(*DeferredNotifyVtable)).init(alloc),
@@ -77,6 +93,26 @@ pub const Context = struct {
         self.completed_mutex.lock();
         defer self.completed_mutex.unlock();
         try self.completed.append(item);
+    }
+
+    pub fn insertCompletedJob(self: *@This(), item: *iJob) !void {
+        self.completed_mutex.lock();
+        defer self.completed_mutex.unlock();
+        try self.completed_generic.append(item);
+    }
+
+    pub fn notifyCompletedGeneric(self: *@This(), editor: *edit.Context) void {
+        self.completed_mutex.lock();
+        defer self.completed_mutex.unlock();
+        for (self.completed_generic.items) |item| {
+            item.onComplete(item, editor);
+        }
+        self.completed_generic.clearRetainingCapacity();
+    }
+
+    /// Use in conjunction with insertCompletedJob; probably pass a *@This() to your func
+    pub fn spawnJob(self: *@This(), comptime func: anytype, args: anytype) !void {
+        try self.pool.spawn(func, args);
     }
 
     pub fn notifyTexture(self: *@This(), id: vpk.VpkResId, editor: *edit.Context) void {
@@ -116,6 +152,8 @@ pub const Context = struct {
                 tx.deinit();
             self.texture_notify.deinit();
         }
+        // freeing memory of any remaining completed is not a priority, may leak.
+        self.completed_generic.deinit();
         var it = self.map.iterator();
         while (it.next()) |item| {
             item.value_ptr.*.deinit();

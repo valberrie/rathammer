@@ -144,6 +144,7 @@ pub const MeshBatch = struct {
     contains: std.AutoHashMap(EcsT.Id, void),
     is_dirty: bool = false,
 
+    // TODO move the notify_vt into editor and store an id so there is risk of pointer madness
     notify_vt: thread_pool.DeferredNotifyVtable,
     // Each batch needs to keep track of:
     // needs_rebuild

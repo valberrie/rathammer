@@ -38,36 +38,12 @@ const DISABLE_SPLASH = false;
 const GroupId = ecs.Groups.GroupId;
 const eviews = @import("editor_views.zig");
 
+const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
 
 pub const ResourceId = struct {
     vpk_id: vpk.VpkResId,
 };
-
-export fn saveFileCallback(udo: ?*anyopaque, filelist: [*c]const [*c]const u8, index: c_int) void {
-    if (udo) |ud| {
-        const editor: *Context = @alignCast(@ptrCast(ud));
-
-        editor.file_selection.mutex.lock();
-        defer editor.file_selection.mutex.unlock();
-
-        if (filelist == 0 or filelist[0] == 0) {
-            editor.file_selection.has_file = .failed;
-            return;
-        }
-
-        const first = std.mem.span(filelist[0]);
-        if (first.len == 0) {
-            editor.file_selection.has_file = .failed;
-            return;
-        }
-
-        editor.file_selection.file_buf.clearRetainingCapacity();
-        editor.file_selection.file_buf.appendSlice(first) catch return;
-        editor.file_selection.has_file = .has;
-    }
-    _ = index;
-}
 
 const JsonCamera = struct {
     yaw: f32,
@@ -250,21 +226,6 @@ pub const Context = struct {
         } = .{},
     },
 
-    /// When we open a file dialog, this is the structure that gets passed as user context
-    file_selection: struct {
-        mutex: std.Thread.Mutex = .{},
-        has_file: enum { waiting, failed, has } = .waiting,
-        file_buf: std.ArrayList(u8),
-        await_file: bool = false,
-
-        fn reset(self: *@This()) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            self.has_file = .waiting;
-            self.await_file = false;
-        }
-    },
-
     selection: Selection,
 
     edit_state: struct {
@@ -315,7 +276,7 @@ pub const Context = struct {
     /// This is always relative to cwd
     loaded_map_path: ?[]const u8 = null,
 
-    fn setMapName(self: *Self, filename: []const u8) !void {
+    pub fn setMapName(self: *Self, filename: []const u8) !void {
         const eql = std.mem.eql;
         const allowed_exts = [_][]const u8{
             ".json",
@@ -359,9 +320,6 @@ pub const Context = struct {
             .asset_atlas = undefined,
 
             .win = win_ptr,
-            .file_selection = .{
-                .file_buf = std.ArrayList(u8).init(alloc),
-            },
             .notifier = NotifyCtx.init(alloc, 4000),
             .autosaver = try Autosaver.init(config.autosave.interval_min * std.time.ms_per_min, config.autosave.max, config.autosave.enable, alloc),
             .rayctx = raycast.Ctx.init(alloc),
@@ -458,7 +416,6 @@ pub const Context = struct {
         self.tools.deinit();
         self.panes.deinit();
         self.tool_res_map.deinit();
-        self.file_selection.file_buf.deinit();
         self.undoctx.deinit();
         self.ecs.deinit();
         self.fgd_ctx.deinit();
@@ -1018,7 +975,7 @@ pub const Context = struct {
         return self.scratch_buf.items;
     }
 
-    fn saveAndNotify(self: *Self, basename: []const u8, path: []const u8) !void {
+    pub fn saveAndNotify(self: *Self, basename: []const u8, path: []const u8) !void {
         var timer = try std.time.Timer.start();
         try self.notify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
         const name = try self.printScratch("{s}{s}.json", .{ path, basename });
@@ -1060,35 +1017,11 @@ pub const Context = struct {
             if (self.loaded_map_name) |basename| {
                 try self.saveAndNotify(basename, self.loaded_map_path orelse "");
             } else {
-                if (!self.file_selection.await_file) {
-                    self.file_selection.reset();
-                    self.file_selection.await_file = true;
-                    graph.c.SDL_ShowSaveFileDialog(&saveFileCallback, self, null, null, 0, null);
-                }
+                try async_util.SdlFileData.spawn(self.alloc, &self.async_asset_load, .save_map);
             }
         }
         if (win.isBindState(self.config.keys.save_new.b, .rising)) {
-            if (!self.file_selection.await_file) {
-                self.file_selection.reset();
-                self.file_selection.await_file = true;
-                graph.c.SDL_ShowSaveFileDialog(&saveFileCallback, self, null, null, 0, null);
-            }
-        }
-        if (self.file_selection.await_file) {
-            if (self.file_selection.mutex.tryLock()) {
-                defer self.file_selection.mutex.unlock();
-                switch (self.file_selection.has_file) {
-                    .waiting => {},
-                    .failed => self.file_selection.await_file = false,
-                    .has => {
-                        try self.setMapName(self.file_selection.file_buf.items);
-                        self.file_selection.await_file = false;
-                        if (self.loaded_map_name) |basename| {
-                            try self.saveAndNotify(basename, self.loaded_map_path orelse "");
-                        }
-                    },
-                }
-            }
+            try async_util.SdlFileData.spawn(self.alloc, &self.async_asset_load, .save_map);
         }
         if (win.isBindState(self.config.keys.build_map.b, .rising)) {
             blk: {
@@ -1136,6 +1069,7 @@ pub const Context = struct {
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
         var tcount: usize = 0;
         {
+            self.async_asset_load.notifyCompletedGeneric(self);
             self.async_asset_load.completed_mutex.lock();
             defer self.async_asset_load.completed_mutex.unlock();
             tcount = self.async_asset_load.completed.items.len;

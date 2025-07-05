@@ -959,7 +959,6 @@ pub const ParseCtx = struct {
                     buf.clearRetainingCapacity();
                     try buf.writer().print("{d}", .{def_mask});
                     default_str = buf.items;
-                    std.debug.print("DEFAULT FLAGS {s}\n", .{default_str.?});
                     new_type = .{ .flags = new_flags };
                 },
                 .color255 => new_type = .{ .color255 = {} },
