@@ -24,7 +24,7 @@ Wip
 ### Arch linux
 ```
 # install dependencies zig 0.14.1
-sudo pacman -S zig libepoxy freetype2 sdl3
+sudo pacman -S zig libepoxy freetype2 sdl3 zenity
 
 # optionally, for map compilation
 sudo pacman -S wine
