@@ -763,12 +763,12 @@ pub const Displacement = struct {
     vert_start_i: usize = 0,
     power: u32 = 0,
 
-    //normals: VectorRow,
-    //offsets: VectorRow,
-    //normal_offsets: VectorRow,
-    //dists: ScalarRow,
-    //alphas: ScalarRow,
-    //tri_tags: ScalarRow,
+    normals: VectorRow = undefined,
+    offsets: VectorRow = undefined,
+    normal_offsets: VectorRow = undefined,
+    dists: ScalarRow = undefined,
+    alphas: ScalarRow = undefined,
+    tri_tags: ScalarRow = undefined,
 
     //TODO duping things with parents how
     pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
@@ -787,12 +787,27 @@ pub const Displacement = struct {
             .parent_id = parent_,
             .parent_side_i = parent_s,
             .power = @intCast(dispinfo.power),
+
+            .normals = VectorRow.init(alloc),
+            .offsets = VectorRow.init(alloc),
+            .normal_offsets = VectorRow.init(alloc),
+
+            .dists = ScalarRow.init(alloc),
+            .alphas = ScalarRow.init(alloc),
+            .tri_tags = ScalarRow.init(alloc),
         };
     }
 
     pub fn deinit(self: *Self) void {
         self.verts.deinit();
         self.index.deinit();
+
+        self.normals.deinit();
+        self.offsets.deinit();
+        self.normal_offsets.deinit();
+        self.dists.deinit();
+        self.alphas.deinit();
+        self.tri_tags.deinit();
     }
 
     pub fn rebuild(self: *Self, batch: *MeshBatch, editor: *Editor) !void {

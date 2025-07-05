@@ -310,15 +310,9 @@ pub const Context = struct {
             pub fn checkArray(a: anytype, vp: usize) ?@TypeOf(a) {
                 if (!a.was_init)
                     return null;
-                if (a.rows.items.len < vp) {
+                if (a.rows.items.len < vp * vp) {
                     std.debug.print("Invalid displacement\n", .{});
                     return null;
-                }
-                for (a.rows.items) |item| {
-                    if (item.items.len < vp) {
-                        std.debug.print("Invalid displacement\n", .{});
-                        return null;
-                    }
                 }
                 return a;
             }
@@ -326,31 +320,33 @@ pub const Context = struct {
 
         const offsets: ?vmf.DispVectorRow = helper.checkArray(dispinfo.offsets, vper_row);
         const offset_normal: ?vmf.DispVectorRow = helper.checkArray(dispinfo.offset_normals, vper_row);
-        const dists: ?vmf.DispRow = helper.checkArray(dispinfo.distances, vper_row);
         const norms: ?vmf.DispVectorRow = helper.checkArray(dispinfo.normals, vper_row);
+
+        const dists: ?vmf.DispRow = helper.checkArray(dispinfo.distances, vper_row);
 
         for (0..vper_row) |v_i| {
             const fi: f32 = @floatFromInt(v_i);
             const v_inter0 = v0.lerp(v1, t * fi);
             const v_inter1 = v3.lerp(v2, t * fi);
             for (0..vper_row) |c_i| {
+                const g_i = v_i * vper_row + c_i;
                 const ji: f32 = @floatFromInt(c_i);
                 const v_orig = v_inter0.lerp(v_inter1, t * ji);
 
-                const dist = if (dists) |d| d.rows.items[v_i].items[c_i] else 0;
+                const dist = if (dists) |d| d.rows.items[g_i] else 0;
 
                 //const vert = v_orig;
                 var vert = v_orig;
                 if (norms) |n|
-                    vert = vert.add(n.rows.items[v_i].items[c_i].scale(dist));
+                    vert = vert.add(n.rows.items[g_i].scale(dist));
 
                 if (offset_normal) |ofn|
-                    vert = vert.add(ofn.rows.items[v_i].items[c_i].scale(elev));
+                    vert = vert.add(ofn.rows.items[g_i].scale(elev));
 
                 if (offsets) |off|
-                    vert = vert.add(off.rows.items[v_i].items[c_i]);
+                    vert = vert.add(off.rows.items[g_i]);
 
-                verts.items[(v_i * vper_row) + c_i] = vert;
+                verts.items[g_i] = vert;
             }
         }
 
