@@ -1745,6 +1745,7 @@ pub const Clipping = struct {
                     const solid = try ed.ecs.getPtr(sel_side.id, .solid);
                     var ret = try ed.clipctx.clipSolid(solid, p0, plane_n, ed.asset_browser.selected_mat_vpk_id);
 
+                    ed.selection.clear();
                     const ustack = try ed.undoctx.pushNewFmt("Clip", .{});
                     try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, sel_side.id, .destroy));
 

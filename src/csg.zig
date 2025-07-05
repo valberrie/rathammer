@@ -294,6 +294,7 @@ pub const Context = struct {
                 nearest = dist;
             }
         }
+        disp.vert_start_i = start_i;
 
         const v0 = side_winding[start_i];
         const v1 = side_winding[(start_i + 1) % side_winding.len];

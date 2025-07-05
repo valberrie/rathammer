@@ -752,13 +752,23 @@ pub const Solid = struct {
 };
 
 pub const Displacement = struct {
+    pub const VectorRow = std.ArrayList(Vec3);
+    pub const ScalarRow = std.ArrayList(f32);
     const Self = @This();
     verts: std.ArrayList(Vec3) = undefined,
     index: std.ArrayList(u32) = undefined,
     tex_id: vpk.VpkResId = 0,
     parent_id: EcsT.Id = 0,
     parent_side_i: usize = 0,
+    vert_start_i: usize = 0,
     power: u32 = 0,
+
+    //normals: VectorRow,
+    //offsets: VectorRow,
+    //normal_offsets: VectorRow,
+    //dists: ScalarRow,
+    //alphas: ScalarRow,
+    //tri_tags: ScalarRow,
 
     //TODO duping things with parents how
     pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
@@ -793,27 +803,31 @@ pub const Displacement = struct {
         const mesh = &batch.mesh;
         try mesh.vertices.ensureUnusedCapacity(self.verts.items.len);
         try mesh.indicies.ensureUnusedCapacity(self.index.items.len);
-        const uvs = try editor.csgctx.calcUVCoords(
+        const si = self.vert_start_i;
+        const uvs = try editor.csgctx.calcUVCoordsIndexed(
             solid.verts.items,
+            side.index.items,
             side.*,
             @intCast(batch.tex.w),
             @intCast(batch.tex.h),
         );
         const vper_row = std.math.pow(u32, 2, self.power) + 1;
+        const vper_rowf: f32 = @floatFromInt(vper_row);
         const t = 1.0 / (@as(f32, @floatFromInt(vper_row)) - 1);
         const offset = mesh.vertices.items.len;
         if (self.verts.items.len != vper_row * vper_row) return;
-        const uv0 = uvs[1];
-        const uv1 = uvs[2];
-        const uv2 = uvs[0];
-        const uv3 = uvs[3];
+        const uv0 = uvs[si % 4];
+        const uv1 = uvs[(si + 1) % 4];
+        const uv2 = uvs[(si + 2) % 4];
+        const uv3 = uvs[(si + 3) % 4];
 
         for (self.verts.items, 0..) |v, i| {
-            const ri: f32 = @floatFromInt(i / vper_row);
-            const ci: f32 = @floatFromInt(i % vper_row);
+            const fi: f32 = @floatFromInt(i);
+            const ri: f32 = @trunc(fi / vper_rowf);
+            const ci: f32 = @trunc(@mod(fi, vper_rowf));
 
             const inter0 = uv0.lerp(uv1, ri * t);
-            const inter1 = uv2.lerp(uv3, ri * t);
+            const inter1 = uv3.lerp(uv2, ri * t);
             const uv = inter0.lerp(inter1, ci * t);
 
             try mesh.vertices.append(.{

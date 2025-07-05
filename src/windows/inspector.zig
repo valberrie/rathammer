@@ -276,6 +276,10 @@ pub const InspectorWindow = struct {
                     .index_ptr = &self.kv_scroll_index,
                 }));
             }
+            if (try ed.ecs.getOptPtr(sel_id, .solid)) |sol| {
+                _ = sol;
+                lay.addChildOpt(gui, &self.vt, Wg.Text.build(gui, ly.getArea(), "selected_solid: {d}", .{sel_id}));
+            }
         }
     }
 
