@@ -97,7 +97,10 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
         try vr.endObject(); //world
 
         var ents = ecs_p.iterator(.entity);
+        const vis_mask = ecs.EcsT.getComponentMask(&.{.deleted});
         while (ents.next()) |ent| {
+            if (ecs_p.intersects(ents.i, vis_mask))
+                continue;
             try vr.writeKey("entity");
             try vr.beginObject();
             {

@@ -1041,7 +1041,7 @@ pub const Translate = struct {
                         var copy_ent = ent.*;
                         copy_ent.origin = ent.origin.add(dist);
                         copy_ent.angle = angle orelse ent.angle;
-                        try copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = false });
+                        try copy_ent.drawEnt(self, td.view_3d.*, draw, draw_nd, .{ .frame_color = color, .draw_model_bb = true });
 
                         if (commit) {
                             angle_delta = copy_ent.angle.sub(ent.angle);

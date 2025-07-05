@@ -884,6 +884,7 @@ pub const Context = struct {
                         ._model_id = model_id,
                         ._sprite = null,
                     });
+
                     try self.ecs.attach(new, .bounding_box, bb);
 
                     if (ent.connections.is_init) {
@@ -894,6 +895,7 @@ pub const Context = struct {
                     {
                         var new_ent = try self.ecs.getPtr(new, .entity);
                         try new_ent.setClass(self, ent.classname);
+                        try new_ent.setAngle(self, new, new_ent.angle);
                     }
                 }
 

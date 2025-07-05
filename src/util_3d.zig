@@ -3,6 +3,7 @@ const graph = @import("graph");
 const V3f = graph.za.Vec3;
 const Vec3 = V3f;
 const Mat4 = graph.za.Mat4;
+const Mat3 = graph.za.Mat3;
 
 /// This function is specific to the way angles are specified in VMF files.
 pub fn extrinsicEulerAnglesToMat4(angles: Vec3) Mat4 {
@@ -12,6 +13,15 @@ pub fn extrinsicEulerAnglesToMat4(angles: Vec3) Mat4 {
     //y->z
     //z->x
     const fr = Mat4.fromRotation;
+    const x1 = fr(angles.z(), Vec3.new(1, 0, 0));
+    const y1 = fr(angles.x(), Vec3.new(0, 1, 0));
+    const z1 = fr(angles.y(), Vec3.new(0, 0, 1));
+    return z1.mul(y1.mul(x1));
+}
+
+pub fn extrinsicEulerAnglesToMat3(angles: Vec3) Mat3 {
+    //Wow this sucks.
+    const fr = Mat3.fromRotation;
     const x1 = fr(angles.z(), Vec3.new(1, 0, 0));
     const y1 = fr(angles.x(), Vec3.new(0, 1, 0));
     const z1 = fr(angles.y(), Vec3.new(0, 0, 1));
@@ -103,6 +113,43 @@ pub fn doesRayIntersectBoundingBox(comptime numdim: usize, comptime ft: type, mi
     }
 
     return coord;
+}
+
+//Zig port of:
+//Transforming Axis-Aligned Bounding Boxes
+//by Jim Arvo
+//from "Graphics Gems", Academic Press, 1990
+pub fn bbRotate(rot: Mat3, translate: Vec3, box_min: Vec3, box_max: Vec3) [2]Vec3 {
+    var a_min = [3]f32{ 0, 0, 0 };
+    var a_max = [3]f32{ 0, 0, 0 };
+
+    var b_min = [3]f32{ 0, 0, 0 };
+    var b_max = [3]f32{ 0, 0, 0 };
+
+    for (0..3) |i| {
+        b_min[i] = translate.data[i];
+        b_max[i] = translate.data[i];
+        a_min[i] = box_min.data[i];
+        a_max[i] = box_max.data[i];
+    }
+
+    for (0..3) |i| {
+        for (0..3) |j| {
+            const a = rot.data[i][j] * a_min[j];
+            const b = rot.data[i][j] * a_max[j];
+            if (a < b) {
+                b_min[i] += a;
+                b_max[i] += b;
+            } else {
+                b_min[i] += b;
+                b_max[i] += a;
+            }
+        }
+    }
+    return .{
+        Vec3.new(b_min[0], b_min[1], b_min[2]),
+        Vec3.new(b_max[0], b_max[1], b_max[2]),
+    };
 }
 
 pub fn meanVerticies(verts: []const Vec3) Vec3 {

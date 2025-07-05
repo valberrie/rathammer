@@ -302,9 +302,12 @@ pub const Entity = struct {
                         const mat3 = mat1.mul(util3d.extrinsicEulerAnglesToMat4(ent.angle));
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
                         if (param.draw_model_bb) {
-                            const cc = util3d.cubeFromBounds(mod.hull_min, mod.hull_max);
+                            const rot = util3d.extrinsicEulerAnglesToMat3(ent.angle);
+                            const bb = util3d.bbRotate(rot, ent.origin, mod.hull_min, mod.hull_max);
+                            const cc = util3d.cubeFromBounds(bb[0], bb[1]);
                             //TODO rotate it
-                            draw.cubeFrame(ent.origin.add(cc[0]), cc[1], param.frame_color);
+                            //draw.cubeFrame(ent.origin.add(cc[0]), cc[1], param.frame_color);
+                            draw.cubeFrame(cc[0], cc[1], param.frame_color);
                         }
                     }
                 } else {
