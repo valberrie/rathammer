@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 // Comments //
 //
 // //@BaseEnt ?classprop() ?classprop2() = classname ?: "my description" [ *contents* ]
@@ -579,7 +580,7 @@ pub const EntClass = struct {
 };
 
 pub fn loadFgd(ctx: *EntCtx, base_dir: std.fs.Dir, path: []const u8) !void {
-    const in = try base_dir.openFile(path, .{});
+    const in = util.openFileFatal(base_dir, path, .{}, "Where is the fgd?");
     defer in.close();
     const alloc = ctx.alloc;
 
@@ -657,6 +658,7 @@ pub const ParseCtx = struct {
                 //If you do cyclic includes, the stack will overflow.
                 //TODO prevent cycles
                 const include_file = try tkz.expectNext(.quoted_string);
+                //Don't use openFileFatal as parse will log the error and line number
                 const in_f = try base_dir.openFile(tkz.getSlice(include_file), .{});
                 defer in_f.close();
                 const slice2 = try in_f.reader().readAllAlloc(alloc, std.math.maxInt(usize));

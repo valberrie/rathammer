@@ -420,7 +420,7 @@ pub const Context = struct {
                                     .name = fname_stored,
                                 };
                             } else {
-                                log.err("Duplicate resource is named: {s}", .{fname});
+                                //log.err("Duplicate resource is named: {s}", .{fname});
                                 //    //return error.duplicateResource;
                             }
                         }
