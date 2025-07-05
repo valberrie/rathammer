@@ -281,14 +281,14 @@ pub const Context = struct {
         return &self.base_winding;
     }
 
-    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, dispinfo: *const vmf.DispInfo, disp: *ecs.Displacement) !void {
+    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, disp: *ecs.Displacement) !void {
         _ = self;
         if (side_winding.len != 4)
             return error.invalidSideWinding;
         var nearest: f32 = std.math.floatMax(f32);
         var start_i: usize = 0;
         for (side_winding, 0..) |vert, i| {
-            const dist = vert.distance(dispinfo.startposition.v);
+            const dist = vert.distance(disp.start_pos);
             if (dist < nearest) {
                 start_i = i;
                 nearest = dist;
@@ -301,16 +301,16 @@ pub const Context = struct {
         const v2 = side_winding[(start_i + 2) % side_winding.len];
         const v3 = side_winding[(start_i + 3) % side_winding.len];
 
-        const vper_row: u32 = @intCast(std.math.pow(i32, 2, dispinfo.power) + 1);
-        var verts = &disp.verts;
+        const vper_row: u32 = (std.math.pow(u32, 2, disp.power) + 1);
+        var verts = &disp._verts;
         try verts.resize(vper_row * vper_row);
         const t = 1.0 / (@as(f32, @floatFromInt(vper_row)) - 1); //In the paper, they don't subtract one, this would lead to incorrect lerp?
-        const elev = dispinfo.elevation;
+        const elev = disp.elevation;
         const helper = struct {
             pub fn checkArray(a: anytype, vp: usize) ?@TypeOf(a) {
-                if (!a.was_init)
-                    return null;
-                if (a.rows.items.len < vp * vp) {
+                //if (!a.was_init)
+                //    return null;
+                if (a.len < vp * vp) {
                     std.debug.print("Invalid displacement\n", .{});
                     return null;
                 }
@@ -318,11 +318,11 @@ pub const Context = struct {
             }
         };
 
-        const offsets: ?vmf.DispVectorRow = helper.checkArray(dispinfo.offsets, vper_row);
-        const offset_normal: ?vmf.DispVectorRow = helper.checkArray(dispinfo.offset_normals, vper_row);
-        const norms: ?vmf.DispVectorRow = helper.checkArray(dispinfo.normals, vper_row);
+        const offsets: ?[]const Vec3_32 = helper.checkArray(disp.offsets.items, vper_row);
+        const offset_normal: ?[]const Vec3_32 = helper.checkArray(disp.normal_offsets.items, vper_row);
+        const norms: ?[]const Vec3_32 = helper.checkArray(disp.normals.items, vper_row);
 
-        const dists: ?vmf.DispRow = helper.checkArray(dispinfo.distances, vper_row);
+        const dists: ?[]const f32 = helper.checkArray(disp.dists.items, vper_row);
 
         for (0..vper_row) |v_i| {
             const fi: f32 = @floatFromInt(v_i);
@@ -333,24 +333,24 @@ pub const Context = struct {
                 const ji: f32 = @floatFromInt(c_i);
                 const v_orig = v_inter0.lerp(v_inter1, t * ji);
 
-                const dist = if (dists) |d| d.rows.items[g_i] else 0;
+                const dist = if (dists) |d| d[g_i] else 0;
 
                 //const vert = v_orig;
                 var vert = v_orig;
                 if (norms) |n|
-                    vert = vert.add(n.rows.items[g_i].scale(dist));
+                    vert = vert.add(n[g_i].scale(dist));
 
                 if (offset_normal) |ofn|
-                    vert = vert.add(ofn.rows.items[g_i].scale(elev));
+                    vert = vert.add(ofn[g_i].scale(elev));
 
                 if (offsets) |off|
-                    vert = vert.add(off.rows.items[g_i]);
+                    vert = vert.add(off[g_i]);
 
                 verts.items[g_i] = vert;
             }
         }
 
-        var ind = &disp.index;
+        var ind = &disp._index;
         ind.clearRetainingCapacity();
         // triangulate
         const quad_per_row = vper_row - 1;

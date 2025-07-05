@@ -189,7 +189,7 @@ pub const MeshBatch = struct {
                 }
             }
             if (editor.ecs.getOptPtr(id.key_ptr.*, .displacement) catch null) |disp| {
-                try disp.rebuild(self, editor);
+                try disp.rebuild(id.key_ptr.*, editor);
             }
         }
         self.mesh.setData();
@@ -755,8 +755,8 @@ pub const Displacement = struct {
     pub const VectorRow = std.ArrayList(Vec3);
     pub const ScalarRow = std.ArrayList(f32);
     const Self = @This();
-    verts: std.ArrayList(Vec3) = undefined,
-    index: std.ArrayList(u32) = undefined,
+    _verts: std.ArrayList(Vec3) = undefined,
+    _index: std.ArrayList(u32) = undefined,
     tex_id: vpk.VpkResId = 0,
     parent_id: EcsT.Id = 0,
     parent_side_i: usize = 0,
@@ -768,56 +768,82 @@ pub const Displacement = struct {
     normal_offsets: VectorRow = undefined,
     dists: ScalarRow = undefined,
     alphas: ScalarRow = undefined,
-    tri_tags: ScalarRow = undefined,
+
+    start_pos: Vec3 = Vec3.zero(),
+    elevation: f32 = 0,
+    //tri_tags: ScalarRow = undefined,
 
     //TODO duping things with parents how
     pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
         var ret = self.*;
-        ret.verts = try self.verts.clone();
-        ret.index = try self.index.clone();
+        ret._verts = try self._verts.clone();
+        ret._index = try self._index.clone();
 
         return ret;
     }
 
-    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_: EcsT.Id, parent_s: usize, dispinfo: *const vmf.DispInfo) Self {
+    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_: EcsT.Id, parent_s: usize, dispinfo: *const vmf.DispInfo) !Self {
         return .{
-            .verts = std.ArrayList(Vec3).init(alloc),
-            .index = std.ArrayList(u32).init(alloc),
+            ._verts = std.ArrayList(Vec3).init(alloc),
+            ._index = std.ArrayList(u32).init(alloc),
             .tex_id = tex_id,
             .parent_id = parent_,
             .parent_side_i = parent_s,
             .power = @intCast(dispinfo.power),
+            .elevation = dispinfo.elevation,
 
-            .normals = VectorRow.init(alloc),
-            .offsets = VectorRow.init(alloc),
-            .normal_offsets = VectorRow.init(alloc),
+            .start_pos = dispinfo.startposition.v,
+            .normals = try dispinfo.normals.clone(alloc),
+            .offsets = try dispinfo.offsets.clone(alloc),
+            .normal_offsets = try dispinfo.offset_normals.clone(alloc),
 
-            .dists = ScalarRow.init(alloc),
-            .alphas = ScalarRow.init(alloc),
-            .tri_tags = ScalarRow.init(alloc),
+            .dists = try dispinfo.distances.clone(alloc),
+            .alphas = try dispinfo.alphas.clone(alloc),
+            //.tri_tags = ScalarRow.init(alloc),
         };
     }
 
     pub fn deinit(self: *Self) void {
-        self.verts.deinit();
-        self.index.deinit();
+        self._verts.deinit();
+        self._index.deinit();
 
         self.normals.deinit();
         self.offsets.deinit();
         self.normal_offsets.deinit();
         self.dists.deinit();
         self.alphas.deinit();
-        self.tri_tags.deinit();
+        //self.tri_tags.deinit();
     }
 
-    pub fn rebuild(self: *Self, batch: *MeshBatch, editor: *Editor) !void {
+    pub fn genVerts(self: *Self, solid: *const Solid, editor: *Editor) !void {
+        const ss = solid.sides.items[self.parent_side_i].index.items;
+        const corners = [4]Vec3{
+            solid.verts.items[ss[0]],
+            solid.verts.items[ss[1]],
+            solid.verts.items[ss[2]],
+            solid.verts.items[ss[3]],
+        };
+        try editor.csgctx.genMeshDisplacement(&corners, self);
+    }
+
+    pub fn rebuild(self: *Self, id: EcsT.Id, editor: *Editor) !void {
+        const batch = try editor.getOrPutMeshBatch(self.tex_id);
+        batch.*.is_dirty = true;
+        try batch.*.contains.put(id, {});
+
         self.tex_id = batch.tex_res_id;
         const solid = try editor.ecs.getOptPtr(self.parent_id, .solid) orelse return;
         if (self.parent_side_i >= solid.sides.items.len) return;
+        solid.sides.items[self.parent_side_i].omit_from_batch = true;
+
+        self._verts.clearRetainingCapacity();
+        self._index.clearRetainingCapacity();
+        try self.genVerts(solid, editor);
+
         const side = &solid.sides.items[self.parent_side_i];
         const mesh = &batch.mesh;
-        try mesh.vertices.ensureUnusedCapacity(self.verts.items.len);
-        try mesh.indicies.ensureUnusedCapacity(self.index.items.len);
+        try mesh.vertices.ensureUnusedCapacity(self._verts.items.len);
+        try mesh.indicies.ensureUnusedCapacity(self._index.items.len);
         const si = self.vert_start_i;
         const uvs = try editor.csgctx.calcUVCoordsIndexed(
             solid.verts.items,
@@ -830,13 +856,13 @@ pub const Displacement = struct {
         const vper_rowf: f32 = @floatFromInt(vper_row);
         const t = 1.0 / (@as(f32, @floatFromInt(vper_row)) - 1);
         const offset = mesh.vertices.items.len;
-        if (self.verts.items.len != vper_row * vper_row) return;
+        if (self._verts.items.len != vper_row * vper_row) return;
         const uv0 = uvs[si % 4];
         const uv1 = uvs[(si + 1) % 4];
         const uv2 = uvs[(si + 2) % 4];
         const uv3 = uvs[(si + 3) % 4];
 
-        for (self.verts.items, 0..) |v, i| {
+        for (self._verts.items, 0..) |v, i| {
             const fi: f32 = @floatFromInt(i);
             const ri: f32 = @trunc(fi / vper_rowf);
             const ci: f32 = @trunc(@mod(fi, vper_rowf));
@@ -857,7 +883,7 @@ pub const Displacement = struct {
                 .color = 0xffffffff,
             });
         }
-        for (self.index.items) |ind| {
+        for (self._index.items) |ind| {
             try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
         }
     }

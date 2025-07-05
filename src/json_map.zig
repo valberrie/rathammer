@@ -200,6 +200,8 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
                     try ret.appendSlice(v.string);
                     return ret;
                 }
+                if (v == .null)
+                    return ret;
                 if (v != .array) return error.value;
                 for (v.array.items) |item|
                     try ret.append(try readComponentFromJson(ctx, item, child, vpkctx));
@@ -211,6 +213,11 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
             inline for (s.fields) |field| {
                 if (v.object.get(field.name)) |val| {
                     @field(ret, field.name) = try readComponentFromJson(ctx, val, field.type, vpkctx);
+                } else {
+                    if (vdf.getArrayListChild(field.type)) |child| {
+                        @field(ret, field.name) = std.ArrayList(child).init(ctx.alloc);
+                    }
+                    //@field(ret, field.name) = try readComponentFromJson(ctx, .{ .null = {} }, field.type, vpkctx);
                 }
             }
             return ret;

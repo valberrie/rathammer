@@ -121,91 +121,67 @@ pub const DispInfo = struct {
     alphas: DispRow = .{},
     //triangle_tags: DispRow = .{},
 };
+pub fn DispRowG(comptime T: type) type {
+    return struct {
+        rows: std.ArrayList(T) = undefined,
+        was_init: bool = false,
 
-pub const DispRow = struct {
-    rows: std.ArrayList(f32) = undefined,
-    was_init: bool = false,
-
-    pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
-        if (val.* == .literal)
-            return error.notgood;
-        var ret = try std.ArrayList(f32).initCapacity(alloc, val.obj.list.items.len);
-        var num_norm_def: usize = 0;
-        for (val.obj.list.items, 0..) |row, i| {
-            if (row.val != .literal)
-                return error.invalidDispNormal;
-            const num_norm = val.obj.list.items.len;
-            var it = std.mem.splitScalar(u8, row.val.literal, ' ');
-            if (i == 0) {
-                num_norm_def = num_norm;
-                try ret.resize(num_norm * num_norm);
-            }
-            if (num_norm != num_norm_def)
-                return error.invalidNormalsCount;
-
-            if (!std.mem.startsWith(u8, row.key, "row"))
-                return error.invalidNormalKey;
-            const row_index = try std.fmt.parseInt(u32, row.key["row".len..], 10);
-
-            for (0..num_norm) |norm_i| {
-                const x = it.next() orelse return error.notEnoughNormals;
-
-                const ind = row_index * num_norm + norm_i;
-                if (ind >= ret.items.len) return error.invalidRowIndex;
-                ret.items[ind] = try std.fmt.parseFloat(f32, x);
-            }
+        pub fn clone(self: *const @This(), alloc: std.mem.Allocator) !std.ArrayList(T) {
+            var ret = std.ArrayList(T).init(alloc);
+            if (self.was_init)
+                try ret.appendSlice(self.rows.items);
+            return ret;
         }
-        return .{ .rows = ret, .was_init = true };
-    }
-};
 
-pub const DispVectorRow = struct {
-    was_init: bool = false,
-    rows: std.ArrayList(graph.za.Vec3) = undefined,
+        pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
+            if (val.* == .literal)
+                return error.notgood;
+            var ret = try std.ArrayList(T).initCapacity(alloc, val.obj.list.items.len);
+            var num_norm_def: usize = 0;
+            for (val.obj.list.items, 0..) |row, i| {
+                if (row.val != .literal)
+                    return error.invalidDispNormal;
+                const num_norm = val.obj.list.items.len;
+                var it = std.mem.splitScalar(u8, row.val.literal, ' ');
+                if (i == 0) {
+                    num_norm_def = num_norm;
+                    try ret.resize(num_norm * num_norm);
+                }
+                if (num_norm != num_norm_def)
+                    return error.invalidNormalsCount;
 
-    pub fn parseVdf(val: *const vdf.KV.Value, alloc: std.mem.Allocator, _: anytype) !@This() {
-        if (val.* == .literal)
-            return error.notgood;
-        var ret = try std.ArrayList(graph.za.Vec3).initCapacity(alloc, val.obj.list.items.len);
-        //try ret.resize(val.obj.list.items.len);
-        var num_def: usize = 0;
-        for (val.obj.list.items, 0..) |row, i| {
-            if (row.val != .literal)
-                return error.invalidDispNormal;
-            const num_norm = val.obj.list.items.len;
-            if (i == 0) {
-                num_def = num_norm;
-                try ret.resize(num_def * num_def);
+                if (!std.mem.startsWith(u8, row.key, "row"))
+                    return error.invalidNormalKey;
+                const row_index = try std.fmt.parseInt(u32, row.key["row".len..], 10);
+
+                for (0..num_norm) |norm_i| {
+                    const g_i = row_index * num_norm + norm_i;
+                    if (g_i >= ret.items.len) return error.invalidRowIndex;
+                    switch (T) {
+                        f32 => {
+                            const x = it.next() orelse return error.notEnoughNormals;
+                            ret.items[g_i] = try std.fmt.parseFloat(f32, x);
+                        },
+                        graph.za.Vec3 => {
+                            const x = it.next() orelse return error.notEnoughNormals;
+                            const y = it.next() orelse return error.notEnoughNormals;
+                            const z = it.next() orelse return error.notEnoughNormals;
+                            ret.items[g_i] = graph.za.Vec3.new(
+                                try std.fmt.parseFloat(f32, x),
+                                try std.fmt.parseFloat(f32, y),
+                                try std.fmt.parseFloat(f32, z),
+                            );
+                        },
+                        else => @compileError("please add the type here"),
+                    }
+                }
             }
-            if (num_norm != num_def)
-                return error.invalidNormalsCount;
-
-            var it = std.mem.splitScalar(u8, row.val.literal, ' ');
-
-            if (!std.mem.startsWith(u8, row.key, "row"))
-                return error.invalidNormalKey;
-            const row_index = try std.fmt.parseInt(u32, row.key["row".len..], 10);
-
-            for (0..num_norm) |n_i| {
-                const x = it.next() orelse return error.notEnoughNormals;
-                const y = it.next() orelse return error.notEnoughNormals;
-                const z = it.next() orelse return error.notEnoughNormals;
-
-                const g_i = row_index * num_def + n_i;
-                if (g_i >= ret.items.len) return error.notEnoughNormals;
-
-                ret.items[g_i] = graph.za.Vec3.new(
-                    try std.fmt.parseFloat(f32, x),
-                    try std.fmt.parseFloat(f32, y),
-                    try std.fmt.parseFloat(f32, z),
-                );
-            }
-            if (row_index >= ret.items.len)
-                return error.invalidRowIndex;
+            return .{ .rows = ret, .was_init = true };
         }
-        return .{ .rows = ret, .was_init = true };
-    }
-};
+    };
+}
+pub const DispRow = DispRowG(f32);
+pub const DispVectorRow = DispRowG(graph.za.Vec3);
 
 pub const Entity = struct {
     id: u32 = 0,
