@@ -358,6 +358,7 @@ pub const VertexTranslate = struct {
                         id,
                         dist,
                         manip_verts.items(.index),
+                        null,
                     ));
                 }
                 undo.applyRedo(ustack.items, ed);
@@ -778,8 +779,9 @@ pub const FastFaceManip = struct {
                             //v_proj = u - n.scale(u dot n), assuming n is normalized
                             const plane_norm = util3d.trianglePlane([3]Vec3{ ver[ind[0]], ver[ind[1]], ver[ind[2]] });
                             const ray = editor.camRay(td.screen_area, td.view_3d.*);
-                            const u = ray[1];
-                            const v_proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
+                            //const u = ray[1];
+                            //const v_proj = u.sub(plane_norm.scale(u.dot(plane_norm)));
+
                             // By projecting the cam_norm onto the side's plane,
                             // we can use the resulting vector as a normal for a plane to raycast against
                             // The resulting plane's normal is as colinear with the cameras normal as we can get
@@ -787,10 +789,12 @@ pub const FastFaceManip = struct {
                             //
                             // If cam_norm and side_norm are colinear the projection is near zero, in the future discard vectors below a threshold as they cause explosions
 
-                            if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
-                                const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
-                                const acc = dist_n.dot(plane_norm);
-                                const dist = snapV3(plane_norm.scale(acc), editor.edit_state.grid_snap);
+                            if (util3d.planeNormalGizmo(self.start, plane_norm, ray)) |inter_| {
+                                //if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
+                                //const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
+                                //const acc = dist_n.dot(plane_norm);
+                                _, const pos = inter_;
+                                const dist = snapV3(pos, editor.edit_state.grid_snap);
 
                                 for (self.selected.items) |sel| {
                                     const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
@@ -1440,21 +1444,204 @@ pub const PlaceModel = struct {
     }
 };
 
+const Proportional = struct {
+    const TranslateCtx = struct {
+        norm: Vec3,
+        froze: Vec3,
+        t: f32,
+        tl: f32,
+
+        pub fn vertexOffset(s: *const @This(), v: Vec3, _: u32, _: u32) Vec3 {
+            const dist = (v.sub(s.froze)).dot(s.norm) / -s.tl;
+
+            return s.norm.scale(dist * s.t);
+        }
+    };
+    const Self = @This();
+    // when the selection changes, we need to recalculate the bb
+    sel_map: std.AutoHashMap(ecs.EcsT.Id, void),
+    bb_min: Vec3 = Vec3.zero(),
+    bb_max: Vec3 = Vec3.zero(),
+
+    state: enum { init, active } = .init,
+    start: Vec3 = Vec3.zero(),
+    start_n: Vec3 = Vec3.zero(),
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .sel_map = std.AutoHashMap(ecs.EcsT.Id, void).init(alloc),
+        };
+    }
+
+    pub fn reset(self: *Self) void {
+        self.sel_map.clearRetainingCapacity();
+        self.state = .init;
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.sel_map.deinit();
+    }
+
+    fn rebuildBB(self: *Self, ed: *Editor) !void {
+        const sel = ed.selection.getSlice();
+        self.sel_map.clearRetainingCapacity();
+        var min = Vec3.set(std.math.floatMax(f32));
+        var max = Vec3.set(-std.math.floatMax(f32));
+
+        for (sel) |s| {
+            if (try ed.ecs.getOptPtr(s, .bounding_box)) |b| {
+                min = min.min(b.a);
+                max = max.max(b.b);
+            }
+            try self.sel_map.put(s, {});
+        }
+
+        self.bb_min = min;
+        self.bb_max = max;
+    }
+
+    fn needsRebuild(self: *Self, ed: *Editor) bool {
+        const sel = ed.selection.getSlice();
+        if (sel.len != self.sel_map.count()) return true;
+
+        for (sel) |s| {
+            if (!self.sel_map.contains(s)) return true;
+        }
+        return false;
+    }
+
+    fn addOrRemoveSelFromMeshMap(ed: *Editor, add: bool) !void {
+        const sel = ed.selection.getSlice();
+        for (sel) |id| {
+            if (try ed.ecs.getOptPtr(id, .solid)) |solid| {
+                if (!add) try solid.removeFromMeshMap(id, ed) else try solid.translate(id, Vec3.zero(), ed);
+            }
+        }
+    }
+
+    fn commit(self: *Self, ed: *Editor, ctx: TranslateCtx) !void {
+        const selection = ed.selection.getSlice();
+        const ustack = try ed.undoctx.pushNewFmt("scale", .{});
+        for (selection) |id| {
+            const solid = try ed.ecs.getOptPtr(id, .solid) orelse continue;
+            const temp_verts = try ed.frame_arena.allocator().alloc(Vec3, solid.verts.items.len);
+            const index = try ed.frame_arena.allocator().alloc(u32, solid.verts.items.len);
+            _ = self;
+            for (solid.verts.items, 0..) |v, i| {
+                temp_verts[i] = ctx.vertexOffset(v, 0, 0);
+                index[i] = @intCast(i);
+            }
+
+            try ustack.append(try undo.UndoVertexTranslate.create(
+                ed.undoctx.alloc,
+                id,
+                Vec3.zero(),
+                index,
+                temp_verts,
+            ));
+        }
+        undo.applyRedo(ustack.items, ed);
+    }
+
+    pub fn runProp(self: *Self, ed: *Editor, td: ToolData) !void {
+        if (td.state == .init)
+            self.reset();
+
+        if (self.needsRebuild(ed))
+            try self.rebuildBB(ed);
+        const draw_nd = &ed.draw_state.ctx;
+
+        //draw.cube(cc[0], cc[1], 0xffffff88);
+        const selected = ed.selection.getSlice();
+        if (selected.len == 0) return;
+        for (selected) |id| {
+            if (try ed.ecs.getOptPtr(id, .solid)) |solid| {
+                solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+            }
+        }
+        draw_nd.point3D(self.start, 0xffff_00ff);
+        const lm = ed.edit_state.lmouse;
+        const rm = ed.edit_state.rmouse;
+        const rc = ed.camRay(td.screen_area, td.view_3d.*);
+        switch (self.state) {
+            .init => {
+                const cc = cubeFromBounds(self.bb_min, self.bb_max);
+                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                if (lm == .rising) {
+                    if (util3d.doesRayIntersectBBZ(rc[0], rc[1], self.bb_min, self.bb_max)) |inter| {
+                        self.start = inter;
+                        if (util3d.pointBBIntersectionNormal(self.bb_min, self.bb_max, inter)) |norm| {
+                            self.start_n = norm;
+                            self.state = .active;
+                            try addOrRemoveSelFromMeshMap(ed, false);
+                        }
+                    }
+                }
+            },
+            .active => {
+                if (lm != .high) {
+                    self.state = .init;
+                    try addOrRemoveSelFromMeshMap(ed, true);
+                    return;
+                }
+                if (util3d.planeNormalGizmo(self.start, self.start_n, rc)) |inter| {
+                    //const dist_n =
+
+                    const sign = self.start_n.dot(Vec3.set(1));
+                    _, const p_unsnapped = inter;
+                    const p = snapV3(p_unsnapped, ed.edit_state.grid_snap);
+                    const bmin = if (sign > 0) self.bb_min else self.bb_min.add(p);
+                    const bmax = if (sign < 0) self.bb_max else self.bb_max.add(p);
+                    const fr0zen = if (sign > 0) self.bb_min else self.bb_max;
+
+                    const total_len = (self.bb_min.sub(self.bb_max).dot(self.start_n));
+
+                    const cc = cubeFromBounds(bmin, bmax);
+                    draw_nd.line3D(self.start, self.start.add(p), 0x00ffffff);
+                    draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+
+                    const ctx_ = TranslateCtx{
+                        .froze = fr0zen,
+                        .norm = self.start_n,
+                        .t = p.dot(Vec3.set(1)),
+                        .tl = total_len,
+                    };
+                    if (rm == .rising) {
+                        try self.commit(ed, ctx_);
+                    }
+                    for (selected) |id| {
+                        const solid = try ed.ecs.getOptPtr(id, .solid) orelse continue;
+                        solid.drawImmediateCustom(td.draw, ed, &ctx_, TranslateCtx.vertexOffset) catch return;
+                    }
+                }
+            },
+        }
+    }
+};
+
 pub const TranslateFace = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
+
     vt: i3DTool,
     gizmo: Gizmo,
     face_id: ?usize = null,
     face_origin: Vec3 = Vec3.zero(),
 
+    //When there are more than 1 solids selected, do proportional editing instead
+    prop: Proportional,
+
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
-        obj.* = .{ .vt = .{
-            .deinit_fn = &@This().deinit,
-            .runTool_fn = &@This().runTool,
-            .tool_icon_fn = &@This().drawIcon,
-            .guiDoc_fn = &@This().guiDoc,
-        }, .gizmo = .{} };
+        obj.* = .{
+            .vt = .{
+                .deinit_fn = &@This().deinit,
+                .runTool_fn = &@This().runTool,
+                .tool_icon_fn = &@This().drawIcon,
+                .guiDoc_fn = &@This().guiDoc,
+            },
+            .gizmo = .{},
+            .prop = Proportional.init(alloc),
+        };
         return &obj.vt;
     }
 
@@ -1467,6 +1654,7 @@ pub const TranslateFace = struct {
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.prop.deinit();
         alloc.destroy(self);
     }
 
@@ -1474,6 +1662,8 @@ pub const TranslateFace = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (editor.selection.getExclusive()) |id| {
             faceTranslate(self, editor, id, td) catch return error.fatal;
+        } else {
+            self.prop.runProp(editor, td) catch return error.fatal;
         }
     }
 

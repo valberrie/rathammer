@@ -258,14 +258,17 @@ pub const UndoVertexTranslate = struct {
     id: Id,
     offset: Vec3,
     vert_indicies: []const u32,
+    many: ?[]const Vec3,
 
-    pub fn create(alloc: std.mem.Allocator, id: Id, offset: Vec3, vert_index: []const u32) !*iUndo {
+    //If many is set, it should be parallel to vert_index slice and offset applies globally
+    pub fn create(alloc: std.mem.Allocator, id: Id, offset: Vec3, vert_index: []const u32, many: ?[]const Vec3) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
             .id = id,
             .offset = offset,
             .vert_indicies = try alloc.dupe(u32, vert_index),
+            .many = if (many) |m| try alloc.dupe(Vec3, m) else null,
         };
         return &obj.vt;
     }
@@ -273,19 +276,21 @@ pub const UndoVertexTranslate = struct {
     pub fn undo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
-            solid.translateVerts(self.id, self.offset.scale(-1), editor, self.vert_indicies) catch return;
+            solid.translateVerts(self.id, self.offset.scale(-1), editor, self.vert_indicies, self.many, -1) catch return;
         }
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
-            solid.translateVerts(self.id, self.offset, editor, self.vert_indicies) catch return;
+            solid.translateVerts(self.id, self.offset, editor, self.vert_indicies, self.many, 1) catch return;
         }
     }
 
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         alloc.free(self.vert_indicies);
+        if (self.many) |m|
+            alloc.free(m);
         alloc.destroy(self);
     }
 };

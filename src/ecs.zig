@@ -586,10 +586,23 @@ pub const Solid = struct {
         aabb.b = max;
     }
 
-    pub fn translateVerts(self: *@This(), id: EcsT.Id, offset: Vec3, editor: *Editor, vert_i: []const u32) !void {
+    fn translateVertsSimple(self: *@This(), vert_i: []const u32, offset: Vec3) void {
         for (vert_i) |v_i| {
             if (v_i >= self.verts.items.len) continue;
+
             self.verts.items[v_i] = self.verts.items[v_i].add(offset);
+        }
+    }
+
+    pub fn translateVerts(self: *@This(), id: EcsT.Id, offset: Vec3, editor: *Editor, vert_i: []const u32, vert_offsets: ?[]const Vec3, factor: f32) !void {
+        if (vert_offsets) |offs| {
+            for (vert_i, 0..) |v_i, i| {
+                if (v_i >= self.verts.items.len) continue;
+
+                self.verts.items[v_i] = self.verts.items[v_i].add(offset).add(offs[i].scale(factor));
+            }
+        } else {
+            self.translateVertsSimple(vert_i, offset);
         }
 
         for (self.sides.items) |*side| {
@@ -724,6 +737,45 @@ pub const Solid = struct {
                 });
             }
             const indexs = try editor.csgctx.triangulateIndex(@intCast(side.index.items.len), @intCast(ioffset));
+            try batch.indicies.appendSlice(indexs);
+        }
+    }
+
+    //the vertexOffsetCb is given the vertex, the side_index, the index
+    pub fn drawImmediateCustom(self: *Self, draw: *DrawCtx, ed: *Editor, user: anytype, vertOffsetCb: fn (@TypeOf(user), Vec3, u32, u32) Vec3) !void {
+        for (self.sides.items, 0..) |side, s_i| {
+            const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
+                .shader = DrawCtx.billboard_shader,
+                .texture = (try ed.getTexture(side.tex_id)).id,
+                .camera = ._3d,
+            } }) catch return).billboard;
+            const uvs = try ed.csgctx.calcUVCoordsIndexed(
+                self.verts.items,
+                side.index.items,
+                side,
+                @intCast(side.tw),
+                @intCast(side.th),
+            );
+            const ioffset = batch.vertices.items.len;
+            for (side.index.items, 0..) |vi, i| {
+                const v = self.verts.items[vi];
+
+                const off = vertOffsetCb(user, v, @intCast(s_i), @intCast(i));
+
+                try batch.vertices.append(.{
+                    .pos = .{
+                        .x = v.x() + off.x(),
+                        .y = v.y() + off.y(),
+                        .z = v.z() + off.z(),
+                    },
+                    .uv = .{
+                        .x = uvs[i].x(),
+                        .y = uvs[i].y(),
+                    },
+                    .color = 0xffffffff,
+                });
+            }
+            const indexs = try ed.csgctx.triangulateIndex(@intCast(side.index.items.len), @intCast(ioffset));
             try batch.indicies.appendSlice(indexs);
         }
     }

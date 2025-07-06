@@ -306,3 +306,34 @@ pub fn snap1(comp: f32, snap: f32) f32 {
     return @round(comp / snap) * snap;
     //return @divFloor(comp, snap) * snap;
 }
+
+// Given some plane in r3
+// plane_n
+// returns the point of intersection and the constrained point
+pub fn planeNormalGizmo(plane_p0: Vec3, plane_n: Vec3, ray: [2]Vec3) ?struct { Vec3, Vec3 } {
+    const ray_dir = ray[1];
+    const v_proj = ray_dir.sub(plane_n.scale(ray_dir.dot(plane_n)));
+
+    if (doesRayIntersectPlane(ray[0], ray[1], plane_p0, v_proj)) |inter| {
+        const dist = inter.sub(plane_p0);
+        const acc = dist.dot(plane_n);
+        return .{ inter, plane_n.scale(acc) };
+    }
+    return null;
+}
+
+//Given a point laying on a bounding box, what's the normal of the face?
+pub fn pointBBIntersectionNormal(bb_min: Vec3, bb_max: Vec3, point: Vec3) ?Vec3 {
+    var zero = Vec3.zero();
+    for (0..3) |i| {
+        if (bb_min.data[i] == point.data[i]) {
+            zero.data[i] = -1;
+            return zero;
+        }
+        if (bb_max.data[i] == point.data[i]) {
+            zero.data[i] = 1;
+            return zero;
+        }
+    }
+    return null;
+}
