@@ -259,8 +259,8 @@ pub const VertexTranslate = struct {
         var id_mapper = std.AutoHashMap(ecs.EcsT.Id, void).init(ar);
 
         solid_loop: for (selected_slice) |sel| {
-            try id_mapper.put(sel, {});
-            if (try ed.ecs.getOptPtr(sel, .solid)) |solid| {
+            if (ed.getComponent(sel, .solid)) |solid| {
+                try id_mapper.put(sel, {});
                 solid.drawEdgeOutline(draw_nd, 0x00ff00ff, 0x0, Vec3.zero());
 
                 if (this_frame_had_selection and self.selection_mode == .one)
@@ -325,7 +325,7 @@ pub const VertexTranslate = struct {
             const dist = snapV3(origin_mut.sub(origin), ed.edit_state.grid_snap);
             for (selected_slice) |id| {
                 const manip_verts = self.selected.getPtr(id) orelse continue;
-                const solid = try ed.ecs.getOptPtr(id, .solid) orelse continue;
+                const solid = ed.getComponent(id, .solid) orelse continue;
                 //solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
 
                 switch (giz_active) {
@@ -463,7 +463,7 @@ pub const FastFaceManip = struct {
         const draw_nd = &editor.draw_state.ctx;
         const selected_slice = editor.selection.getSlice();
         for (selected_slice) |sel| {
-            if (try editor.ecs.getOptPtr(sel, .solid)) |solid| {
+            if (editor.getComponent(sel, .solid)) |solid| {
                 solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
             }
         }
@@ -479,7 +479,7 @@ pub const FastFaceManip = struct {
                     self.right = rm == .rising;
                     const r = editor.camRay(td.screen_area, td.view_3d.*);
                     for (selected_slice) |sel| {
-                        const solid = try editor.ecs.getOptPtr(sel, .solid) orelse continue;
+                        const solid = editor.getComponent(sel, .solid) orelse continue;
                         const rc = try raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx);
                         if (rc.len > 0) {
                             const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len - 1) else 0;
@@ -495,7 +495,7 @@ pub const FastFaceManip = struct {
                             for (selected_slice) |other| {
                                 if (other == sel)
                                     continue;
-                                if (try editor.ecs.getOptPtr(other, .solid)) |o_solid| {
+                                if (editor.getComponent(other, .solid)) |o_solid| {
                                     for (o_solid.sides.items, 0..) |*side, fi| {
                                         if (init_plane.eql(side.normal(o_solid))) {
                                             try self.selected.append(.{ .id = other, .face_id = @intCast(fi) });
@@ -513,7 +513,7 @@ pub const FastFaceManip = struct {
             .active => {
                 //for (self.selected.items) |id| {
                 if (self.main_id) |id| {
-                    if (try editor.ecs.getOptPtr(id, .solid)) |solid| {
+                    if (editor.getComponent(id, .solid)) |solid| {
                         if (self.face_id >= 0 and self.face_id < solid.sides.items.len) {
                             const s_i: usize = @intCast(self.face_id);
                             const side = &solid.sides.items[s_i];
@@ -546,7 +546,7 @@ pub const FastFaceManip = struct {
                                 const dist = snapV3(pos, editor.edit_state.grid_snap);
 
                                 for (self.selected.items) |sel| {
-                                    const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
+                                    const solid_o = editor.getComponent(sel.id, .solid) orelse continue;
                                     if (sel.face_id >= solid_o.sides.items.len) continue;
                                     const s_io: usize = @intCast(sel.face_id);
                                     const side_o = &solid_o.sides.items[s_io];
@@ -558,7 +558,7 @@ pub const FastFaceManip = struct {
                                 if (commit_btn == .rising) {
                                     const ustack = editor.undoctx.pushNewFmt("translate {d} faces", .{self.selected.items.len}) catch return;
                                     for (self.selected.items) |sel| {
-                                        const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
+                                        const solid_o = editor.getComponent(sel.id, .solid) orelse continue;
                                         if (sel.face_id >= solid_o.sides.items.len) continue;
                                         ustack.append(undo.UndoSolidFaceTranslate.create(
                                             editor.undoctx.alloc,
@@ -576,7 +576,7 @@ pub const FastFaceManip = struct {
 
                         if (rm != .high and lm != .high) {
                             for (self.selected.items) |sel| {
-                                const solid_o = try editor.ecs.getOptPtr(sel.id, .solid) orelse continue;
+                                const solid_o = editor.getComponent(sel.id, .solid) orelse continue;
                                 try solid_o.rebuild(sel.id, editor);
                             }
                             self.reset();
@@ -700,11 +700,11 @@ pub const Translate = struct {
         var angle: ?Vec3 = null;
         var angle_delta: ?Vec3 = null;
         const giz_origin: ?Vec3 = blk: {
-            const last_bb = try self.ecs.getOptPtr(last_id, .bounding_box) orelse return;
-            if (try self.ecs.getOptPtr(last_id, .solid)) |solid| { //check Solid before Entity
+            const last_bb = self.getComponent(last_id, .bounding_box) orelse return;
+            if (self.getComponent(last_id, .solid)) |solid| { //check Solid before Entity
                 _ = solid;
                 break :blk last_bb.a.add(last_bb.b).scale(0.5);
-            } else if (try self.ecs.getOptPtr(last_id, .entity)) |ent| {
+            } else if (self.getComponent(last_id, .entity)) |ent| {
                 angle = ent.angle;
                 break :blk ent.origin;
             }
@@ -745,7 +745,7 @@ pub const Translate = struct {
             const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
             const selected = self.selection.getSlice();
             for (selected) |id| {
-                if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+                if (self.getComponent(id, .solid)) |solid| {
                     solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
@@ -765,8 +765,8 @@ pub const Translate = struct {
                         solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
                     }
                 }
-                if (try self.ecs.getOptPtr(id, .entity)) |ent| {
-                    const bb = try self.ecs.getOptPtr(id, .bounding_box) orelse continue;
+                if (self.getComponent(id, .entity)) |ent| {
+                    const bb = self.getComponent(id, .bounding_box) orelse continue;
                     //TODO the angle function is usable but suboptimal.
                     //the gizmo always manipulates extrinsic angles, rather than relative to current rotation
                     //this is how the angles in the vmf are stored but make for unintuitive editing
@@ -968,7 +968,7 @@ pub const TextureTool = struct {
         //Begin all selected face stuff
         const e_id = self.id orelse return;
         const f_id = self.face_index orelse return;
-        const solid = (self.ed.ecs.getOptPtr(e_id, .solid) catch null) orelse return;
+        const solid = (self.ed.getComponent(e_id, .solid)) orelse return;
         if (f_id >= solid.sides.items.len) return;
         const side = &solid.sides.items[f_id];
         area_vt.addChildOpt(gui, win, Wg.Text.build(gui, ly.getArea(), "u {d} {d} {d}, {d}, {d}", .{
@@ -999,7 +999,7 @@ pub const TextureTool = struct {
             .reset => {
                 const e_id = self.id orelse return;
                 const f_id = self.face_index orelse return;
-                const solid = (self.ed.ecs.getOptPtr(e_id, .solid) catch null) orelse return;
+                const solid = (self.ed.getComponent(e_id, .solid)) orelse return;
                 if (f_id >= solid.sides.items.len) return;
                 const side = &solid.sides.items[f_id];
                 const norm = side.normal(solid);
@@ -1020,7 +1020,7 @@ pub const TextureTool = struct {
 
     fn getCurrentlySelected(self: *TextureTool, editor: *Editor) !?struct { solid: *ecs.Solid, side: *ecs.Side } {
         const id = self.id orelse return null;
-        const solid = try editor.ecs.getOptPtr(id, .solid) orelse return null;
+        const solid = editor.getComponent(id, .solid) orelse return null;
         if (self.face_index == null or self.face_index.? >= solid.sides.items.len) return null;
 
         return .{ .solid = solid, .side = &solid.sides.items[self.face_index.?] };
@@ -1040,7 +1040,7 @@ pub const TextureTool = struct {
                 const res_id = (editor.asset_browser.selected_mat_vpk_id) orelse break :blk;
                 const pot = editor.screenRay(td.screen_area, td.view_3d.*);
                 if (pot.len == 0) break :blk;
-                const solid = try editor.ecs.getOptPtr(pot[0].id, .solid) orelse break :blk;
+                const solid = editor.getComponent(pot[0].id, .solid) orelse break :blk;
                 if (pot[0].side_id == null or pot[0].side_id.? >= solid.sides.items.len) break :blk;
                 const side = &solid.sides.items[pot[0].side_id.?];
                 const pick = editor.isBindState(editor.config.keys.cube_draw_plane_raycast.b, .high);
@@ -1239,7 +1239,7 @@ const Proportional = struct {
         var max = Vec3.set(-std.math.floatMax(f32));
 
         for (sel) |s| {
-            if (try ed.ecs.getOptPtr(s, .bounding_box)) |b| {
+            if (ed.getComponent(s, .bounding_box)) |b| {
                 min = min.min(b.a);
                 max = max.max(b.b);
             }
@@ -1263,7 +1263,7 @@ const Proportional = struct {
     fn addOrRemoveSelFromMeshMap(ed: *Editor, add: bool) !void {
         const sel = ed.selection.getSlice();
         for (sel) |id| {
-            if (try ed.ecs.getOptPtr(id, .solid)) |solid| {
+            if (ed.getComponent(id, .solid)) |solid| {
                 if (!add) try solid.removeFromMeshMap(id, ed) else try solid.translate(id, Vec3.zero(), ed);
             }
         }
@@ -1273,7 +1273,7 @@ const Proportional = struct {
         const selection = ed.selection.getSlice();
         const ustack = try ed.undoctx.pushNewFmt("scale", .{});
         for (selection) |id| {
-            const solid = try ed.ecs.getOptPtr(id, .solid) orelse continue;
+            const solid = ed.getComponent(id, .solid) orelse continue;
             const temp_verts = try ed.frame_arena.allocator().alloc(Vec3, solid.verts.items.len);
             const index = try ed.frame_arena.allocator().alloc(u32, solid.verts.items.len);
             _ = self;
@@ -1305,7 +1305,7 @@ const Proportional = struct {
         const selected = ed.selection.getSlice();
         if (selected.len == 0) return;
         for (selected) |id| {
-            if (try ed.ecs.getOptPtr(id, .solid)) |solid| {
+            if (ed.getComponent(id, .solid)) |solid| {
                 solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
             }
         }
@@ -1360,7 +1360,7 @@ const Proportional = struct {
                         try self.commit(ed, ctx_);
                     }
                     for (selected) |id| {
-                        const solid = try ed.ecs.getOptPtr(id, .solid) orelse continue;
+                        const solid = ed.getComponent(id, .solid) orelse continue;
                         solid.drawImmediateCustom(td.draw, ed, &ctx_, TranslateCtx.vertexOffset) catch return;
                     }
                 }
@@ -1431,7 +1431,7 @@ pub const TranslateFace = struct {
     }
     pub fn faceTranslate(tool: *@This(), self: *Editor, id: ecs.EcsT.Id, td: ToolData) !void {
         const draw_nd = &self.draw_state.ctx;
-        if (try self.ecs.getOptPtr(id, .solid)) |solid| {
+        if (self.getComponent(id, .solid)) |solid| {
             var gizmo_is_active = false;
             solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
             for (solid.sides.items, 0..) |side, s_i| {
@@ -1582,7 +1582,7 @@ pub const Clipping = struct {
         const selected = ed.selection.getSlice();
 
         for (selected) |id| {
-            if (try ed.ecs.getOptPtr(id, .solid)) |solid| {
+            if (ed.getComponent(id, .solid)) |solid| {
                 solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
             }
         }

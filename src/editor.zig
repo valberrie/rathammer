@@ -731,19 +731,6 @@ pub const Context = struct {
                 const disp_id = try self.ecs.createEntity();
                 var disp_gen = try Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
                 try disp_gen.genVerts(&newsolid, self);
-                //const ss = newsolid.sides.items[s_i].index.items;
-                //const corners = [4]Vec3{
-                //    newsolid.verts.items[ss[0]],
-                //    newsolid.verts.items[ss[1]],
-                //    newsolid.verts.items[ss[2]],
-                //    newsolid.verts.items[ss[3]],
-                //};
-                //try self.csgctx.genMeshDisplacement(
-                //    &corners,
-                //    //newsolid.sides.items[s_i].verts.items,
-                //    &side.dispinfo,
-                //    &disp_gen,
-                //);
                 try res.contains.put(disp_id, {});
                 if (false) { //dump to obj
                     std.debug.print("o disp\n", .{});

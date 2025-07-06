@@ -1014,6 +1014,14 @@ pub const Displacement = struct {
     }
 };
 
+/// An explination of how visgroups work in RatHammer.
+/// entities can optionally have a EditorInfo component attached.
+/// This vis_mask is a bitmask which indexes into the Editor.visgroups masks.
+///
+/// When the active visgroups change the editor iterates all editor_info components and attached an "invisible" component.
+/// Care must be taken to access components by editor.getComponent rather than the registery methods as
+/// getComponent returns null for invisible entites.
+/// The exact same mechanism is used for deletion of entities, a "deleted" component is attached and removed, rather than actually deleting things.
 pub const EditorInfo = struct {
     //pub const ECS_NO_SERIAL = void;
     vis_mask: VisGroups.BitSetT = VisGroups.BitSetT.initEmpty(),
