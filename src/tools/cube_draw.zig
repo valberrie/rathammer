@@ -15,6 +15,7 @@ const util3d = @import("../util_3d.zig");
 const ecs = @import("../ecs.zig");
 const undo = @import("../undo.zig");
 const snapV3 = util3d.snapV3;
+const prim_gen = @import("../primitive_gen.zig");
 
 pub const CubeDraw = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
@@ -31,9 +32,10 @@ pub const CubeDraw = struct {
         min_w,
         max_w,
     } = .grid,
+    min_volume: f32 = 1,
     snap_height: bool = true,
     custom_height: f32 = 16,
-    state: enum { start, planar } = .start,
+    state: enum { start, planar, finished } = .start,
     start: Vec3 = undefined,
     end: Vec3 = undefined,
     z: f32 = 0,
@@ -118,6 +120,64 @@ pub const CubeDraw = struct {
         };
     }
 
+    fn finishPrimitive(tool: *@This(), ed: *Editor, td: tools.ToolData) !void {
+        const draw_nd = &ed.draw_state.ctx;
+        switch (tool.primitive) {
+            else => tool.state = .start,
+            .cylinder => {
+                const draw = td.draw;
+                const cc = util3d.cubeFromBounds(tool.start, tool.end);
+                const r = @min(cc[1].x(), cc[1].y()) / 2;
+
+                const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{ .r = r, .z = cc[1].z() });
+                const center = cc[0].add(cc[1].scale(0.5));
+                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                const v1 = Vec3.new(1, 0, 0);
+                for (cyl.solids.items) |sol| {
+                    for (sol.items) |face| {
+                        const norm = cyl.norm(face.items);
+                        const amt = @abs(v1.dot(norm));
+                        const gray: u32 = @intFromFloat(@min((0xff - 0x88) * amt + 0x88, 0xbb));
+                        const color = gray << 24 | gray << 16 | gray << 8 | 0xff;
+                        draw.convexPolyIndexed(face.items, cyl.verts.items, color, .{
+                            .offset = center,
+                        });
+                    }
+                }
+            },
+            .cube => {
+                tool.state = .start; //incase initFromCube fails, advance state
+                if (ecs.Solid.initFromCube(ed.alloc, tool.start, tool.end, ed.asset_browser.selected_mat_vpk_id orelse 0)) |newsolid| {
+                    const new = try ed.ecs.createEntity();
+                    try ed.ecs.attach(new, .solid, newsolid);
+                    try ed.ecs.attach(new, .bounding_box, .{});
+                    const solid_ptr = try ed.ecs.getPtr(new, .solid);
+                    try solid_ptr.translate(new, Vec3.zero(), ed);
+                    {
+                        const ustack = try ed.undoctx.pushNewFmt("draw cube", .{});
+                        try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
+                        undo.applyRedo(ustack.items, ed);
+                    }
+                    switch (tool.post_state) {
+                        .reset => tool.state = .start,
+                        .switch_to_fast_face => {
+                            const tid = try ed.tools.getId(tools.FastFaceManip);
+                            ed.edit_state.tool_index = tid;
+                            try ed.selection.setToSingle(new);
+                        },
+                        .switch_to_translate => {
+                            const tid = try ed.tools.getId(tools.Translate);
+                            ed.edit_state.tool_index = tid;
+                            try ed.selection.setToSingle(new);
+                        },
+                    }
+                } else |a| {
+                    std.debug.print("Invalid cube {!}\n", .{a});
+                }
+            },
+        }
+    }
+
     pub fn cubeDraw(tool: *@This(), self: *Editor, td: tools.ToolData) !void {
         const draw = td.draw;
         switch (td.state) {
@@ -189,41 +249,20 @@ pub const CubeDraw = struct {
                     const height = tool.getHeight(self, in);
                     const cc = util3d.cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, height)));
                     draw.cube(cc[0], cc[1], 0xffffff88);
+                    const ext = cc[1];
+                    const volume = ext.x() * ext.y() * ext.z();
 
-                    if (self.edit_state.lmouse == .rising) {
+                    if (self.edit_state.lmouse == .rising and volume > tool.min_volume) {
                         tool.end = in;
                         tool.end.data[2] += height;
+                        tool.state = .finished;
 
                         //Put it into the
-                        if (ecs.Solid.initFromCube(self.alloc, tool.start, tool.end, self.asset_browser.selected_mat_vpk_id orelse 0)) |newsolid| {
-                            const new = try self.ecs.createEntity();
-                            try self.ecs.attach(new, .solid, newsolid);
-                            try self.ecs.attach(new, .bounding_box, .{});
-                            const solid_ptr = try self.ecs.getPtr(new, .solid);
-                            try solid_ptr.translate(new, Vec3.zero(), self);
-                            {
-                                const ustack = try self.undoctx.pushNewFmt("draw cube", .{});
-                                try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, new, .create));
-                                undo.applyRedo(ustack.items, self);
-                            }
-                            switch (tool.post_state) {
-                                .reset => tool.state = .start,
-                                .switch_to_fast_face => {
-                                    const tid = try self.tools.getId(tools.FastFaceManip);
-                                    self.edit_state.tool_index = tid;
-                                    try self.selection.setToSingle(new);
-                                },
-                                .switch_to_translate => {
-                                    const tid = try self.tools.getId(tools.Translate);
-                                    self.edit_state.tool_index = tid;
-                                    try self.selection.setToSingle(new);
-                                },
-                            }
-                        } else |a| {
-                            std.debug.print("Invalid cube {!}\n", .{a});
-                        }
                     }
                 }
+            },
+            .finished => {
+                try tool.finishPrimitive(self, td);
             },
         }
     }

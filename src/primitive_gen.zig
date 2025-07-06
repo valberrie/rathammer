@@ -1,18 +1,58 @@
 const std = @import("std");
+const graph = @import("graph");
+const _Vec = struct { x: f32, y: f32, z: f32 };
+const Vec3 = graph.za.Vec3;
+const util3d = @import("util_3d.zig");
 
 pub fn snap1(comp: f32, snap: f32) f32 {
     return @round(comp / snap) * snap;
 }
+//Ideally we use the same functions to generate the solids and immediate draw.
+//somekind of callback
+//we have a draw.convexPolygonIndexed function
+//just use an arena!
 
-pub fn cylinder(alloc: std.mem.Allocator, wr: anytype) !void {
+pub const Primitive = struct {
+    verts: std.ArrayList(Vec3),
+    solids: std.ArrayList(std.ArrayList(std.ArrayList(u32))),
+
+    pub fn init(alloc: std.mem.Allocator) @This() {
+        return .{
+            .verts = std.ArrayList(Vec3).init(alloc),
+            .solids = std.ArrayList(std.ArrayList(std.ArrayList(u32))).init(alloc),
+        };
+    }
+
+    pub fn norm(self: *const @This(), ind: []const u32) Vec3 {
+        if (ind.len < 3) return Vec3.zero();
+
+        return util3d.trianglePlane(.{
+            self.verts.items[ind[0]],
+            self.verts.items[ind[1]],
+            self.verts.items[ind[2]],
+        });
+    }
+
+    //Ptr is invalid after calling again
+    pub fn newSolid(self: *@This()) !*std.ArrayList(std.ArrayList(u32)) {
+        const new = std.ArrayList(std.ArrayList(u32)).init(self.verts.allocator);
+        try self.solids.append(new);
+        return &self.solids.items[self.solids.items.len - 1];
+    }
+
+    pub fn newFace(self: *@This()) std.ArrayList(u32) {
+        return std.ArrayList(u32).init(self.verts.allocator);
+    }
+};
+
+pub fn cylinder(alloc: std.mem.Allocator, param: struct { r: f32, z: f32, num_segment: u32 = 16, snap: f32 = 1 }) !Primitive {
     const snap = 1;
-    var verts = std.ArrayList(struct { x: f32, y: f32, z: f32 }).init(alloc);
-    var faces = std.ArrayList(std.ArrayList(usize)).init(alloc);
-    const r = 10;
-    const num_segment = 20;
-    const dtheta: f32 = std.math.tau / @as(f32, num_segment);
-    const z = 10;
-    try verts.resize(num_segment * 2);
+    var prim = Primitive.init(alloc);
+    const r = param.r;
+    const num_segment = param.num_segment;
+    const dtheta: f32 = std.math.tau / @as(f32, @floatFromInt(num_segment));
+    const z = param.z;
+    try prim.verts.resize(num_segment * 2);
     for (0..num_segment) |ni| {
         const fi: f32 = @floatFromInt(ni);
 
@@ -22,14 +62,16 @@ pub fn cylinder(alloc: std.mem.Allocator, wr: anytype) !void {
         const x = @round(x_f / snap) * snap;
         const y = @round(y_f / snap) * snap;
 
-        verts.items[ni] = .{ .x = x, .y = y, .z = 0 };
-        verts.items[ni + num_segment] = .{ .x = x, .y = y, .z = z };
+        prim.verts.items[ni] = Vec3.new(x, y, -z / 2);
+        prim.verts.items[ni + num_segment] = Vec3.new(x, y, z / 2);
     }
 
+    var faces = try prim.newSolid();
     {
-        var face = std.ArrayList(usize).init(alloc);
-        var opp_face = std.ArrayList(usize).init(alloc);
-        for (0..num_segment) |ni| {
+        var face = prim.newFace();
+        var opp_face = prim.newFace();
+        for (0..num_segment) |nni| {
+            const ni: u32 = @intCast(nni);
             try face.append(ni);
             try opp_face.append(num_segment - 1 - ni + num_segment);
         }
@@ -37,8 +79,9 @@ pub fn cylinder(alloc: std.mem.Allocator, wr: anytype) !void {
         try faces.append(opp_face);
     }
 
-    for (0..num_segment) |ni| {
-        var face = std.ArrayList(usize).init(alloc);
+    for (0..num_segment) |nni| {
+        var face = prim.newFace();
+        const ni: u32 = @intCast(nni);
         const v0 = ni;
         const v1 = (ni + 1) % num_segment;
         try face.appendSlice(&.{
@@ -47,15 +90,7 @@ pub fn cylinder(alloc: std.mem.Allocator, wr: anytype) !void {
         try faces.append(face);
     }
 
-    try wr.print("o hello\n", .{});
-    for (verts.items) |v|
-        try wr.print("v {d} {d} {d}\n", .{ v.x, v.y, v.z });
-    for (faces.items) |face| {
-        try wr.print("f", .{});
-        for (face.items) |ind|
-            try wr.print(" {d}", .{ind + 1});
-        try wr.print("\n", .{});
-    }
+    return prim;
 }
 
 pub fn arch(alloc: std.mem.Allocator, wr: anytype) !void {
