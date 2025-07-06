@@ -82,8 +82,11 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
         const thet = fi * dtheta;
         const x_f = @cos(thet) * r;
         const y_f = @sin(thet) * r;
-        const x = @round(x_f / snap) * snap;
-        const y = @round(y_f / snap) * snap;
+        var x = @round(x_f / snap) * snap;
+        var y = @round(y_f / snap) * snap;
+
+        if (param.axis != .z) //Flip all the normals
+            std.mem.swap(f32, &x, &y);
 
         prim.verts.items[ni] = param.axis.Vec(x, y, -z / 2);
         prim.verts.items[ni + num_segment] = param.axis.Vec(x, y, z / 2);
@@ -140,7 +143,8 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     num_segment: u32 = 16,
     snap: f32 = 1,
     z: f32,
-    invert: bool,
+    swap_y: bool,
+    swap_x: bool,
     axis: Axis = .z,
     theta_deg: f32 = 180,
 }) !Primitive {
@@ -152,7 +156,7 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     const z = param.z;
     try prim.verts.resize(num_segment * 4);
     const dtheta: f32 = std.math.degreesToRadians(param.theta_deg) / @as(f32, @floatFromInt(num_segment - 1)); //Do half only
-    const f: f32 = if (param.invert) -1 else 1;
+    const f: f32 = if (param.swap_y) -1 else 1;
     for (0..num_segment) |ni| {
         const fi: f32 = @floatFromInt(ni);
 
@@ -172,6 +176,10 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
         prim.verts.items[ni + num_segment * 1] = param.axis.Vec(f * x1, f * y1, z / 2); //lower far
         prim.verts.items[ni + num_segment * 2] = param.axis.Vec(f * x2, f * y2, -z / 2); //upper
         prim.verts.items[ni + num_segment * 3] = param.axis.Vec(f * x2, f * y2, z / 2); //upper far
+    }
+    if (param.swap_x) {
+        for (prim.verts.items) |*item|
+            std.mem.swap(f32, item.xMut(), item.yMut());
     }
 
     for (0..num_segment - 1) |nni| {

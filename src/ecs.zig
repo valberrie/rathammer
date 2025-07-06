@@ -1013,67 +1013,32 @@ pub const EditorInfo = struct {
 // user press ctrl-v with the string "255 255 255 800" in clipboard.
 // the relevant get filled out.
 pub const KeyValues = struct {
-    const MAX_FLOAT = 8;
-    pub const Floats = struct { count: u8, d: [MAX_FLOAT]f32 };
-    const Value = union(enum) {
+    const Value = struct {
         string: std.ArrayList(u8),
-        floats: Floats,
-        //float4: [4]f32,
-
-        //TODO with the new gui doing this float stuff is a bit pointless.
-        //just store all as strings and keep it simple
-        pub fn toFloats(self: *@This(), comptime count: u8) !void {
-            if (count >= MAX_FLOAT)
-                @compileError("not enough floats");
-            switch (self.*) {
-                .floats => {
-                    self.floats.count = count;
-                    //TODO zero out new floats
-                    return;
-                },
-                .string => {
-                    var it = std.mem.splitScalar(u8, self.string.items, ' ');
-                    var ret: [MAX_FLOAT]f32 = undefined;
-                    for (0..count) |i| {
-                        ret[i] = std.fmt.parseFloat(f32, it.next() orelse "0") catch 0;
-                    }
-                    self.string.deinit();
-                    self.* = .{ .floats = .{ .count = count, .d = ret } };
-                },
-            }
-        }
-
-        pub fn toString(self: *@This(), alloc: std.mem.Allocator) !void {
-            switch (self.*) {
-                .string => return,
-                .floats => |f| {
-                    var new = std.ArrayList(u8).init(alloc);
-                    for (f.d[0..f.count]) |fl|
-                        try new.writer().print("{d} ", .{fl});
-
-                    self.* = .{ .string = new };
-                },
-            }
-        }
-
-        pub fn setString(self: *@This(), alloc: std.mem.Allocator, string: []const u8) !void {
-            self.deinit();
-            var new = std.ArrayList(u8).init(alloc);
-            try new.appendSlice(string);
-            self.* = .{ .string = new };
-        }
 
         pub fn clone(self: *@This()) !@This() {
-            switch (self.*) {
-                .string => return .{ .string = try self.string.clone() },
-                else => return self.*,
-            }
+            var ret = self.*;
+            ret.string = try self.string.clone();
+            return ret;
         }
 
         pub fn deinit(self: *@This()) void {
-            switch (self.*) {
-                .string => |str| str.deinit(),
-                else => {},
+            self.string.deinit();
+        }
+
+        pub fn getFloats(self: *@This(), comptime count: usize) [count]f32 {
+            var it = std.mem.splitScalar(u8, self.string.items, ' ');
+            var ret: [count]f32 = undefined;
+            for (0..count) |i| {
+                ret[i] = std.fmt.parseFloat(f32, it.next() orelse "0") catch 0;
+            }
+            return ret;
+        }
+
+        pub fn printFloats(self: *@This(), comptime count: usize, floats: [count]f32) void {
+            self.string.clearRetainingCapacity();
+            for (floats, 0..) |f, i| {
+                self.string.writer().print("{s}{d}", .{ if (i == 0) "" else " ", f }) catch return;
             }
         }
     };
@@ -1113,24 +1078,13 @@ pub const KeyValues = struct {
         return ret;
     }
 
-    pub fn serial(self: @This(), edit: *Editor, jw: anytype) !void {
+    pub fn serial(self: @This(), _: *Editor, jw: anytype) !void {
         try jw.beginObject();
         {
             var it = self.map.iterator();
             while (it.next()) |item| {
                 try jw.objectField(item.key_ptr.*);
-                switch (item.value_ptr.*) {
-                    .string => |str| try jw.write(str.items),
-                    .floats => |c| {
-                        edit.scratch_buf.clearRetainingCapacity();
-                        for (c.d[0..c.count]) |cc|
-                            try edit.scratch_buf.writer().print("{d} ", .{cc});
-
-                        try jw.write(edit.scratch_buf.items);
-                        //try jw.print("\"{d} {d} {d}\"", .{ c[0], c[1], c[2] }),
-                    },
-                    //else => try jw.write(""), //TODO store type data
-                }
+                try jw.write(item.value_ptr.string.items);
             }
         }
         try jw.endObject();
@@ -1148,12 +1102,8 @@ pub const KeyValues = struct {
     }
 
     pub fn getString(self: *Self, key: []const u8) ?[]const u8 {
-        if (self.map.get(key)) |val| {
-            return switch (val) {
-                .string => val.string.items,
-                else => null,
-            };
-        }
+        if (self.map.get(key)) |val|
+            return val.string.items;
         return null;
     }
 

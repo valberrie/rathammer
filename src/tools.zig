@@ -1203,7 +1203,8 @@ const Proportional = struct {
         pub fn vertexOffset(s: *const @This(), v: Vec3, _: u32, _: u32) Vec3 {
             const dist = (v.sub(s.froze)).dot(s.norm) / -s.tl;
 
-            return s.norm.scale(dist * s.t);
+            //TODO put opt to disable hard grid snap
+            return .{ .data = @round(s.norm.scale(dist * s.t).data) };
         }
     };
     const Self = @This();

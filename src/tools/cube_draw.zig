@@ -37,6 +37,7 @@ pub const CubeDraw = struct {
         nsegment: u32 = 16,
         axis: prim_gen.Axis = .y,
         invert: bool = false,
+        invert_x: bool = false,
     } = .{},
 
     min_volume: f32 = 1,
@@ -108,9 +109,8 @@ pub const CubeDraw = struct {
                 area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.nsegment, 4, 64, .{ .nudge = 1 }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive_settings.axis, .{}));
-            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invert", .{
-                .bool_ptr = &self.primitive_settings.invert,
-            }, null));
+            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invert", .{ .bool_ptr = &self.primitive_settings.invert }, null));
+            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invertx", .{ .bool_ptr = &self.primitive_settings.invert_x }, null));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -169,7 +169,8 @@ pub const CubeDraw = struct {
                     .z = cc[1].z(),
                     .num_segment = tool.primitive_settings.nsegment,
                     .axis = tool.primitive_settings.axis,
-                    .invert = tool.primitive_settings.invert,
+                    .swap_y = tool.primitive_settings.invert,
+                    .swap_x = tool.primitive_settings.invert_x,
                 });
 
                 const center = cc[0].add(cc[1].scale(0.5));

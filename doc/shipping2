@@ -15,10 +15,6 @@ Change cube draw to draw
 Test gui on a variety of dpis
 Allow runtime resizing of panals
 
-Serialization of displacments
-
-Clipping tool.
-    rcast selected, place 2 points,
 Basic displacement tool.
 Finish the texture tool
     way to "grab" the face and pan aronud.
@@ -33,11 +29,6 @@ Finish the texture tool
         in texture viewer, allow creation of groups
         display all textures currently used
 
-
-Clipping tool
-    hard with undo, how is the newly created entity handled?
-    will require adding verts?
-    who knows
 
 Other primitive generation
     Arch !important!

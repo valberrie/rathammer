@@ -88,22 +88,17 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                     self.misc_gui_state.selected_index = field_i;
                                 switch (req_field.type) {
                                     .choices => |ch| {
-                                        try res.value_ptr.toString(kvs.map.allocator);
                                         try doChoices(ch, os9gui, &res.value_ptr.string);
                                     },
                                     .color255 => {
-                                        try res.value_ptr.toFloats(4);
-                                        const c = &res.value_ptr.floats.d;
-                                        const color = graph.ptypes.intColorFromVec3(graph.za.Vec3.new(c[0], c[1], c[2]), 1);
-                                        const a = gui.getArea() orelse break;
+                                        //const c = &res.value_ptr.floats.d;
+                                        //const color = graph.ptypes.intColorFromVec3(graph.za.Vec3.new(c[0], c[1], c[2]), 1);
+                                        //const a = gui.getArea() orelse break;
 
-                                        os9gui.gui.drawRectFilled(a, color);
+                                        //os9gui.gui.drawRectFilled(a, color);
                                     },
                                     else => {
-                                        switch (res.value_ptr.*) {
-                                            .string => |s| os9gui.label("{s}", .{s.items}),
-                                            .floats => _ = os9gui.gui.getArea() orelse break,
-                                        }
+                                        os9gui.label("{s}", .{res.value_ptr.string.items});
                                     },
                                 }
                             }
@@ -123,23 +118,22 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                             if (kvs.map.getPtr(field.name)) |val| {
                                 switch (field.type) {
                                     .choices => |ch| {
-                                        try val.toString(kvs.map.allocator);
                                         try doChoices(ch, os9gui, &val.string);
                                     },
                                     .angle => {
-                                        try val.toFloats(3);
-                                        _ = try os9gui.beginH(3);
-                                        defer os9gui.endL();
+                                        //try val.toFloats(3);
+                                        //_ = try os9gui.beginH(3);
+                                        //defer os9gui.endL();
 
-                                        const a = &val.floats;
+                                        //const a = &val.floats;
 
-                                        try os9gui.textboxNumber(&a.d[0]);
-                                        try os9gui.textboxNumber(&a.d[1]);
-                                        try os9gui.textboxNumber(&a.d[2]);
+                                        //try os9gui.textboxNumber(&a.d[0]);
+                                        //try os9gui.textboxNumber(&a.d[1]);
+                                        //try os9gui.textboxNumber(&a.d[2]);
                                     },
                                     .color255 => {
                                         _ = os9gui.gui.isFocused();
-                                        {
+                                        if (false) {
                                             _ = try os9gui.beginH(2);
                                             defer os9gui.endL();
                                             try val.toFloats(4);
@@ -174,12 +168,11 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                             var sb = Os9Gui.StaticTextbox.init(&buf);
                                             try os9gui.textbox2(&sb, .{});
                                             if (sb.len != 0) {
-                                                try val.setString(kvs.map.allocator, sb.getSlice());
+                                                //try val.setString(kvs.map.allocator, sb.getSlice());
                                             }
                                         }
                                     },
                                     .material => {
-                                        try val.toString(kvs.map.allocator);
                                         //TODO ensure it is a string
                                         if (os9gui.button("Select")) {
                                             self.asset_browser.dialog_state = .{
@@ -200,7 +193,6 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                         }
                                     },
                                     .model => {
-                                        try val.toString(kvs.map.allocator);
                                         _ = try os9gui.beginH(2);
                                         defer os9gui.endL();
                                         if (os9gui.button("Select")) {
@@ -215,11 +207,7 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                         try os9gui.textbox(&val.string);
                                     },
                                     .generic, .flags => {
-                                        try val.toString(kvs.map.allocator);
-                                        switch (val.*) {
-                                            .string => try os9gui.textbox(&val.string),
-                                            else => os9gui.label("", .{}),
-                                        }
+                                        try os9gui.textbox(&val.string);
                                         os9gui.gui.setTooltip("This is a generic field", .{});
                                     },
                                 }

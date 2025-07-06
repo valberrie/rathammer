@@ -277,8 +277,26 @@ pub const InspectorWindow = struct {
                 }));
             }
             if (try ed.ecs.getOptPtr(sel_id, .solid)) |sol| {
+                const Ctx = struct {
+                    pub fn btn_cb(ia: *iArea, _: usize, _: *Gui, _: *iWindow) void {
+                        const sl: *InspectorWindow = @alignCast(@fieldParentPtr("area", ia));
+                        if (sl.editor.selection.getGroupOwnerExclusive(&sl.editor.groups)) |sel| {
+                            const solid = sl.editor.ecs.getPtr(sel, .solid) catch return;
+                            for (solid.verts.items) |*v| {
+                                std.debug.print("old {any}\n", .{v.data});
+                                v.data = @round(v.data);
+                                std.debug.print("new {any}\n", .{v.data});
+                            }
+                        }
+                    }
+                };
                 _ = sol;
                 lay.addChildOpt(gui, &self.vt, Wg.Text.build(gui, ly.getArea(), "selected_solid: {d}", .{sel_id}));
+                lay.addChildOpt(gui, &self.vt, Wg.Button.build(gui, ly.getArea(), "Snap all to grid", .{
+                    .cb_vt = &self.area,
+                    .cb_fn = &Ctx.btn_cb,
+                    .id = 0,
+                }));
             }
         }
     }
@@ -303,21 +321,15 @@ pub const InspectorWindow = struct {
             const val = kvs.map.getPtr(field.name) orelse return;
             const cb_id = self.getId(field.name);
             const ar = ly.getArea();
-            switch (val.*) { //Put a textbox for all of them
-                .string => |s| {
-                    lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
-                        .init_string = s.items,
-                        .user_id = cb_id,
-                        .commit_vt = win.area,
-                        .commit_cb = &cb_commitTextbox,
-                    }));
-                },
-                .floats => {},
-            }
+            lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                .init_string = val.string.items,
+                .user_id = cb_id,
+                .commit_vt = win.area,
+                .commit_cb = &cb_commitTextbox,
+            }));
             //Extra stuff for typed fields TODO put in a scroll
             switch (field.type) {
                 .flags => |flags| {
-                    try val.toString(kvs.map.allocator);
                     const mask = std.fmt.parseInt(u32, val.string.items, 10) catch null;
                     for (flags.items) |flag| {
                         const is_set = if (mask) |m| flag.mask & m > 0 else flag.on;
@@ -397,7 +409,6 @@ pub const InspectorWindow = struct {
                     }
                     switch (req_f.type) {
                         .model, .material => {
-                            try res.value_ptr.toString(kvs.map.allocator);
                             const H = struct {
                                 fn btn_cb(win_ar: *iArea, id: u64, _: *Gui, _: *iWindow) void {
                                     // if msb of id is set, its a texture not model
@@ -426,7 +437,6 @@ pub const InspectorWindow = struct {
                         },
                         .choices => |ch| {
                             const ar = ly.getArea();
-                            try res.value_ptr.toString(kvs.map.allocator);
                             if (ch.items.len == 0) continue;
                             if (ch.items.len == 2 and std.mem.eql(u8, ch.items[0][0], "0")) {
                                 const checked = !std.mem.eql(u8, res.value_ptr.string.items, ch.items[0][0]);
@@ -447,18 +457,17 @@ pub const InspectorWindow = struct {
                             }
                         },
                         .color255 => {
-                            try res.value_ptr.toFloats(4);
+                            const floats = res.value_ptr.getFloats(4);
                             const ar = ly.getArea() orelse return;
                             const sp = ar.split(.vertical, ar.w / 2);
-                            const c = &res.value_ptr.floats.d;
-                            const color = graph.ptypes.intColorFromVec3(graph.za.Vec3.new(c[0], c[1], c[2]), 1);
+                            const color = graph.ptypes.intColorFromVec3(graph.za.Vec3.new(floats[0], floats[1], floats[2]), 1);
                             a.addChildOpt(gui, win, Wg.Colorpicker.build(gui, sp[0], color, .{
                                 .user_id = cb_id,
                                 .commit_vt = win.area,
                                 .commit_cb = &cb_commitColor,
                             }));
 
-                            a.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp[1], c[3], win, .{
+                            a.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, sp[1], floats[3], win, .{
                                 .user_id = cb_id,
                                 .commit_cb = &setBrightness,
                                 .commit_vt = win.area,
@@ -467,17 +476,12 @@ pub const InspectorWindow = struct {
                         },
                         else => {
                             const ar = ly.getArea();
-                            switch (res.value_ptr.*) {
-                                .string => |s| {
-                                    a.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
-                                        .init_string = s.items,
-                                        .user_id = cb_id,
-                                        .commit_vt = win.area,
-                                        .commit_cb = &cb_commitTextbox,
-                                    }));
-                                },
-                                .floats => {},
-                            }
+                            a.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                                .init_string = res.value_ptr.string.items,
+                                .user_id = cb_id,
+                                .commit_vt = win.area,
+                                .commit_cb = &cb_commitTextbox,
+                            }));
                         },
                     }
                 }
@@ -490,14 +494,9 @@ pub const InspectorWindow = struct {
         if (self.getNameFromId(id)) |field_name| {
             const kvs = self.getKvsPtr() orelse return;
             if (kvs.map.getPtr(field_name)) |ptr| {
-                switch (ptr.*) {
-                    .string => {},
-                    .floats => {
-                        if (ptr.floats.count == 4) {
-                            ptr.floats.d[3] = std.fmt.parseFloat(f32, value) catch return;
-                        }
-                    },
-                }
+                var floats = ptr.getFloats(4);
+                floats[3] = std.fmt.parseFloat(f32, value) catch return;
+                ptr.printFloats(4, floats);
             }
         }
     }
@@ -530,14 +529,12 @@ pub const InspectorWindow = struct {
         const charc = graph.ptypes.intToColor(val);
         if (self.getNameFromId(id)) |field_name| {
             const kvs = self.getKvsPtr() orelse return;
-            const old = kvs.map.get(field_name) orelse return;
-            if (old != .floats or old.floats.count != 4) return;
-            self.setKvFloat(id, &.{
-                @floatFromInt(charc.r),
-                @floatFromInt(charc.g),
-                @floatFromInt(charc.b),
-                old.floats.d[3],
-            });
+            var value = kvs.map.getPtr(field_name) orelse return;
+            var old = value.getFloats(4);
+            old[0] = @floatFromInt(charc.r);
+            old[1] = @floatFromInt(charc.g);
+            old[2] = @floatFromInt(charc.b);
+            value.printFloats(4, old);
         }
     }
 
