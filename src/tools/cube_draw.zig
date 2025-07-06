@@ -32,6 +32,12 @@ pub const CubeDraw = struct {
         min_w,
         max_w,
     } = .grid,
+
+    primitive_settings: struct {
+        nsegment: u32 = 16,
+        axis: prim_gen.Axis = .y,
+    } = .{},
+
     min_volume: f32 = 1,
     snap_height: bool = true,
     custom_height: f32 = 16,
@@ -84,16 +90,24 @@ pub const CubeDraw = struct {
             .mode = .split_on_space,
         }));
 
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Post draw state", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.post_state, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Height mode", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.height_setting, .{}));
+        { //All the damn settings
+            ly.pushCount(4);
+            var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Post draw state", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.post_state, .{}));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Height mode", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.height_setting, .{}));
 
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Custom height", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ar, &self.custom_height, win, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Primitive", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive, .{}));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Custom height", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ar, &self.custom_height, win, .{}));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Primitive", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive, .{}));
 
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Segment", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.nsegment, 4, 64, .{ .nudge = 1 }));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive_settings.axis, .{}));
+        }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
         const ar = ly.getArea() orelse return;
@@ -123,27 +137,42 @@ pub const CubeDraw = struct {
     fn finishPrimitive(tool: *@This(), ed: *Editor, td: tools.ToolData) !void {
         const draw_nd = &ed.draw_state.ctx;
         switch (tool.primitive) {
-            else => tool.state = .start,
             .cylinder => {
-                const draw = td.draw;
                 const cc = util3d.cubeFromBounds(tool.start, tool.end);
                 const r = @min(cc[1].x(), cc[1].y()) / 2;
 
-                const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{ .r = r, .z = cc[1].z() });
+                const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{
+                    .r = r,
+                    .z = cc[1].z(),
+                    .num_segment = tool.primitive_settings.nsegment,
+                    .axis = tool.primitive_settings.axis,
+                });
+
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                const v1 = Vec3.new(1, 0, 0);
-                for (cyl.solids.items) |sol| {
-                    for (sol.items) |face| {
-                        const norm = cyl.norm(face.items);
-                        const amt = @abs(v1.dot(norm));
-                        const gray: u32 = @intFromFloat(@min((0xff - 0x88) * amt + 0x88, 0xbb));
-                        const color = gray << 24 | gray << 16 | gray << 8 | 0xff;
-                        draw.convexPolyIndexed(face.items, cyl.verts.items, color, .{
-                            .offset = center,
-                        });
-                    }
-                }
+                cyl.draw(td.draw, center);
+                if (ed.edit_state.rmouse != .rising) return;
+                tool.state = .start;
+                try tool.commitPrimitive(ed, center, &cyl);
+            },
+            .arch => {
+                const cc = util3d.cubeFromBounds(tool.start, tool.end);
+                const r = @min(cc[1].x(), cc[1].y()) / 2;
+
+                const cyl = try prim_gen.arch(ed.frame_arena.allocator(), .{
+                    .r = r - 10,
+                    .r2 = r,
+                    .z = cc[1].z(),
+                    .num_segment = tool.primitive_settings.nsegment,
+                    .axis = tool.primitive_settings.axis,
+                });
+
+                const center = cc[0].add(cc[1].scale(0.5));
+                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                cyl.draw(td.draw, center);
+                if (ed.edit_state.rmouse != .rising) return;
+                tool.state = .start;
+                try tool.commitPrimitive(ed, center, &cyl);
             },
             .cube => {
                 tool.state = .start; //incase initFromCube fails, advance state
@@ -175,6 +204,39 @@ pub const CubeDraw = struct {
                     std.debug.print("Invalid cube {!}\n", .{a});
                 }
             },
+        }
+    }
+
+    fn commitPrimitive(self: *@This(), ed: *Editor, center: Vec3, prim: *const prim_gen.Primitive) !void {
+        const vpk_id = ed.asset_browser.selected_mat_vpk_id orelse 0;
+        const ustack = try ed.undoctx.pushNewFmt("draw cube", .{});
+        defer undo.applyRedo(ustack.items, ed);
+        for (prim.solids.items) |sol| {
+            if (ecs.Solid.initFromPrimitive(ed.alloc, prim.verts.items, sol.items, vpk_id, center)) |newsolid| {
+                const new = try ed.ecs.createEntity();
+                try ed.ecs.attach(new, .solid, newsolid);
+                try ed.ecs.attach(new, .bounding_box, .{});
+                const solid_ptr = try ed.ecs.getPtr(new, .solid);
+                try solid_ptr.translate(new, Vec3.zero(), ed);
+                {
+                    try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
+                }
+                switch (self.post_state) {
+                    .reset => self.state = .start,
+                    .switch_to_fast_face => {
+                        const tid = try ed.tools.getId(tools.FastFaceManip);
+                        ed.edit_state.tool_index = tid;
+                        try ed.selection.setToSingle(new);
+                    },
+                    .switch_to_translate => {
+                        const tid = try ed.tools.getId(tools.Translate);
+                        ed.edit_state.tool_index = tid;
+                        try ed.selection.setToSingle(new);
+                    },
+                }
+            } else |a| {
+                std.debug.print("Invalid cube {!}\n", .{a});
+            }
         }
     }
 

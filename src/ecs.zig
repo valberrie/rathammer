@@ -11,6 +11,7 @@ const thread_pool = @import("thread_pool.zig");
 const Editor = @import("editor.zig").Context;
 const DrawCtx = graph.ImmediateDrawingContext;
 const VisGroups = @import("visgroup.zig");
+const prim_gen = @import("primitive_gen.zig");
 //Global TODO for ecs stuff
 //Many strings in kvs and connections are stored by editor.StringStorage
 //as they act as an enum value specified in the fgd.
@@ -505,6 +506,30 @@ pub const Solid = struct {
             last = vert;
         }
         return !all_same;
+    }
+
+    pub fn initFromPrimitive(alloc: std.mem.Allocator, verts: []const Vec3, faces: []const std.ArrayList(u32), tex_id: vpk.VpkResId, offset: Vec3) !Solid {
+        var ret = init(alloc);
+        //TODO prune the verts
+        for (verts) |v|
+            try ret.verts.append(v.add(offset));
+
+        for (faces) |face| {
+            var ind = std.ArrayList(u32).init(alloc);
+            try ind.appendSlice(face.items);
+
+            try ret.sides.append(.{
+                .index = ind,
+                .u = .{},
+                .v = .{},
+                .material = "",
+                .tex_id = tex_id,
+            });
+            const side = &ret.sides.items[ret.sides.items.len - 1];
+            const norm = side.normal(&ret);
+            side.resetUv(norm);
+        }
+        return ret;
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
