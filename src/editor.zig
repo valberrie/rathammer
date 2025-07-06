@@ -790,12 +790,19 @@ pub const Context = struct {
         return self.tools.vtables.items[self.edit_state.tool_index];
     }
 
+    pub fn initNewMap(self: *Self) !void {
+        try self.skybox.loadSky(try self.storeString("sky_day01_01"), &self.vpkctx);
+        try self.visgroups.putDefaultVisGroups();
+        self.has_loaded_map = true;
+    }
+
     pub fn loadMap(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         if (std.mem.endsWith(u8, filename, ".json")) {
             try self.loadJson(path, filename, loadctx);
         } else {
             try self.loadVmf(path, filename, loadctx);
         }
+        //try self.visgroups.putDefaultVisGroups();
     }
 
     fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {

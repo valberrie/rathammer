@@ -110,10 +110,9 @@ pub const PauseWindow = struct {
             .new_map => {
                 self.vt.needs_rebuild = true;
                 const ed = self.editor;
-                ed.skybox.loadSky(ed.storeString("sky_day01_01") catch return, &ed.vpkctx) catch {
-                    std.debug.print("ERROR LOADING SKY, PUT A BETTER MSG HERE\n", .{});
+                ed.initNewMap() catch {
+                    std.debug.print("ERROR INIT NEW MAP\n", .{});
                 };
-                ed.has_loaded_map = true;
                 self.editor.paused = false;
             },
             .pick_map => {

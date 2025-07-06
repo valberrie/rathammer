@@ -9,6 +9,15 @@ pub const VisGroupId = u8;
 pub const MAX_VIS_GROUP = 128;
 pub const BitSetT = std.bit_set.StaticBitSet(MAX_VIS_GROUP);
 
+pub const AutoVis = enum {
+    world,
+    point_ent,
+    brush_ent,
+    trigger,
+    prop,
+    func_detail,
+};
+
 pub const Group = struct {
     name: []const u8,
     color: u32,
@@ -92,6 +101,54 @@ fn writeGroupToJson(self: *Self, group_id: u8, wr: anytype) !void {
         try self.writeGroupToJson(child, wr);
     try wr.endArray();
     try wr.endObject();
+}
+
+//Be careful, this may invalidate previous pointers
+fn newGroup(self: *Self, name: []const u8) !*Group {
+    try self.groups.append(Group{
+        .name = try self.alloc.dupe(u8, name),
+        .color = 0xff,
+        .id = @intCast(self.groups.items.len),
+        .children = std.ArrayList(VisGroupId).init(self.alloc),
+    });
+    return &self.groups.items[self.groups.items.len - 1];
+}
+
+pub fn getGroup(self: *Self, id: VisGroupId) ?Group {
+    if (id >= self.groups.items.len) return null;
+    return self.groups.items[id];
+}
+
+pub fn putDefaultVisGroups(self: *Self) !void {
+    var auto_node: ?VisGroupId = null;
+    if (self.getRoot()) |root| {
+        for (root.children.items) |direct| {
+            if (self.getGroup(direct)) |gr| {
+                if (std.mem.eql(u8, gr.name, "Auto")) {
+                    auto_node = gr.id;
+                    break;
+                }
+            }
+        }
+    } else {
+        _ = try self.newGroup(""); //Add a root node
+    }
+    if (auto_node == null) {
+        const aa = try self.newGroup("Auto");
+        auto_node = aa.id;
+        const root = self.getRoot() orelse return;
+        try root.children.append(aa.id);
+    }
+    //Auto
+    //  entity
+    //      World Solids
+    //      Point Ent
+    //      Brush Ent
+    //      Trigger
+    //  detail
+    //      props
+    //      func_detail
+
 }
 
 //This does no validation of the passed in data, so if you modify json it will crash horribly
