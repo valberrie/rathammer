@@ -875,9 +875,8 @@ pub const Context = struct {
                         var kvs = KeyValues.init(self.alloc);
                         var it = ent.rest_kvs.iterator();
                         while (it.next()) |item| {
-                            var new_list = std.ArrayList(u8).init(self.alloc);
-                            try new_list.appendSlice(item.value_ptr.*);
-                            try kvs.map.put(try self.storeString(item.key_ptr.*), .{ .string = new_list });
+                            //We use the no notify method because all notifiable fields are absorbed by vmf.entity
+                            try kvs.putStringNoNotify(try self.storeString(item.key_ptr.*), item.value_ptr.*);
                         }
 
                         if (kvs.getString("model")) |model| {

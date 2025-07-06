@@ -71,3 +71,7 @@ See config.vdf for defining other game configs.
 
 /zig-out/bin/mapbuilder --vmf dump.vmf --gamedir Team\ Fortress\ 2 --gamename tf --outputdir tf/maps
 ```
+
+
+### Style stuff.
+Fields beginning with an underscore are private fields and should not be modified or read directly

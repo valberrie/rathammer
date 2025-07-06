@@ -322,7 +322,7 @@ pub const InspectorWindow = struct {
             const cb_id = self.getId(field.name);
             const ar = ly.getArea();
             lay.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
-                .init_string = val.string.items,
+                .init_string = val.slice(),
                 .user_id = cb_id,
                 .commit_vt = win.area,
                 .commit_cb = &cb_commitTextbox,
@@ -330,7 +330,7 @@ pub const InspectorWindow = struct {
             //Extra stuff for typed fields TODO put in a scroll
             switch (field.type) {
                 .flags => |flags| {
-                    const mask = std.fmt.parseInt(u32, val.string.items, 10) catch null;
+                    const mask = std.fmt.parseInt(u32, val.slice(), 10) catch null;
                     for (flags.items) |flag| {
                         const is_set = if (mask) |m| flag.mask & m > 0 else flag.on;
                         const packed_id: u64 = @as(u64, @intCast(flag.mask)) << 32 | cb_id;
@@ -349,6 +349,10 @@ pub const InspectorWindow = struct {
 
     pub fn buildScrollItems(window_area: *iArea, vt: *iArea, index: usize, gui: *Gui, win: *iWindow) void {
         buildScrollItemsErr(window_area, vt, index, gui, win) catch return;
+    }
+
+    pub fn getSelId(self: *Self) ?ecs.EcsT.Id {
+        return (self.editor.selection.getGroupOwnerExclusive(&self.editor.groups));
     }
 
     pub fn getKvsPtr(self: *Self) ?*ecs.KeyValues {
@@ -401,12 +405,14 @@ pub const InspectorWindow = struct {
                         .custom_draw = &customButtonDraw,
                         .user_1 = if (self.selected_kv_index == f_i) 1 else 0,
                     }));
-                    const res = try kvs.map.getOrPut(req_f.name);
-                    if (!res.found_existing) {
-                        var new_list = std.ArrayList(u8).init(ed.alloc);
-                        try new_list.appendSlice(req_f.default);
-                        res.value_ptr.* = .{ .string = new_list };
-                    }
+                    const value = try kvs.getOrPutDefault(&ed.ecs, sel_id, req_f.name, req_f.default);
+                    //const res = try kvs.map.getOrPut(req_f.name);
+                    //if (!res.found_existing) {
+                    //    res.value_ptr.* = try ecs.KeyValues.initDefault(&ed.ecs, sel_id, req_f.name, req_f.default);
+                    //    //var new_list = std.ArrayList(u8).init(ed.alloc);
+                    //    //try new_list.appendSlice(req_f.default);
+                    //    //res.value_ptr.* = .{ ._string = new_list };
+                    //}
                     switch (req_f.type) {
                         .model, .material => {
                             const H = struct {
@@ -439,7 +445,7 @@ pub const InspectorWindow = struct {
                             const ar = ly.getArea();
                             if (ch.items.len == 0) continue;
                             if (ch.items.len == 2 and std.mem.eql(u8, ch.items[0][0], "0")) {
-                                const checked = !std.mem.eql(u8, res.value_ptr.string.items, ch.items[0][0]);
+                                const checked = !std.mem.eql(u8, value.slice(), ch.items[0][0]);
                                 a.addChildOpt(gui, win, Wg.Checkbox.build(gui, ar, "", .{
                                     .cb_fn = &cb_commitCheckbox,
                                     .cb_vt = win.area,
@@ -448,7 +454,7 @@ pub const InspectorWindow = struct {
                             } else {
                                 var found: usize = 0;
                                 for (ch.items, 0..) |choice, i| {
-                                    if (std.mem.eql(u8, res.value_ptr.string.items, choice[0])) {
+                                    if (std.mem.eql(u8, value.slice(), choice[0])) {
                                         found = i;
                                         break;
                                     }
@@ -457,7 +463,7 @@ pub const InspectorWindow = struct {
                             }
                         },
                         .color255 => {
-                            const floats = res.value_ptr.getFloats(4);
+                            const floats = value.getFloats(4);
                             const ar = ly.getArea() orelse return;
                             const sp = ar.split(.vertical, ar.w / 2);
                             const color = graph.ptypes.intColorFromVec3(graph.za.Vec3.new(floats[0], floats[1], floats[2]), 1);
@@ -477,7 +483,7 @@ pub const InspectorWindow = struct {
                         else => {
                             const ar = ly.getArea();
                             a.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
-                                .init_string = res.value_ptr.string.items,
+                                .init_string = value.slice(),
                                 .user_id = cb_id,
                                 .commit_vt = win.area,
                                 .commit_cb = &cb_commitTextbox,
@@ -492,11 +498,12 @@ pub const InspectorWindow = struct {
     fn setBrightness(this_w: *iArea, _: *Gui, value: []const u8, id: usize) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", this_w));
         if (self.getNameFromId(id)) |field_name| {
+            const ent_id = self.getSelId() orelse return;
             const kvs = self.getKvsPtr() orelse return;
             if (kvs.map.getPtr(field_name)) |ptr| {
                 var floats = ptr.getFloats(4);
                 floats[3] = std.fmt.parseFloat(f32, value) catch return;
-                ptr.printFloats(4, floats);
+                ptr.printFloats(self.editor, ent_id, 4, floats) catch return;
             }
         }
     }
@@ -504,7 +511,8 @@ pub const InspectorWindow = struct {
     fn setKvStr(self: *Self, id: usize, value: []const u8) void {
         if (self.getNameFromId(id)) |field_name| {
             const kvs = self.getKvsPtr() orelse return;
-            kvs.putString(field_name, value) catch return;
+            const ent_id = self.getSelId() orelse return;
+            kvs.putString(self.editor, ent_id, field_name, value) catch return;
         }
     }
 
@@ -534,7 +542,8 @@ pub const InspectorWindow = struct {
             old[0] = @floatFromInt(charc.r);
             old[1] = @floatFromInt(charc.g);
             old[2] = @floatFromInt(charc.b);
-            value.printFloats(4, old);
+            const ent_id = self.getSelId() orelse return;
+            value.printFloats(self.editor, ent_id, 4, old) catch return;
         }
     }
 
@@ -585,8 +594,9 @@ pub const InspectorWindow = struct {
                 const f = fields[lam.fgd_class_index];
                 const fie = f.field_data.items[lam.fgd_field_index];
 
+                const sel_id = lself.getSelId() orelse return;
                 if (lself.getKvsPtr()) |kvs| {
-                    kvs.putString(fie.name, fie.type.choices.items[id][0]) catch return;
+                    kvs.putString(lself.editor, sel_id, fie.name, fie.type.choices.items[id][0]) catch return;
                 }
             }
 

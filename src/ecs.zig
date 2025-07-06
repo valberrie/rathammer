@@ -218,7 +218,30 @@ pub const AABB = struct {
     }
 };
 
+//How to deal with kvs and entity fields?
+//Model id is the biggest, I don't want to do a vpk lookup for every model every frame,
+//caching the id in entity makes sense.
+//origin and angle are the same
+//
+//kvs can have a flag that indicates they must sync with parent entity
+//no dependency in inspector code then!
+//
+//What about the reverse?
+//just have setters like we already do.
+
 pub const Entity = struct {
+    // When a new kv is created, try to cast key to KvSync
+    pub const KvSync = enum {
+        none,
+        origin,
+        angles,
+        model,
+
+        pub fn needsSync(key: []const u8) @This() {
+            return std.meta.stringToEnum(@This(), key) orelse .none;
+        }
+    };
+
     origin: Vec3 = Vec3.zero(),
     angle: Vec3 = Vec3.zero(),
     class: []const u8 = "",
@@ -251,17 +274,43 @@ pub const Entity = struct {
         return self.*;
     }
 
+    pub fn getKvString(self: *@This(), kind: KvSync, val: *KeyValues.Value) !void {
+        switch (kind) {
+            .none => {}, //no op
+            .origin => try val.printInternal("{d} {d} {d}", .{ self.origin.x(), self.origin.y(), self.origin.z() }),
+            else => std.debug.print("NOT WORKING UNSUPPORTED\n", .{}),
+        }
+    }
+
+    pub fn setKvString(self: *@This(), ed: *Editor, id: EcsT.Id, val: *const KeyValues.Value) !void {
+        std.debug.print("set kv string with {s} :{s}\n", .{ val.slice(), @tagName(val.sync) });
+        switch (val.sync) {
+            .origin => {
+                const floats = val.getFloats(3);
+                self.origin = Vec3.new(floats[0], floats[1], floats[2]);
+            },
+            .angles => {
+                const floats = val.getFloats(3);
+                self.angle = Vec3.new(floats[0], floats[1], floats[2]);
+            },
+            .model => {
+                try self.setModel(ed, id, .{ .name = val.slice() });
+            },
+            .none => {},
+        }
+    }
+
     pub fn setAngle(self: *@This(), editor: *Editor, self_id: EcsT.Id, angle: Vec3) !void {
         self.angle = angle;
         if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs|
-            try kvs.putString("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
+            try kvs.putStringNoNotify("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
     }
 
     pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
         const idAndName = try editor.vpkctx.resolveId(model) orelse return;
         self._model_id = idAndName.id;
         if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
-            try kvs.putString("model", idAndName.name);
+            try kvs.putStringNoNotify("model", idAndName.name);
         }
     }
 
@@ -1014,20 +1063,27 @@ pub const EditorInfo = struct {
 // the relevant get filled out.
 pub const KeyValues = struct {
     const Value = struct {
-        string: std.ArrayList(u8),
+        _string: std.ArrayList(u8),
+
+        // Certain kv's "model, angles, origin" must be kept in sync with the entity component
+        sync: Entity.KvSync,
 
         pub fn clone(self: *@This()) !@This() {
             var ret = self.*;
-            ret.string = try self.string.clone();
+            ret._string = try self._string.clone();
             return ret;
         }
 
-        pub fn deinit(self: *@This()) void {
-            self.string.deinit();
+        pub fn slice(self: *const @This()) []const u8 {
+            return self._string.items;
         }
 
-        pub fn getFloats(self: *@This(), comptime count: usize) [count]f32 {
-            var it = std.mem.splitScalar(u8, self.string.items, ' ');
+        pub fn deinit(self: *@This()) void {
+            self._string.deinit();
+        }
+
+        pub fn getFloats(self: *const @This(), comptime count: usize) [count]f32 {
+            var it = std.mem.splitScalar(u8, self._string.items, ' ');
             var ret: [count]f32 = undefined;
             for (0..count) |i| {
                 ret[i] = std.fmt.parseFloat(f32, it.next() orelse "0") catch 0;
@@ -1035,10 +1091,61 @@ pub const KeyValues = struct {
             return ret;
         }
 
-        pub fn printFloats(self: *@This(), comptime count: usize, floats: [count]f32) void {
-            self.string.clearRetainingCapacity();
+        fn initNoNotify(alloc: std.mem.Allocator, value: []const u8) !@This() {
+            var ret = @This(){
+                ._string = std.ArrayList(u8).init(alloc),
+                .sync = .none,
+            };
+            try ret._string.appendSlice(value);
+            return ret;
+        }
+
+        /// Create a new value, if it is a synced field get the value from the entity, otherwise set it to 'value'
+        pub fn initDefault(alloc: std.mem.Allocator, ecs: *EcsT, id: EcsT.Id, key: []const u8, value: []const u8) !@This() {
+            var ret = @This(){
+                ._string = std.ArrayList(u8).init(alloc),
+                .sync = Entity.KvSync.needsSync(key),
+            };
+            if (ret.sync != .none) {
+                //Replace the default with whatever the entity has
+                if (try ecs.getOptPtr(id, .entity)) |ent| {
+                    try ent.getKvString(ret.sync, &ret);
+                }
+            } else {
+                try ret._string.appendSlice(value);
+            }
+            return ret;
+        }
+
+        /// Create a new value with 'value' and notify entity if synced
+        pub fn initValue(alloc: std.mem.Allocator, ed: *Editor, id: EcsT.Id, key: []const u8, value: []const u8) !@This() {
+            var ret = @This(){
+                ._string = std.ArrayList(u8).init(alloc),
+                .sync = Entity.KvSync.needsSync(key),
+            };
+            try ret._string.appendSlice(value);
+            if (ret.sync != .none) {
+                //Replace the default with whatever the entity has
+                if (try ed.ecs.getOptPtr(id, .entity)) |ent| {
+                    try ent.setKvString(ed, id, &ret);
+                }
+            }
+            return ret;
+        }
+
+        fn printInternal(self: *@This(), comptime fmt: []const u8, args: anytype) !void {
+            self._string.clearRetainingCapacity();
+            try self._string.writer().print(fmt, args);
+        }
+
+        pub fn printFloats(self: *@This(), ed: *Editor, id: EcsT.Id, comptime count: usize, floats: [count]f32) !void {
+            self._string.clearRetainingCapacity();
             for (floats, 0..) |f, i| {
-                self.string.writer().print("{s}{d}", .{ if (i == 0) "" else " ", f }) catch return;
+                self._string.writer().print("{s}{d}", .{ if (i == 0) "" else " ", f }) catch return;
+            }
+            if (self.sync != .none) {
+                if (try ed.ecs.getOptPtr(id, .entity)) |ent|
+                    try ent.setKvString(ed, id, self);
             }
         }
     };
@@ -1072,7 +1179,10 @@ pub const KeyValues = struct {
             if (item.value_ptr.* != .string) return error.invalidKv;
             var new_list = std.ArrayList(u8).init(ctx.alloc);
             try new_list.appendSlice(item.value_ptr.string);
-            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), .{ .string = new_list });
+            try ret.map.put(try ctx.str_store.store(item.key_ptr.*), .{
+                ._string = new_list,
+                .sync = Entity.KvSync.needsSync(item.key_ptr.*),
+            });
         }
 
         return ret;
@@ -1084,27 +1194,41 @@ pub const KeyValues = struct {
             var it = self.map.iterator();
             while (it.next()) |item| {
                 try jw.objectField(item.key_ptr.*);
-                try jw.write(item.value_ptr.string.items);
+                try jw.write(item.value_ptr.slice());
             }
         }
         try jw.endObject();
     }
 
     ///Key is not duped or freed. value is duped
-    pub fn putString(self: *Self, key: []const u8, value: []const u8) !void {
+    pub fn putString(self: *Self, ed: *Editor, id: EcsT.Id, key: []const u8, value: []const u8) !void {
         if (self.map.getPtr(key)) |old|
             old.deinit();
-        var new_list = std.ArrayList(u8).init(self.map.allocator);
+        const new = try Value.initValue(self.map.allocator, ed, id, key, value);
+        try self.map.put(key, new);
+    }
 
-        try new_list.appendSlice(value);
+    pub fn putStringNoNotify(self: *Self, key: []const u8, value: []const u8) !void {
+        if (self.map.getPtr(key)) |old|
+            old.deinit();
 
-        try self.map.put(key, .{ .string = new_list });
+        const new = try Value.initNoNotify(self.map.allocator, value);
+
+        try self.map.put(key, new);
     }
 
     pub fn getString(self: *Self, key: []const u8) ?[]const u8 {
         if (self.map.get(key)) |val|
-            return val.string.items;
+            return val.slice();
         return null;
+    }
+
+    pub fn getOrPutDefault(self: *Self, ecs: *EcsT, id: EcsT.Id, key: []const u8, value: []const u8) !*Value {
+        const res = try self.map.getOrPut(key);
+        if (!res.found_existing) {
+            res.value_ptr.* = try Value.initDefault(self.map.allocator, ecs, id, key, value);
+        }
+        return res.value_ptr;
     }
 
     pub fn deinit(self: *Self) void {

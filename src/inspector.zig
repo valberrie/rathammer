@@ -38,6 +38,7 @@ pub fn classCombo(os9gui: *Os9Gui, ent: *ecs.Entity, editor: *Editor) !void {
     }
 }
 
+//This is broken ,don't use
 pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gui) !void {
     if (try os9gui.beginTlWindow(screen_area)) {
         defer os9gui.endTlWindow();
@@ -76,7 +77,7 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                 if (!res.found_existing) {
                                     var new_list = std.ArrayList(u8).init(self.alloc);
                                     try new_list.appendSlice(req_field.default);
-                                    res.value_ptr.* = .{ .string = new_list };
+                                    res.value_ptr.* = .{ ._string = new_list, .sync = .none };
                                 }
                                 const ar = gui.getArea() orelse break;
                                 const SELECTED_FIELD_COLOR = 0x6097dbff;
@@ -88,7 +89,7 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                     self.misc_gui_state.selected_index = field_i;
                                 switch (req_field.type) {
                                     .choices => |ch| {
-                                        try doChoices(ch, os9gui, &res.value_ptr.string);
+                                        try doChoices(ch, os9gui, &res.value_ptr._string);
                                     },
                                     .color255 => {
                                         //const c = &res.value_ptr.floats.d;
@@ -98,7 +99,7 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                         //os9gui.gui.drawRectFilled(a, color);
                                     },
                                     else => {
-                                        os9gui.label("{s}", .{res.value_ptr.string.items});
+                                        os9gui.label("{s}", .{res.value_ptr.slice()});
                                     },
                                 }
                             }
@@ -118,7 +119,7 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                             if (kvs.map.getPtr(field.name)) |val| {
                                 switch (field.type) {
                                     .choices => |ch| {
-                                        try doChoices(ch, os9gui, &val.string);
+                                        try doChoices(ch, os9gui, &val._string);
                                     },
                                     .angle => {
                                         //try val.toFloats(3);
@@ -183,8 +184,8 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                             self.draw_state.tab_index = self.draw_state.texture_browser_tab_index;
                                         }
                                         os9gui.gui.setTooltip("Open material picker", .{});
-                                        try os9gui.textbox(&val.string);
-                                        if (try self.vpkctx.resolveId(.{ .name = val.string.items })) |tid| {
+                                        try os9gui.textbox(&val._string);
+                                        if (try self.vpkctx.resolveId(.{ .name = val.slice() })) |tid| {
                                             const bound = os9gui.gui.layout.last_requested_bounds orelse return;
                                             vl.pushHeight(bound.w);
                                             const tex = self.getTexture(tid.id) catch return;
@@ -204,10 +205,10 @@ pub fn newInspector(self: *Editor, screen_area: graph.Rect, os9gui: *graph.Os9Gu
                                             self.draw_state.tab_index = self.draw_state.model_browser_tab_index;
                                         }
                                         os9gui.gui.setTooltip("Open model picker", .{});
-                                        try os9gui.textbox(&val.string);
+                                        try os9gui.textbox(&val._string);
                                     },
                                     .generic, .flags => {
-                                        try os9gui.textbox(&val.string);
+                                        try os9gui.textbox(&val._string);
                                         os9gui.gui.setTooltip("This is a generic field", .{});
                                     },
                                 }

@@ -135,7 +135,7 @@ pub const AssetBrowserGui = struct {
                             //var name = idd.name;
                             //if (std.mem.startsWith(u8, name, "materials/"))
                             //    name = idd.name["materials/".len..];
-                            try ent.putString("texture", idd.name);
+                            try ent.putString(editor, ds.target_id, "texture", idd.name);
                         }
                     }
                 },
