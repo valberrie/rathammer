@@ -1,6 +1,7 @@
 const std = @import("std");
 const vmf = @import("vmf.zig");
 const graph = @import("graph");
+const json_map = @import("json_map.zig");
 
 const Self = @This();
 
@@ -65,6 +66,64 @@ fn recurSetValue(self: *Self, id: VisGroupId, shown: bool) void {
 pub fn setValue(self: *Self, group_id: VisGroupId, shown: bool) void {
     if (group_id >= self.groups.items.len) return;
     self.disabled.setValue(group_id, !shown);
+}
+
+pub fn writeToJson(self: *Self, wr: anytype) !void {
+    if (self.getRoot()) |root| {
+        try self.writeGroupToJson(root.id, wr);
+    } else {
+        try wr.write(null);
+    }
+}
+
+fn writeGroupToJson(self: *Self, group_id: u8, wr: anytype) !void {
+    if (group_id >= self.groups.items.len) return error.invalidVisgroup;
+    const group = self.groups.items[group_id];
+    try wr.beginObject();
+    try wr.objectField("name");
+    try wr.write(group.name);
+    try wr.objectField("color");
+    try wr.write(group.color);
+    try wr.objectField("id");
+    try wr.write(group.id);
+    try wr.objectField("children");
+    try wr.beginArray();
+    for (group.children.items) |child|
+        try self.writeGroupToJson(child, wr);
+    try wr.endArray();
+    try wr.endObject();
+}
+
+//This does no validation of the passed in data, so if you modify json it will crash horribly
+pub fn insertVisgroupsFromJson(self: *Self, json_vis: ?json_map.VisGroup) !void {
+    const jv = json_vis orelse return;
+    if (jv.id != 0) return; //Root must be 0
+    if (self.groups.items.len != 0) return;
+    var tmp_mapping = std.AutoHashMap(VisGroupId, void).init(self.alloc);
+    defer tmp_mapping.deinit();
+    try self.insertRecur(&tmp_mapping, jv);
+    if (self.groups.items.len != tmp_mapping.count()) return error.visgroupsFucked;
+
+    for (0..self.groups.items.len) |item| {
+        if (!tmp_mapping.contains(@intCast(item))) return error.visgroupsFucked;
+    }
+}
+
+fn insertRecur(self: *Self, map: *std.AutoHashMap(VisGroupId, void), node: json_map.VisGroup) !void {
+    if (map.contains(node.id)) return error.duplicateVisgroup;
+    var children = std.ArrayList(VisGroupId).init(self.alloc);
+    for (node.children) |ch|
+        try children.append(ch.id);
+    try map.put(node.id, {});
+    try self.groups.insert(node.id, .{
+        .name = try self.alloc.dupe(u8, node.name),
+        .color = node.color,
+        .id = node.id,
+        .children = children,
+    });
+    for (node.children) |ch| {
+        try self.insertRecur(map, ch);
+    }
 }
 
 pub fn buildMappingFromVmf(self: *Self, vmf_visgroups: []const vmf.VisGroup, parent_i: ?u8) !void {

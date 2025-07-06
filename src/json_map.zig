@@ -42,6 +42,13 @@ pub const VpkMapper = struct {
     }
 };
 
+pub const VisGroup = struct {
+    name: []const u8,
+    color: u32,
+    id: u8,
+    children: []const VisGroup,
+};
+
 const JsonCamera = struct {
     yaw: f32,
     pitch: f32,
@@ -76,6 +83,7 @@ const JsonMap = struct {
     editor: JsonEditor,
     sky_name: []const u8,
     objects: []const std.json.Value,
+    visgroup: ?VisGroup = null,
     extra: std.json.Value = .{ .null = {} },
 };
 

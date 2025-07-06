@@ -539,6 +539,9 @@ pub const Context = struct {
                 .map_json_version = "0.0.1",
             });
 
+            try jwr.objectField("visgroup");
+            try self.visgroups.writeToJson(&jwr);
+
             try jwr.objectField("extra");
             {
                 try jwr.beginObject();
@@ -831,6 +834,8 @@ pub const Context = struct {
                 }
             } else |_| {} //This data is not essential to parse
         }
+
+        try self.visgroups.insertVisgroupsFromJson(parsed.value.visgroup);
 
         loadctx.cb("Building meshes}");
         try self.rebuildAllDependentState();
