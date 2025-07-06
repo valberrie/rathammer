@@ -140,6 +140,7 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     num_segment: u32 = 16,
     snap: f32 = 1,
     z: f32,
+    invert: bool,
     axis: Axis = .z,
     theta_deg: f32 = 180,
 }) !Primitive {
@@ -151,6 +152,7 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     const z = param.z;
     try prim.verts.resize(num_segment * 4);
     const dtheta: f32 = std.math.degreesToRadians(param.theta_deg) / @as(f32, @floatFromInt(num_segment - 1)); //Do half only
+    const f: f32 = if (param.invert) -1 else 1;
     for (0..num_segment) |ni| {
         const fi: f32 = @floatFromInt(ni);
 
@@ -166,15 +168,14 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
         const x2 = snap1(x2_f, snap);
         const y2 = snap1(y2_f, snap);
 
-        prim.verts.items[ni + num_segment * 0] = param.axis.Vec(x1, y1, -z / 2); //lower
-        prim.verts.items[ni + num_segment * 1] = param.axis.Vec(x1, y1, z / 2); //lower far
-        prim.verts.items[ni + num_segment * 2] = param.axis.Vec(x2, y2, -z / 2); //upper
-        prim.verts.items[ni + num_segment * 3] = param.axis.Vec(x2, y2, z / 2); //upper far
+        prim.verts.items[ni + num_segment * 0] = param.axis.Vec(f * x1, f * y1, -z / 2); //lower
+        prim.verts.items[ni + num_segment * 1] = param.axis.Vec(f * x1, f * y1, z / 2); //lower far
+        prim.verts.items[ni + num_segment * 2] = param.axis.Vec(f * x2, f * y2, -z / 2); //upper
+        prim.verts.items[ni + num_segment * 3] = param.axis.Vec(f * x2, f * y2, z / 2); //upper far
     }
 
     for (0..num_segment - 1) |nni| {
         const ni: u32 = @intCast(nni);
-        const faces = try prim.newSolid();
         const v0 = ni; //lower
         const v0z = ni + num_segment * 1; //lower far
         const v1z = (ni + 1) + num_segment * 1; //next far
@@ -185,37 +186,95 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
 
         const fv1 = (ni + 1) + num_segment * 2; //next upper
         const fv1z = (ni + 1) + num_segment * 3; //next upper far
-        {
-            var face = prim.newFace();
-            try face.appendSlice(&.{ v0, v0z, v1z, v1 });
-            try faces.append(face);
-        }
-        {
-            var face = prim.newFace();
-            try face.appendSlice(&.{ fv1, fv1z, fv0z, fv0 });
-            try faces.append(face);
-        }
-        {
-            var face = prim.newFace();
-            try face.appendSlice(&.{ fv0, fv0z, v0z, v0 });
-            try faces.append(face);
-        }
-        {
-            var face = prim.newFace();
-            try face.appendSlice(&.{ v1, v1z, fv1z, fv1 });
-            try faces.append(face);
-        }
-        {
-            var face = prim.newFace();
-            try face.appendSlice(&.{ v0, v1, fv1, fv0 });
-            try faces.append(face);
-        }
-        {
-            var face = prim.newFace();
-            try face.appendSlice(&.{ fv0z, fv1z, v1z, v0z });
-            try faces.append(face);
-        }
+        try rectPrism(
+            &prim,
+            v0,
+            v1,
+            fv1,
+            fv0,
+            v0z,
+            v1z,
+            fv1z,
+            fv0z,
+        );
     }
+    return prim;
+}
+
+//Here is a picture
+// f is far
+// z is behind
+//
+// fv1 v1
+//
+// fv0 v0
+fn rectPrism(
+    prim: *Primitive,
+    v0: u32, //winding ccw
+    v1: u32,
+    fv1: u32,
+    fv0: u32,
+    v0z: u32,
+    v1z: u32,
+    fv1z: u32,
+    fv0z: u32,
+) !void {
+    const faces = try prim.newSolid();
+    {
+        var face = prim.newFace();
+        try face.appendSlice(&.{ v0, v0z, v1z, v1 });
+        try faces.append(face);
+    }
+    {
+        var face = prim.newFace();
+        try face.appendSlice(&.{ fv1, fv1z, fv0z, fv0 });
+        try faces.append(face);
+    }
+    {
+        var face = prim.newFace();
+        try face.appendSlice(&.{ fv0, fv0z, v0z, v0 });
+        try faces.append(face);
+    }
+    {
+        var face = prim.newFace();
+        try face.appendSlice(&.{ v1, v1z, fv1z, fv1 });
+        try faces.append(face);
+    }
+    {
+        var face = prim.newFace();
+        try face.appendSlice(&.{ v0, v1, fv1, fv0 });
+        try faces.append(face);
+    }
+    {
+        var face = prim.newFace();
+        try face.appendSlice(&.{ fv0z, fv1z, v1z, v0z });
+        try faces.append(face);
+    }
+}
+
+//TODO Finish this and make arch use it too
+pub fn cube(alloc: std.mem.Allocator, param: struct { size: Vec3 }) !Primitive {
+    var prim = Primitive.init(alloc);
+
+    const s = param.size;
+    const x = s.x();
+    const y = s.y();
+    const z = s.z();
+
+    const verts = [8]Vec3{
+        Vec3.new(-x, -y, z),
+        Vec3.new(-x, y, z),
+        Vec3.new(x, y, z),
+        Vec3.new(x, -y, z),
+
+        Vec3.new(-x, -y, -z),
+        Vec3.new(-x, y, -z),
+        Vec3.new(x, y, -z),
+        Vec3.new(x, -y, -z),
+    };
+    try prim.verts.appendSlice(&verts);
+    try rectPrism(&prim, 0, 1, 2, 3, 4, 5, 6, 7);
+
     return prim;
 }
 

@@ -36,6 +36,7 @@ pub const CubeDraw = struct {
     primitive_settings: struct {
         nsegment: u32 = 16,
         axis: prim_gen.Axis = .y,
+        invert: bool = false,
     } = .{},
 
     min_volume: f32 = 1,
@@ -107,6 +108,9 @@ pub const CubeDraw = struct {
                 area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.nsegment, 4, 64, .{ .nudge = 1 }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive_settings.axis, .{}));
+            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invert", .{
+                .bool_ptr = &self.primitive_settings.invert,
+            }, null));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -153,7 +157,7 @@ pub const CubeDraw = struct {
                 cyl.draw(td.draw, center);
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
-                try tool.commitPrimitive(ed, center, &cyl);
+                try tool.commitPrimitive(ed, center, &cyl, .{});
             },
             .arch => {
                 const cc = util3d.cubeFromBounds(tool.start, tool.end);
@@ -165,6 +169,7 @@ pub const CubeDraw = struct {
                     .z = cc[1].z(),
                     .num_segment = tool.primitive_settings.nsegment,
                     .axis = tool.primitive_settings.axis,
+                    .invert = tool.primitive_settings.invert,
                 });
 
                 const center = cc[0].add(cc[1].scale(0.5));
@@ -172,48 +177,37 @@ pub const CubeDraw = struct {
                 cyl.draw(td.draw, center);
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
-                try tool.commitPrimitive(ed, center, &cyl);
+                try tool.commitPrimitive(ed, center, &cyl, .{ .select = true });
             },
             .cube => {
-                tool.state = .start; //incase initFromCube fails, advance state
-                if (ecs.Solid.initFromCube(ed.alloc, tool.start, tool.end, ed.asset_browser.selected_mat_vpk_id orelse 0)) |newsolid| {
-                    const new = try ed.ecs.createEntity();
-                    try ed.ecs.attach(new, .solid, newsolid);
-                    try ed.ecs.attach(new, .bounding_box, .{});
-                    const solid_ptr = try ed.ecs.getPtr(new, .solid);
-                    try solid_ptr.translate(new, Vec3.zero(), ed);
-                    {
-                        const ustack = try ed.undoctx.pushNewFmt("draw cube", .{});
-                        try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
-                        undo.applyRedo(ustack.items, ed);
-                    }
-                    switch (tool.post_state) {
-                        .reset => tool.state = .start,
-                        .switch_to_fast_face => {
-                            const tid = try ed.tools.getId(tools.FastFaceManip);
-                            ed.edit_state.tool_index = tid;
-                            try ed.selection.setToSingle(new);
-                        },
-                        .switch_to_translate => {
-                            const tid = try ed.tools.getId(tools.Translate);
-                            ed.edit_state.tool_index = tid;
-                            try ed.selection.setToSingle(new);
-                        },
-                    }
-                } else |a| {
-                    std.debug.print("Invalid cube {!}\n", .{a});
-                }
+                const cc = util3d.cubeFromBounds(tool.start, tool.end);
+                const prim = try prim_gen.cube(ed.frame_arena.allocator(), .{
+                    .size = cc[1].scale(0.5),
+                });
+                const center = cc[0].add(cc[1].scale(0.5));
+                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                prim.draw(td.draw, center);
+                if (ed.edit_state.rmouse != .rising) return;
+                tool.state = .start;
+                try tool.commitPrimitive(ed, center, &prim, .{});
             },
         }
     }
 
-    fn commitPrimitive(self: *@This(), ed: *Editor, center: Vec3, prim: *const prim_gen.Primitive) !void {
+    fn commitPrimitive(self: *@This(), ed: *Editor, center: Vec3, prim: *const prim_gen.Primitive, opts: struct { select: bool = false }) !void {
         const vpk_id = ed.asset_browser.selected_mat_vpk_id orelse 0;
         const ustack = try ed.undoctx.pushNewFmt("draw cube", .{});
         defer undo.applyRedo(ustack.items, ed);
+        if (opts.select) {
+            ed.selection.clear();
+            ed.selection.mode = .many;
+        }
         for (prim.solids.items) |sol| {
             if (ecs.Solid.initFromPrimitive(ed.alloc, prim.verts.items, sol.items, vpk_id, center)) |newsolid| {
                 const new = try ed.ecs.createEntity();
+                if (opts.select) {
+                    try ed.selection.put(new, ed);
+                }
                 try ed.ecs.attach(new, .solid, newsolid);
                 try ed.ecs.attach(new, .bounding_box, .{});
                 const solid_ptr = try ed.ecs.getPtr(new, .solid);
