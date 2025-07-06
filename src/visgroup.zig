@@ -17,6 +17,7 @@ pub const Group = struct {
 };
 
 vmf_id_mapping: std.AutoHashMap(i32, VisGroupId),
+// VisGroupId indexes into this
 groups: std.ArrayList(Group),
 alloc: std.mem.Allocator,
 
@@ -47,6 +48,23 @@ pub fn getMaskFromEditorInfo(self: *Self, info: *const vmf.EditorInfo) !BitSetT 
         }
     }
     return ret;
+}
+
+pub fn setValueCascade(self: *Self, group_id: VisGroupId, shown: bool) void {
+    self.recurSetValue(group_id, shown);
+}
+
+fn recurSetValue(self: *Self, id: VisGroupId, shown: bool) void {
+    self.setValue(id, shown);
+    if (id >= self.groups.items.len) return;
+    for (self.groups.items[id].children.items) |group| {
+        self.recurSetValue(group, shown);
+    }
+}
+
+pub fn setValue(self: *Self, group_id: VisGroupId, shown: bool) void {
+    if (group_id >= self.groups.items.len) return;
+    self.disabled.setValue(group_id, !shown);
 }
 
 pub fn buildMappingFromVmf(self: *Self, vmf_visgroups: []const vmf.VisGroup, parent_i: ?u8) !void {

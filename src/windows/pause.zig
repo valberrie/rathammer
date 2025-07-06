@@ -12,6 +12,7 @@ const Wg = guis.Widget;
 const Context = @import("../editor.zig").Context;
 const label = guis.label;
 const async_util = @import("../async.zig");
+const VisGroup = @import("../visgroup.zig");
 pub const PauseWindow = struct {
     const Buttons = enum {
         unpause,
@@ -140,12 +141,18 @@ pub const PauseWindow = struct {
         const inset = GuiHelp.insetAreaForWindowFrame(gui, vt.area.area);
         _ = self.area.addEmpty(gui, vt, graph.Rec(0, 0, 0, 0));
 
-        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{ "main", "keybinds", "crap" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
+        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{ "main", "keybinds", "visgroup" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
     }
 
     fn buildTabs(win_vt: *iArea, vt: *iArea, tab: []const u8, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", win_vt));
         const eql = std.mem.eql;
+        if (eql(u8, tab, "visgroup")) {
+            buildVisGroups(self, gui, vt);
+
+            //var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
+            //vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome to visgroup", null));
+        }
         if (eql(u8, tab, "main")) {
             const max_w = gui.style.config.default_item_h * 30;
             const w = @min(max_w, vt.area.w);
@@ -242,6 +249,53 @@ pub const PauseWindow = struct {
         }
     }
 };
+
+fn buildVisGroups(self: *PauseWindow, gui: *Gui, area: *iArea) void {
+    const Helper = struct {
+        fn recur(vs: *VisGroup, vg: *VisGroup.Group, depth: usize, gui_: *Gui, vl: *guis.VerticalLayout, vt: *iArea, win: *iWindow) void {
+            vl.padding.left = @floatFromInt(depth * 20);
+            const the_bool = !vs.disabled.isSet(vg.id);
+            //const changed = os9g.checkbox(vg.name, &the_bool);
+            vt.addChildOpt(
+                gui_,
+                win,
+                Wg.Checkbox.build(gui_, vl.getArea(), vg.name, .{
+                    .cb_fn = &commit_cb,
+                    .cb_vt = win.area,
+                    .user_id = vg.id,
+                }, the_bool),
+            );
+            for (vg.children.items) |id| {
+                recur(
+                    vs,
+                    &vs.groups.items[id],
+                    depth + 2,
+                    gui_,
+                    vl,
+                    vt,
+                    win,
+                );
+            }
+        }
+
+        fn commit_cb(user: *iArea, _: *Gui, val: bool, id: usize) void {
+            const selfl: *PauseWindow = @alignCast(@fieldParentPtr("area", user));
+            if (id > VisGroup.MAX_VIS_GROUP) return;
+            selfl.editor.visgroups.setValueCascade(@intCast(id), val);
+            selfl.editor.rebuildVisGroups() catch return;
+            selfl.vt.needs_rebuild = true;
+        }
+    };
+    var ly = guis.VerticalLayout{
+        .padding = .{},
+        .item_height = gui.style.config.default_item_h,
+        .bounds = area.area,
+    };
+
+    if (self.editor.visgroups.getRoot()) |vg| {
+        Helper.recur(&self.editor.visgroups, vg, 0, gui, &ly, area, &self.vt);
+    }
+}
 
 pub const SortHelpText = struct {
     pub fn lessThan(_: void, a: PauseWindow.HelpText, b: PauseWindow.HelpText) bool {

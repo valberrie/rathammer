@@ -497,6 +497,24 @@ pub const Context = struct {
         }
     }
 
+    pub fn rebuildVisGroups(self: *Self) !void {
+        std.debug.print("Rebild\n", .{});
+        var it = self.ecs.iterator(.editor_info);
+        while (it.next()) |info| {
+            var copy = self.visgroups.disabled;
+            copy.setIntersection(info.vis_mask);
+            if (copy.findFirstSet() != null) {
+                self.ecs.attachComponent(it.i, .invisible, .{}) catch {}; // We discard error incase it is already attached
+                if (try self.ecs.getOptPtr(it.i, .solid)) |solid|
+                    try solid.removeFromMeshMap(it.i, self);
+            } else {
+                _ = try self.ecs.removeComponentOpt(it.i, .invisible);
+                if (try self.ecs.getOptPtr(it.i, .solid)) |solid|
+                    try solid.rebuild(it.i, self);
+            }
+        }
+    }
+
     pub fn writeToJsonFile(self: *Self, path: std.fs.Dir, filename: []const u8) !void {
         const outfile = try path.createFile(filename, .{});
         defer outfile.close();
