@@ -304,7 +304,6 @@ pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
 
 pub fn snap1(comp: f32, snap: f32) f32 {
     return @round(comp / snap) * snap;
-    //return @divFloor(comp, snap) * snap;
 }
 
 // Given some plane in r3
