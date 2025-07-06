@@ -1207,6 +1207,12 @@ pub const TextureTool = struct {
             .cb_fn = &btn_cb,
             .id = @intFromEnum(GuiBtnEnum.reset),
         }));
+        const tex_w = area_vt.area.w / 2;
+        ly.pushHeight(tex_w);
+        const ar = ly.getArea() orelse return;
+        inspector.selectedTextureWidget(area_vt, gui, win, ar);
+
+        //Begin all selected face stuff
         const e_id = self.id orelse return;
         const f_id = self.face_index orelse return;
         const solid = (self.ed.ecs.getOptPtr(e_id, .solid) catch null) orelse return;
@@ -1232,10 +1238,6 @@ pub const TextureTool = struct {
             norm.y(),
             norm.z(),
         }));
-        const tex_w = area_vt.area.w / 2;
-        ly.pushHeight(tex_w);
-        const ar = ly.getArea() orelse return;
-        inspector.selectedTextureWidget(area_vt, gui, win, ar);
     }
 
     pub fn btn_cb(vt: *iArea, id: usize, _: *RGui, _: *guis.iWindow) void {
