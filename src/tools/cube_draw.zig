@@ -27,6 +27,7 @@ pub const CubeDraw = struct {
         cube,
         arch,
         cylinder,
+        stairs,
     } = .cube,
     height_setting: enum {
         grid,
@@ -192,6 +193,23 @@ pub const CubeDraw = struct {
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
                 try tool.commitPrimitive(ed, center, &cyl, .{ .select = true, .rot = rot });
+            },
+            .stairs => {
+                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
+                const prim = try prim_gen.stairs(ed.frame_arena.allocator(), .{
+                    .width = xx[0].dot(cc[1]),
+                    .height = xx[1].dot(cc[1]),
+                    .z = @abs(cc[1].dot(norm)),
+
+                    .rise = 8,
+                    .run = 12,
+                });
+                const center = cc[0].add(cc[1].scale(0.5));
+                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                prim.draw(td.draw, center, rot);
+                if (ed.edit_state.rmouse != .rising) return;
+                tool.state = .start;
+                try tool.commitPrimitive(ed, center, &prim, .{ .select = true, .rot = rot });
             },
             .cube => {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);

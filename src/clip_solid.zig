@@ -304,7 +304,7 @@ test "clip solid" {
     defer ctx.deinit();
     const p0 = Vec3.new(-4, -4, -4);
     const pn = Vec3.new(1, 1, 1).norm();
-    var ret = try ctx.clipSolid(&sol, p0, pn);
+    var ret = try ctx.clipSolid(&sol, p0, pn, 0);
 
     std.debug.print("\n", .{});
     const o = std.debug;

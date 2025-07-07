@@ -44,6 +44,21 @@ pub const Primitive = struct {
         return std.ArrayList(u32).init(self.verts.allocator);
     }
 
+    pub fn toObj(self: *const @This(), wr: anytype) !void {
+        for (self.verts.items) |item|
+            try wr.print("v {d} {d} {d}\n", .{ item.x(), item.y(), item.z() });
+
+        for (self.solids.items, 0..) |solid, i| {
+            try wr.print("o solid{d}\n", .{i});
+            for (solid.items) |face| {
+                try wr.print("f", .{});
+                for (face.items) |ind|
+                    try wr.print(" {d}", .{ind + 1});
+                try wr.print("\n", .{});
+            }
+        }
+    }
+
     pub fn draw(self: *const @This(), dctx: *graph.ImmediateDrawingContext, center: Vec3, rot: graph.za.Mat3) void {
         const min_gray = 0x44;
         const max_gray = 0xdd;
@@ -267,7 +282,6 @@ fn rectPrism(
     }
 }
 
-//TODO Finish this and make arch use it too
 pub fn cube(alloc: std.mem.Allocator, param: struct { size: Vec3 }) !Primitive {
     var prim = Primitive.init(alloc);
 
@@ -293,11 +307,73 @@ pub fn cube(alloc: std.mem.Allocator, param: struct { size: Vec3 }) !Primitive {
     return prim;
 }
 
+pub fn stairs(alloc: std.mem.Allocator, param: struct {
+    z: f32,
+    width: f32,
+    height: f32,
+    rise: f32,
+    run: f32,
+    run_pad: f32 = 0,
+    rise_pad: f32 = 0,
+}) !Primitive {
+    var prim = Primitive.init(alloc);
+
+    const stairs_x = @trunc(param.width / param.run);
+    const stairs_y = @trunc(param.height / param.rise);
+    const num_stairs: usize = @intFromFloat(@abs(@min(stairs_x, stairs_y)));
+    const z = param.z / 2;
+    const zf = param.z / -2;
+
+    const run = param.run;
+    const rise = param.rise;
+
+    const run_a = run - param.run_pad;
+    const rise_a = rise - param.rise_pad;
+    const x0 = param.width / -2;
+    const y0 = param.height / -2;
+
+    try prim.verts.resize(num_stairs * 8);
+    for (0..num_stairs) |ns| {
+        const fs: f32 = @floatFromInt(ns);
+
+        //The bottom corner of the stair
+        const x = x0 + fs * run;
+        const y = y0 + fs * rise;
+
+        const i: u32 = @intCast(ns * 8);
+        prim.verts.items[i + 0] = Vec3.new(x, y, z);
+        prim.verts.items[i + 1] = Vec3.new(x + run_a, y, z);
+        prim.verts.items[i + 2] = Vec3.new(x + run_a, y + rise_a, z);
+        prim.verts.items[i + 3] = Vec3.new(x, y + rise_a, z);
+
+        prim.verts.items[i + 4] = Vec3.new(x, y, zf);
+        prim.verts.items[i + 5] = Vec3.new(x + run_a, y, zf);
+        prim.verts.items[i + 6] = Vec3.new(x + run_a, y + rise_a, zf);
+        prim.verts.items[i + 7] = Vec3.new(x, y + rise_a, zf);
+
+        try rectPrism(
+            &prim,
+            i + 0,
+            i + 3,
+            i + 2,
+            i + 1,
+
+            i + 4,
+            i + 7,
+            i + 6,
+            i + 5,
+        );
+    }
+
+    return prim;
+}
+
 test {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
     std.debug.print("\n", .{});
     const outfile = try std.fs.cwd().createFile("/tmp/ass.obj", .{});
     defer outfile.close();
-    try arch(alloc, outfile.writer());
+    const prim = try stairs(alloc, .{ .z = 10, .width = 100, .height = 100, .rise = 5, .run = 10 });
+    try prim.toObj(outfile.writer());
 }
