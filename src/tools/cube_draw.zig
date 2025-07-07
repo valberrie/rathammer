@@ -17,6 +17,7 @@ const ecs = @import("../ecs.zig");
 const undo = @import("../undo.zig");
 const snapV3 = util3d.snapV3;
 const prim_gen = @import("../primitive_gen.zig");
+const BBGizmo = @import("../aabb_gizmo.zig");
 
 pub const CubeDraw = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
@@ -56,6 +57,8 @@ pub const CubeDraw = struct {
         switch_to_fast_face,
         switch_to_translate,
     } = .reset,
+
+    bb_gizmo: BBGizmo = .{},
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -142,37 +145,47 @@ pub const CubeDraw = struct {
     fn finishPrimitive(tool: *@This(), ed: *Editor, td: tools.ToolData) !void {
         const draw_nd = &ed.draw_state.ctx;
         const set = tool.primitive_settings;
+        const rot = set.axis.getMat(set.invert, set.invert_x);
+        const norm = rot.mulByVec3(Vec3.new(0, 0, 1));
+        const xx = util3d.getBasis(norm);
+        const rc = ed.camRay(td.screen_area, td.view_3d.*);
+        const bounds = tool.bb_gizmo.aabbGizmo(tool.start, tool.end, rc, ed.edit_state.lmouse, ed.edit_state.grid_snap, draw_nd);
+        if (ed.edit_state.lmouse == .falling) {
+            tool.start = bounds[0];
+            tool.end = bounds[1];
+        }
         switch (tool.primitive) {
             .cylinder => {
-                const cc = util3d.cubeFromBounds(tool.start, tool.end);
-                const r = @min(cc[1].x(), cc[1].y()) / 2;
+                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
+                const z = @abs(cc[1].dot(norm));
+
+                const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
 
                 const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{
                     .r = r,
-                    .z = cc[1].z(),
+                    .z = z,
                     .num_segment = tool.primitive_settings.nsegment,
                 });
-                const rot = set.axis.getMat(set.invert, set.invert_x);
 
                 const center = cc[0].add(cc[1].scale(0.5));
-                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                //draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
                 cyl.draw(td.draw, center, rot);
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
                 try tool.commitPrimitive(ed, center, &cyl, .{ .rot = rot });
             },
             .arch => {
-                const cc = util3d.cubeFromBounds(tool.start, tool.end);
-                const r = @min(cc[1].x(), cc[1].y()) / 2;
+                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
+                const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
+                const z = @abs(cc[1].dot(norm));
 
                 const cyl = try prim_gen.arch(ed.frame_arena.allocator(), .{
                     .r = r - 10,
                     .r2 = r,
-                    .z = cc[1].z(),
+                    .z = z,
                     .num_segment = tool.primitive_settings.nsegment,
                 });
 
-                const rot = set.axis.getMat(set.invert, set.invert_x);
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
                 cyl.draw(td.draw, center, rot);
@@ -181,17 +194,17 @@ pub const CubeDraw = struct {
                 try tool.commitPrimitive(ed, center, &cyl, .{ .select = true, .rot = rot });
             },
             .cube => {
-                const cc = util3d.cubeFromBounds(tool.start, tool.end);
+                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
                 const prim = try prim_gen.cube(ed.frame_arena.allocator(), .{
                     .size = cc[1].scale(0.5),
                 });
-                const rot = Mat3.identity();
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                prim.draw(td.draw, center, rot);
+                prim.draw(td.draw, center, Mat3.identity());
+
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
-                try tool.commitPrimitive(ed, center, &prim, .{ .rot = rot });
+                try tool.commitPrimitive(ed, center, &prim, .{ .rot = Mat3.identity() });
             },
         }
     }

@@ -321,6 +321,26 @@ pub fn planeNormalGizmo(plane_p0: Vec3, plane_n: Vec3, ray: [2]Vec3) ?struct { V
     return null;
 }
 
+pub fn getBasis(norm: Vec3) [2]Vec3 {
+    var n: u8 = 0;
+    var dist: f32 = 0;
+    const vs = [3]Vec3{ Vec3.new(1, 0, 0), Vec3.new(0, 1, 0), Vec3.new(0, 0, 1) };
+    for (vs, 0..) |v, i| {
+        const d = @abs(norm.dot(v));
+        if (d > dist) {
+            n = @intCast(i);
+            dist = d;
+        }
+    }
+    //0 -> 1 2
+    //1 -> 0 2
+    //2 -> 1 0
+
+    const v: u8 = if (n == 2) 0 else 2;
+    const u: u8 = if (n == 1) 0 else 1;
+    return .{ vs[u], vs[v] };
+}
+
 //Given a point laying on a bounding box, what's the normal of the face?
 pub fn pointBBIntersectionNormal(bb_min: Vec3, bb_max: Vec3, point: Vec3) ?Vec3 {
     var zero = Vec3.zero();

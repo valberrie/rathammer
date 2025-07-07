@@ -509,9 +509,13 @@ pub const Side = struct {
 
         const v: u8 = if (n == 2) 0 else 2;
         const u: u8 = if (n == 1) 0 else 1;
+        _ = u;
+        _ = v;
 
-        self.u = .{ .axis = vs[u], .trans = 0, .scale = 0.25 };
-        self.v = .{ .axis = vs[v], .trans = 0, .scale = 0.25 };
+        const b = util3d.getBasis(norm);
+
+        self.u = .{ .axis = b[0], .trans = 0, .scale = 0.25 };
+        self.v = .{ .axis = b[1], .trans = 0, .scale = 0.25 };
     }
 };
 
