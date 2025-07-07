@@ -373,12 +373,86 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     return prim;
 }
 
+pub fn uvSphere(alloc: std.mem.Allocator, param: struct { r: f32, theta_seg: u32 = 11, phi_seg: u32 = 11, phi: f32 = 360 }) !Primitive {
+    var prim = Primitive.init(alloc);
+
+    const dtheta: f32 = std.math.pi / @as(f32, @floatFromInt(param.theta_seg)) / 2;
+    const phi_offset: usize = if (param.phi >= 360) 0 else 1;
+    const dphi: f32 = std.math.degreesToRadians(param.phi) / @as(f32, @floatFromInt(param.phi_seg - phi_offset));
+    const r = param.r;
+    const r2 = param.r + 4;
+
+    const num: u32 = @intCast(param.theta_seg * param.phi_seg);
+    try prim.verts.resize(num * 2);
+    for (0..param.theta_seg) |dth| {
+        const th: f32 = @as(f32, @floatFromInt(dth)) * dtheta;
+        for (0..param.phi_seg) |dpi| {
+            const phi: f32 = @as(f32, @floatFromInt(dpi)) * dphi;
+            const x = @sin(th) * @cos(phi);
+            const y = @sin(th) * @sin(phi);
+            const z = @cos(th);
+            const gi = dth * param.theta_seg + dpi;
+            prim.verts.items[gi] = Vec3.new(x, y, z).scale(r);
+            prim.verts.items[gi + num] = Vec3.new(x, y, z).scale(r2);
+        }
+    }
+
+    //var faces = try prim.newSolid();
+    for (0..param.theta_seg - 1) |ddth| {
+        const dth: u32 = @intCast(ddth);
+        for (0..param.phi_seg - phi_offset) |ddpi| {
+            const dpi: u32 = @as(u32, @intCast(ddpi));
+            const v0 = (dpi) % param.phi_seg;
+            const v1 = (dpi + 1) % param.phi_seg;
+            const v2 = (v1 + param.phi_seg);
+            const v3 = (v0 + param.phi_seg);
+            const off = dth * param.theta_seg;
+            //+ dth * param.theta_seg;
+
+            try rectPrism(
+                &prim,
+                v3 + off,
+                v2 + off,
+                v1 + off,
+                v0 + off,
+
+                v3 + off + num,
+                v2 + off + num,
+                v1 + off + num,
+                v0 + off + num,
+            );
+            //{
+            //    var face = prim.newFace();
+            //    try face.appendSlice(&.{
+            //        v0 + off, v1 + off, v2 + off, v3 + off,
+            //    });
+
+            //    try faces.append(face);
+            //}
+            //{
+            //    var face = prim.newFace();
+            //    try face.appendSlice(&.{
+            //        v3 + off + num,
+            //        v2 + off + num,
+            //        v1 + off + num,
+            //        v0 + off + num
+            //    });
+
+            //    try faces.append(face);
+            //}
+        }
+    }
+
+    return prim;
+}
+
 test {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
     std.debug.print("\n", .{});
     const outfile = try std.fs.cwd().createFile("/tmp/ass.obj", .{});
     defer outfile.close();
-    const prim = try stairs(alloc, .{ .z = 10, .width = 100, .height = 100, .rise = 5, .run = 10 });
+    //const prim = try stairs(alloc, .{ .z = 10, .width = 100, .height = 100, .rise = 5, .run = 10 });
+    const prim = try uvSphere(alloc, .{ .r = 10 });
     try prim.toObj(outfile.writer());
 }

@@ -28,6 +28,7 @@ pub const CubeDraw = struct {
         arch,
         cylinder,
         stairs,
+        dome,
     } = .cube,
     height_setting: enum {
         grid,
@@ -42,6 +43,7 @@ pub const CubeDraw = struct {
         invert: bool = false,
         invert_x: bool = false,
         angle: f32 = 0,
+        theta: f32 = 0,
     } = .{},
 
     stairs_setting: struct {
@@ -104,7 +106,7 @@ pub const CubeDraw = struct {
         }));
 
         { //All the damn settings
-            ly.pushCount(5);
+            ly.pushCount(6);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             if (guis.label(area_vt, gui, win, tly.getArea(), "Post draw state", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.post_state, .{}));
@@ -132,6 +134,12 @@ pub const CubeDraw = struct {
                 area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.stairs_setting.front_perc, -1, 1, .{ .nudge = 0.1 }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "stair percb", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.stairs_setting.back_perc, -1, 1, .{ .nudge = 0.1 }));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "theta", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.theta, 0, 360, .{
+                    .nudge = 0.1,
+                    .snap_mod = 15,
+                    .snap_thresh = 4,
+                }));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -209,6 +217,21 @@ pub const CubeDraw = struct {
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
                 try tool.commitPrimitive(ed, center, &cyl, .{ .select = true, .rot = rot });
+            },
+            .dome => {
+                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
+                const prim = try prim_gen.uvSphere(ed.frame_arena.allocator(), .{
+                    .r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2),
+                    .phi = tool.primitive_settings.theta,
+                    .phi_seg = set.nsegment,
+                    .theta_seg = set.nsegment,
+                });
+                const center = cc[0].add(cc[1].scale(0.5));
+                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
+                prim.draw(td.draw, center, rot);
+                if (ed.edit_state.rmouse != .rising) return;
+                tool.state = .start;
+                try tool.commitPrimitive(ed, center, &prim, .{ .select = true, .rot = rot });
             },
             .stairs => {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);

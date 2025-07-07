@@ -62,6 +62,7 @@ pub const Context = struct {
         const num_cpu = try std.Thread.getCpuCount();
         const count = worker_thread_count orelse @max(num_cpu, 2) - 1;
         const pool = try alloc.create(std.Thread.Pool);
+        log.info("Initializing thread pool with {d} threads.", .{count});
         try pool.init(.{ .allocator = alloc, .n_jobs = @intCast(count) });
         return .{
             .map = std.AutoHashMap(std.Thread.Id, *ThreadState).init(alloc),
