@@ -148,7 +148,7 @@ pub const Axis = enum {
         };
     }
 
-    pub fn getMat(self: @This(), swap1: bool, swap2: bool) graph.za.Mat3 {
+    pub fn getMat(self: @This(), swap1: bool, angle: f32) graph.za.Mat3 {
         const Mat3 = graph.za.Mat3;
         var m1 = Mat3.identity();
         const m2 = switch (self) {
@@ -156,14 +156,12 @@ pub const Axis = enum {
             .y => Mat3.fromRotation(90, Vec3.new(1, 0, 0)),
             .z => Mat3.identity(),
         };
-        if (swap2) {
-            m1 = m1.mul(Mat3.fromRotation(90, Vec3.new(0, 1, 0)));
-        }
         if (swap1) {
-            const swapm = Mat3.fromRotation(180, Vec3.new(1, 0, 0));
-            m1 = m1.mul(swapm);
+            //m1.data[1][1] = -1;
+            m1 = Mat3.fromRotation(180, Vec3.new(1, 0, 0));
         }
-        return m2.mul(m1);
+        const m3 = Mat3.fromRotation(angle, Vec3.new(0, 0, 1));
+        return m3.mul(m2.mul(m1));
     }
 };
 
@@ -315,6 +313,8 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     run: f32,
     run_pad: f32 = 0,
     rise_pad: f32 = 0,
+    front_perc: f32 = -1,
+    back_perc: f32 = 1,
 }) !Primitive {
     var prim = Primitive.init(alloc);
 
@@ -332,6 +332,7 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     const x0 = param.width / -2;
     const y0 = param.height / -2;
 
+    var last_back: f32 = 0;
     try prim.verts.resize(num_stairs * 8);
     for (0..num_stairs) |ns| {
         const fs: f32 = @floatFromInt(ns);
@@ -340,14 +341,18 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
         const x = x0 + fs * run;
         const y = y0 + fs * rise;
 
-        const i: u32 = @intCast(ns * 8);
-        prim.verts.items[i + 0] = Vec3.new(x, y, z);
-        prim.verts.items[i + 1] = Vec3.new(x + run_a, y, z);
-        prim.verts.items[i + 2] = Vec3.new(x + run_a, y + rise_a, z);
-        prim.verts.items[i + 3] = Vec3.new(x, y + rise_a, z);
+        const yo = if (ns == 0) 0 else (y - last_back) * param.front_perc;
+        const yb = yo * param.back_perc;
+        last_back = y + yb;
 
-        prim.verts.items[i + 4] = Vec3.new(x, y, zf);
-        prim.verts.items[i + 5] = Vec3.new(x + run_a, y, zf);
+        const i: u32 = @intCast(ns * 8);
+        prim.verts.items[i + 0] = Vec3.new(x, y + yo, z); //bottom left
+        prim.verts.items[i + 1] = Vec3.new(x + run_a, y + yb, z); //bot r
+        prim.verts.items[i + 2] = Vec3.new(x + run_a, y + rise_a, z); //top r
+        prim.verts.items[i + 3] = Vec3.new(x, y + rise_a, z); //top l
+
+        prim.verts.items[i + 4] = Vec3.new(x, y + yo, zf);
+        prim.verts.items[i + 5] = Vec3.new(x + run_a, y + yb, zf);
         prim.verts.items[i + 6] = Vec3.new(x + run_a, y + rise_a, zf);
         prim.verts.items[i + 7] = Vec3.new(x, y + rise_a, zf);
 

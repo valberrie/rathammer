@@ -12,6 +12,7 @@ const Editor = @import("editor.zig").Context;
 const DrawCtx = graph.ImmediateDrawingContext;
 const VisGroups = @import("visgroup.zig");
 const prim_gen = @import("primitive_gen.zig");
+const csg = @import("csg.zig");
 //Global TODO for ecs stuff
 //Many strings in kvs and connections are stored by editor.StringStorage
 //as they act as an enum value specified in the fgd.
@@ -582,7 +583,28 @@ pub const Solid = struct {
             const norm = side.normal(&ret);
             side.resetUv(norm);
         }
+        try ret.optimizeMesh();
         return ret;
+    }
+
+    //Prune duplicate verticies and reindex
+    pub fn optimizeMesh(self: *Self) !void {
+        var vmap = csg.VecMap.init(self.sides.allocator);
+        defer vmap.deinit();
+
+        for (self.sides.items) |side| {
+            for (side.index.items) |*ind|
+                ind.* = try vmap.put(self.verts.items[ind.*]);
+        }
+        if (vmap.verts.items.len < self.verts.items.len) {
+            std.debug.print("OPTIMIZED {d} {d} \n", .{
+                self.verts.items.len - vmap.verts.items.len,
+                vmap.verts.items.len / self.verts.items.len * 100,
+            });
+            self.verts.shrinkAndFree(vmap.verts.items.len);
+        }
+        try self.verts.resize(vmap.verts.items.len);
+        @memcpy(self.verts.items, vmap.verts.items);
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {

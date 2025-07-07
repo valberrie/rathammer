@@ -41,6 +41,12 @@ pub const CubeDraw = struct {
         axis: prim_gen.Axis = .y,
         invert: bool = false,
         invert_x: bool = false,
+        angle: f32 = 0,
+    } = .{},
+
+    stairs_setting: struct {
+        front_perc: f32 = 0,
+        back_perc: f32 = 0,
     } = .{},
 
     min_volume: f32 = 1,
@@ -98,7 +104,7 @@ pub const CubeDraw = struct {
         }));
 
         { //All the damn settings
-            ly.pushCount(4);
+            ly.pushCount(5);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             if (guis.label(area_vt, gui, win, tly.getArea(), "Post draw state", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.post_state, .{}));
@@ -115,7 +121,17 @@ pub const CubeDraw = struct {
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive_settings.axis, .{}));
             area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invert", .{ .bool_ptr = &self.primitive_settings.invert }, null));
-            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invertx", .{ .bool_ptr = &self.primitive_settings.invert_x }, null));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "angle", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.angle, 0, 360, .{
+                    .nudge = 0.1,
+                    .snap_mod = 15,
+                    .snap_thresh = 4,
+                }));
+
+            if (guis.label(area_vt, gui, win, tly.getArea(), "stair percf", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.stairs_setting.front_perc, -1, 1, .{ .nudge = 0.1 }));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "stair percb", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.stairs_setting.back_perc, -1, 1, .{ .nudge = 0.1 }));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -146,7 +162,7 @@ pub const CubeDraw = struct {
     fn finishPrimitive(tool: *@This(), ed: *Editor, td: tools.ToolData) !void {
         const draw_nd = &ed.draw_state.ctx;
         const set = tool.primitive_settings;
-        const rot = set.axis.getMat(set.invert, set.invert_x);
+        const rot = set.axis.getMat(set.invert, set.angle);
         const norm = rot.mulByVec3(Vec3.new(0, 0, 1));
         const xx = util3d.getBasis(norm);
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
@@ -203,6 +219,9 @@ pub const CubeDraw = struct {
 
                     .rise = 8,
                     .run = 12,
+
+                    .front_perc = tool.stairs_setting.front_perc,
+                    .back_perc = tool.stairs_setting.back_perc,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
