@@ -44,7 +44,7 @@ pub const Primitive = struct {
         return std.ArrayList(u32).init(self.verts.allocator);
     }
 
-    pub fn draw(self: *const @This(), dctx: *graph.ImmediateDrawingContext, center: Vec3) void {
+    pub fn draw(self: *const @This(), dctx: *graph.ImmediateDrawingContext, center: Vec3, rot: graph.za.Mat3) void {
         const min_gray = 0x44;
         const max_gray = 0xdd;
         const v1 = Vec3.new(1, 0, 0);
@@ -56,6 +56,7 @@ pub const Primitive = struct {
                 const color = gray << 24 | gray << 16 | gray << 8 | 0xff;
                 dctx.convexPolyIndexed(face.items, self.verts.items, color, .{
                     .offset = center,
+                    .rot = rot,
                 });
             }
         }
@@ -67,7 +68,6 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
     z: f32,
     num_segment: u32 = 16,
     snap: f32 = 1,
-    axis: Axis = .z,
 }) !Primitive {
     const snap = 1;
     var prim = Primitive.init(alloc);
@@ -82,14 +82,11 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
         const thet = fi * dtheta;
         const x_f = @cos(thet) * r;
         const y_f = @sin(thet) * r;
-        var x = @round(x_f / snap) * snap;
-        var y = @round(y_f / snap) * snap;
+        const x = @round(x_f / snap) * snap;
+        const y = @round(y_f / snap) * snap;
 
-        if (param.axis != .z) //Flip all the normals
-            std.mem.swap(f32, &x, &y);
-
-        prim.verts.items[ni] = param.axis.Vec(x, y, -z / 2);
-        prim.verts.items[ni + num_segment] = param.axis.Vec(x, y, z / 2);
+        prim.verts.items[ni] = Vec3.new(x, y, -z / 2);
+        prim.verts.items[ni + num_segment] = Vec3.new(x, y, z / 2);
     }
 
     var faces = try prim.newSolid();
@@ -135,6 +132,24 @@ pub const Axis = enum {
             .z => Vec3.new(x, y, z),
         };
     }
+
+    pub fn getMat(self: @This(), swap1: bool, swap2: bool) graph.za.Mat3 {
+        const Mat3 = graph.za.Mat3;
+        var m1 = Mat3.identity();
+        const m2 = switch (self) {
+            .x => Mat3.fromRotation(90, Vec3.new(0, 1, 0)),
+            .y => Mat3.fromRotation(90, Vec3.new(1, 0, 0)),
+            .z => Mat3.identity(),
+        };
+        if (swap2) {
+            m1 = m1.mul(Mat3.fromRotation(90, Vec3.new(0, 1, 0)));
+        }
+        if (swap1) {
+            const swapm = Mat3.fromRotation(180, Vec3.new(1, 0, 0));
+            m1 = m1.mul(swapm);
+        }
+        return m2.mul(m1);
+    }
 };
 
 pub fn arch(alloc: std.mem.Allocator, param: struct {
@@ -143,9 +158,6 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     num_segment: u32 = 16,
     snap: f32 = 1,
     z: f32,
-    swap_y: bool,
-    swap_x: bool,
-    axis: Axis = .z,
     theta_deg: f32 = 180,
 }) !Primitive {
     var prim = Primitive.init(alloc);
@@ -156,7 +168,6 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     const z = param.z;
     try prim.verts.resize(num_segment * 4);
     const dtheta: f32 = std.math.degreesToRadians(param.theta_deg) / @as(f32, @floatFromInt(num_segment - 1)); //Do half only
-    const f: f32 = if (param.swap_y) -1 else 1;
     for (0..num_segment) |ni| {
         const fi: f32 = @floatFromInt(ni);
 
@@ -172,14 +183,10 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
         const x2 = snap1(x2_f, snap);
         const y2 = snap1(y2_f, snap);
 
-        prim.verts.items[ni + num_segment * 0] = param.axis.Vec(f * x1, f * y1, -z / 2); //lower
-        prim.verts.items[ni + num_segment * 1] = param.axis.Vec(f * x1, f * y1, z / 2); //lower far
-        prim.verts.items[ni + num_segment * 2] = param.axis.Vec(f * x2, f * y2, -z / 2); //upper
-        prim.verts.items[ni + num_segment * 3] = param.axis.Vec(f * x2, f * y2, z / 2); //upper far
-    }
-    if (param.swap_x) {
-        for (prim.verts.items) |*item|
-            std.mem.swap(f32, item.xMut(), item.yMut());
+        prim.verts.items[ni + num_segment * 0] = Vec3.new(x1, y1, -z / 2); //lower
+        prim.verts.items[ni + num_segment * 1] = Vec3.new(x1, y1, z / 2); //lower far
+        prim.verts.items[ni + num_segment * 2] = Vec3.new(x2, y2, -z / 2); //upper
+        prim.verts.items[ni + num_segment * 3] = Vec3.new(x2, y2, z / 2); //upper far
     }
 
     for (0..num_segment - 1) |nni| {
@@ -196,14 +203,14 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
         const fv1z = (ni + 1) + num_segment * 3; //next upper far
         try rectPrism(
             &prim,
-            v0,
             v1,
-            fv1,
+            v0,
             fv0,
-            v0z,
+            fv1,
             v1z,
-            fv1z,
+            v0z,
             fv0z,
+            fv1z,
         );
     }
     return prim;

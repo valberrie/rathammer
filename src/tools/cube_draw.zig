@@ -1,6 +1,7 @@
 const tools = @import("../tools.zig");
 const i3DTool = tools.i3DTool;
 const Vec3 = graph.za.Vec3;
+const Mat3 = graph.za.Mat3;
 const graph = @import("graph");
 const std = @import("std");
 const DrawCtx = graph.ImmediateDrawingContext;
@@ -140,6 +141,7 @@ pub const CubeDraw = struct {
 
     fn finishPrimitive(tool: *@This(), ed: *Editor, td: tools.ToolData) !void {
         const draw_nd = &ed.draw_state.ctx;
+        const set = tool.primitive_settings;
         switch (tool.primitive) {
             .cylinder => {
                 const cc = util3d.cubeFromBounds(tool.start, tool.end);
@@ -149,15 +151,15 @@ pub const CubeDraw = struct {
                     .r = r,
                     .z = cc[1].z(),
                     .num_segment = tool.primitive_settings.nsegment,
-                    .axis = tool.primitive_settings.axis,
                 });
+                const rot = set.axis.getMat(set.invert, set.invert_x);
 
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                cyl.draw(td.draw, center);
+                cyl.draw(td.draw, center, rot);
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
-                try tool.commitPrimitive(ed, center, &cyl, .{});
+                try tool.commitPrimitive(ed, center, &cyl, .{ .rot = rot });
             },
             .arch => {
                 const cc = util3d.cubeFromBounds(tool.start, tool.end);
@@ -168,34 +170,33 @@ pub const CubeDraw = struct {
                     .r2 = r,
                     .z = cc[1].z(),
                     .num_segment = tool.primitive_settings.nsegment,
-                    .axis = tool.primitive_settings.axis,
-                    .swap_y = tool.primitive_settings.invert,
-                    .swap_x = tool.primitive_settings.invert_x,
                 });
 
+                const rot = set.axis.getMat(set.invert, set.invert_x);
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                cyl.draw(td.draw, center);
+                cyl.draw(td.draw, center, rot);
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
-                try tool.commitPrimitive(ed, center, &cyl, .{ .select = true });
+                try tool.commitPrimitive(ed, center, &cyl, .{ .select = true, .rot = rot });
             },
             .cube => {
                 const cc = util3d.cubeFromBounds(tool.start, tool.end);
                 const prim = try prim_gen.cube(ed.frame_arena.allocator(), .{
                     .size = cc[1].scale(0.5),
                 });
+                const rot = Mat3.identity();
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                prim.draw(td.draw, center);
+                prim.draw(td.draw, center, rot);
                 if (ed.edit_state.rmouse != .rising) return;
                 tool.state = .start;
-                try tool.commitPrimitive(ed, center, &prim, .{});
+                try tool.commitPrimitive(ed, center, &prim, .{ .rot = rot });
             },
         }
     }
 
-    fn commitPrimitive(self: *@This(), ed: *Editor, center: Vec3, prim: *const prim_gen.Primitive, opts: struct { select: bool = false }) !void {
+    fn commitPrimitive(self: *@This(), ed: *Editor, center: Vec3, prim: *const prim_gen.Primitive, opts: struct { select: bool = false, rot: Mat3 }) !void {
         const vpk_id = ed.asset_browser.selected_mat_vpk_id orelse 0;
         const ustack = try ed.undoctx.pushNewFmt("draw cube", .{});
         defer undo.applyRedo(ustack.items, ed);
@@ -204,7 +205,7 @@ pub const CubeDraw = struct {
             ed.selection.mode = .many;
         }
         for (prim.solids.items) |sol| {
-            if (ecs.Solid.initFromPrimitive(ed.alloc, prim.verts.items, sol.items, vpk_id, center)) |newsolid| {
+            if (ecs.Solid.initFromPrimitive(ed.alloc, prim.verts.items, sol.items, vpk_id, center, opts.rot)) |newsolid| {
                 const new = try ed.ecs.createEntity();
                 if (opts.select) {
                     try ed.selection.put(new, ed);

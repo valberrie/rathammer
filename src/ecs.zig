@@ -557,11 +557,11 @@ pub const Solid = struct {
         return !all_same;
     }
 
-    pub fn initFromPrimitive(alloc: std.mem.Allocator, verts: []const Vec3, faces: []const std.ArrayList(u32), tex_id: vpk.VpkResId, offset: Vec3) !Solid {
+    pub fn initFromPrimitive(alloc: std.mem.Allocator, verts: []const Vec3, faces: []const std.ArrayList(u32), tex_id: vpk.VpkResId, offset: Vec3, rot: graph.za.Mat3) !Solid {
         var ret = init(alloc);
         //TODO prune the verts
         for (verts) |v|
-            try ret.verts.append(v.add(offset));
+            try ret.verts.append(rot.mulByVec3(v).add(offset));
 
         for (faces) |face| {
             var ind = std.ArrayList(u32).init(alloc);
