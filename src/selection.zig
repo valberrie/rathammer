@@ -68,6 +68,15 @@ pub fn setToSingle(self: *Self, id: Id) !void {
     try self.multi.append(id);
 }
 
+pub fn setToMulti(self: *Self) void {
+    self.mode = .one;
+}
+
+// Add an id without checking if it exists
+pub fn addUnchecked(self: *Self, id: Id) !void {
+    try self.multi.append(id);
+}
+
 pub fn multiContains(self: *Self, id: Id) bool {
     for (self.multi.items) |item| {
         if (item == id)

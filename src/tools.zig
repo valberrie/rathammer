@@ -744,9 +744,12 @@ pub const Translate = struct {
             const real_commit = giz_active == .high and commit;
             const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
             const selected = self.selection.getSlice();
+            const MAX_DRAWN_VERTS = 500;
+            const draw_verts = selected.len < MAX_DRAWN_VERTS;
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+                    if (draw_verts)
+                        solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }
@@ -762,7 +765,8 @@ pub const Translate = struct {
                         if (dupe) { //Draw original
                             try solid.drawImmediate(draw, self, Vec3.zero(), null);
                         }
-                        solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
+                        if (draw_verts)
+                            solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
                     }
                 }
                 if (self.getComponent(id, .entity)) |ent| {

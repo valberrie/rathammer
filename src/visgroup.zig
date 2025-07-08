@@ -25,6 +25,7 @@ pub const Group = struct {
 
     children: std.ArrayList(VisGroupId),
 };
+const log = std.log.scoped(.visgroup);
 
 vmf_id_mapping: std.AutoHashMap(i32, VisGroupId),
 // VisGroupId indexes into this
@@ -45,7 +46,24 @@ pub fn init(alloc: std.mem.Allocator) Self {
 pub fn getRoot(self: *Self) ?*Group {
     if (self.groups.items.len > 0)
         return &self.groups.items[0];
+
     return null;
+}
+
+fn getRootNoFail(self: *Self) !*Group {
+    return self.getRoot() orelse {
+        _ = try self.newGroup("");
+        return &self.groups.items[0];
+    };
+}
+
+pub fn getMask(self: *Self, groups: []const VisGroupId) BitSetT {
+    _ = self;
+    var ret = BitSetT.initEmpty();
+    for (groups) |group| {
+        ret.set(group);
+    }
+    return ret;
 }
 
 pub fn getMaskFromEditorInfo(self: *Self, info: *const vmf.EditorInfo) !BitSetT {
@@ -54,7 +72,8 @@ pub fn getMaskFromEditorInfo(self: *Self, info: *const vmf.EditorInfo) !BitSetT 
         if (self.vmf_id_mapping.get(id)) |g_id| {
             ret.set(g_id);
         } else {
-            return error.invalidVisGroup;
+            log.warn("invalid vis group", .{});
+            return ret;
         }
     }
     return ret;
@@ -112,6 +131,25 @@ fn newGroup(self: *Self, name: []const u8) !*Group {
         .children = std.ArrayList(VisGroupId).init(self.alloc),
     });
     return &self.groups.items[self.groups.items.len - 1];
+}
+
+pub fn getOrPutTopLevelGroup(self: *Self, name: []const u8) !VisGroupId {
+    {
+        const root = try self.getRootNoFail();
+        for (root.children.items) |child_id| {
+            const child = self.groups.items[child_id];
+            if (std.mem.eql(u8, child.name, name))
+                return child.id;
+        }
+    }
+
+    const new = try self.newGroup(name);
+    const id = new.id;
+
+    //PTR madness
+    const root = self.getRoot() orelse return error.noRoot;
+    try root.children.append(id);
+    return id;
 }
 
 pub fn getGroup(self: *Self, id: VisGroupId) ?Group {

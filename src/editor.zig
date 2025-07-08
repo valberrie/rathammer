@@ -232,6 +232,11 @@ pub const Context = struct {
 
     selection: Selection,
 
+    hacky_extra_vmf: struct {
+        //Not freed, use static_string
+        override_vis_group: ?[]const u8 = null,
+    } = .{},
+
     edit_state: struct {
         default_group_entity: enum { none, func_detail } = .func_detail,
         tool_index: usize = 0,
@@ -729,8 +734,10 @@ pub const Context = struct {
 
     ///Given a csg defined solid, convert to mesh and store.
     pub fn putSolidFromVmf(self: *Self, solid: vmf.Solid, group_id: ?GroupId) !void {
+        const vis_override = if (self.hacky_extra_vmf.override_vis_group) |n| try self.visgroups.getOrPutTopLevelGroup(n) else null;
+        const vis_mask = if (vis_override) |vo| self.visgroups.getMask(&.{vo}) else try self.visgroups.getMaskFromEditorInfo(&solid.editor);
         const new = try self.ecs.createEntity();
-        try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&solid.editor) });
+        try self.ecs.attach(new, .editor_info, .{ .vis_mask = vis_mask });
         const newsolid = try self.csgctx.genMesh2(
             solid.side,
             self.alloc,
@@ -851,11 +858,11 @@ pub const Context = struct {
     //TODO write a vmf -> json utility like jsonToVmf.zig
     //Then, only have a single function to load serialized data into engine "loadJson"
     fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
-        if (self.has_loaded_map) {
+        const vis_override = if (self.hacky_extra_vmf.override_vis_group) |n| try self.visgroups.getOrPutTopLevelGroup(n) else null;
+        if (false and self.has_loaded_map) {
             log.err("Map already loaded", .{});
             return error.multiMapLoadNotSupported;
         }
-        defer self.has_loaded_map = true;
         var timer = try std.time.Timer.start();
         const infile = util.openFileFatal(path, filename, .{}, "");
         defer infile.close();
@@ -869,7 +876,8 @@ pub const Context = struct {
         loadctx.cb("vmf parsed");
         try self.setMapName(filename);
         const vmf_ = try vdf.fromValue(vmf.Vmf, &.{ .obj = &obj.value }, aa.allocator(), null);
-        try self.visgroups.buildMappingFromVmf(vmf_.visgroups, null);
+        if (vis_override == null)
+            try self.visgroups.buildMappingFromVmf(vmf_.visgroups, null);
         try self.skybox.loadSky(try self.storeString(vmf_.world.skyname), &self.vpkctx);
         {
             loadctx.expected_cb = vmf_.world.solid.len + vmf_.entity.len + 10;
@@ -882,7 +890,8 @@ pub const Context = struct {
                 loadctx.printCb("ent generated {d} / {d}", .{ ei, vmf_.entity.len });
                 const new = try self.ecs.createEntity();
                 const group_id = if (ent.solid.len > 0) try self.groups.newGroup(new) else 0;
-                try self.ecs.attach(new, .editor_info, .{ .vis_mask = try self.visgroups.getMaskFromEditorInfo(&ent.editor) });
+                const vis_mask = if (vis_override) |vo| self.visgroups.getMask(&.{vo}) else try self.visgroups.getMaskFromEditorInfo(&ent.editor);
+                try self.ecs.attach(new, .editor_info, .{ .vis_mask = vis_mask });
                 for (ent.solid) |solid|
                     try self.putSolidFromVmf(solid, group_id);
                 {

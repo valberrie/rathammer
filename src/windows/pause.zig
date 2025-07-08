@@ -26,6 +26,10 @@ pub const PauseWindow = struct {
         }
     };
 
+    const Textboxes = enum {
+        set_import_visgroup,
+    };
+
     const HelpText = struct {
         text: std.ArrayList(u8),
         name: std.ArrayList(u8),
@@ -165,20 +169,29 @@ pub const PauseWindow = struct {
             ly.padding.right = 10;
             ly.padding.top = 10;
 
+            const Btn = Wg.Button.build;
             const ds = &self.editor.draw_state;
             if (self.editor.has_loaded_map) {
-                vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+                vt.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+                {
+                    var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 3 };
+                    if (guis.label(vt, gui, win, hy.getArea(), "Import under visgroup: ", .{})) |ar|
+                        vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                            .init_string = self.editor.hacky_extra_vmf.override_vis_group orelse "",
+                            .commit_cb = &textbox_cb,
+                            .commit_vt = &self.area,
+                            .user_id = @intFromEnum(Textboxes.set_import_visgroup),
+                        }));
+                    vt.addChildOpt(gui, win, Btn(gui, hy.getArea(), "Import vmf", .{ .cb_fn = &btnCb, .id = Buttons.id(.pick_map), .cb_vt = &self.area }));
+                }
             } else {
-                var hy = guis.HorizLayout{
-                    .bounds = ly.getArea() orelse return,
-                    .count = 2,
-                };
-                vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "New map", .{ .cb_fn = &btnCb, .id = Buttons.id(.new_map), .cb_vt = &self.area }));
-                vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Load map", .{ .cb_fn = &btnCb, .id = Buttons.id(.pick_map), .cb_vt = &self.area }));
+                var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
+                vt.addChildOpt(gui, win, Btn(gui, hy.getArea(), "New map", .{ .cb_fn = &btnCb, .id = Buttons.id(.new_map), .cb_vt = &self.area }));
+                vt.addChildOpt(gui, win, Btn(gui, hy.getArea(), "Load map", .{ .cb_fn = &btnCb, .id = Buttons.id(.pick_map), .cb_vt = &self.area }));
             }
 
-            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
-            vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
+            vt.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
+            vt.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
 
             {
                 var hy = guis.HorizLayout{
@@ -232,6 +245,17 @@ pub const PauseWindow = struct {
         self.vt.needs_rebuild = true;
     }
 
+    pub fn textbox_cb(vt: *iArea, _: *Gui, string: []const u8, id: usize) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+
+        switch (@as(Textboxes, @enumFromInt(id))) {
+            .set_import_visgroup => {
+                const str = self.editor.storeString(string) catch return;
+                self.editor.hacky_extra_vmf.override_vis_group = str;
+            },
+        }
+    }
+
     pub fn buildHelpScroll(window_area: *iArea, vt: *iArea, index: usize, gui: *Gui, window: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", window_area));
         var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
@@ -254,16 +278,24 @@ fn buildVisGroups(self: *PauseWindow, gui: *Gui, area: *iArea) void {
         fn recur(vs: *VisGroup, vg: *VisGroup.Group, depth: usize, gui_: *Gui, vl: *guis.VerticalLayout, vt: *iArea, win: *iWindow) void {
             vl.padding.left = @floatFromInt(depth * 20);
             const the_bool = !vs.disabled.isSet(vg.id);
-            //const changed = os9g.checkbox(vg.name, &the_bool);
+
+            var hy = guis.HorizLayout{ .bounds = vl.getArea() orelse return, .count = 2 };
             vt.addChildOpt(
                 gui_,
                 win,
-                Wg.Checkbox.build(gui_, vl.getArea(), vg.name, .{
+                Wg.Checkbox.build(gui_, hy.getArea(), vg.name, .{
                     .cb_fn = &commit_cb,
                     .cb_vt = win.area,
                     .user_id = vg.id,
                 }, the_bool),
             );
+
+            vt.addChildOpt(gui_, win, Wg.Button.build(gui_, hy.getArea(), "Select", .{
+                .cb_fn = &select_all_vis,
+                .cb_vt = win.area,
+                .id = vg.id,
+            }));
+
             for (vg.children.items) |id| {
                 recur(
                     vs,
@@ -283,6 +315,17 @@ fn buildVisGroups(self: *PauseWindow, gui: *Gui, area: *iArea) void {
             selfl.editor.visgroups.setValueCascade(@intCast(id), val);
             selfl.editor.rebuildVisGroups() catch return;
             selfl.vt.needs_rebuild = true;
+        }
+
+        fn select_all_vis(user: *iArea, id: usize, _: *Gui, _: *iWindow) void {
+            const selfl: *PauseWindow = @alignCast(@fieldParentPtr("area", user));
+            selfl.editor.selection.setToMulti();
+            const mask = selfl.editor.visgroups.getMask(&.{@as(u8, @intCast(id))});
+            var it = selfl.editor.ecs.iterator(.editor_info);
+            while (it.next()) |item| {
+                if (mask.subsetOf(item.vis_mask))
+                    selfl.editor.selection.addUnchecked(it.i) catch return;
+            }
         }
     };
     var ly = guis.VerticalLayout{
