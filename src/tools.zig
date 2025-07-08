@@ -995,6 +995,20 @@ pub const TextureTool = struct {
             norm.y(),
             norm.z(),
         }));
+
+        ly.pushRemaining();
+        var hy = guis.TableLayout{ .columns = 4, .bounds = ly.getArea() orelse return, .item_height = gui.style.config.default_item_h };
+        for (solid.verts.items, 0..) |vert, i| {
+            area_vt.addChildOpt(gui, win, Wg.Text.build(gui, hy.getArea(), "{d}: {d} {d} {d}", .{
+                i,
+                vert.x(),
+                vert.y(),
+                vert.z(),
+            }));
+        }
+        for (side.index.items) |index| {
+            area_vt.addChildOpt(gui, win, Wg.Text.build(gui, hy.getArea(), "ind  {d}", .{index}));
+        }
     }
 
     pub fn btn_cb(vt: *iArea, id: usize, _: *RGui, _: *guis.iWindow) void {
@@ -1082,6 +1096,8 @@ pub const TextureTool = struct {
         if (try self.getCurrentlySelected(editor)) |sel| {
             const v = sel.solid.verts.items;
             const ind = sel.side.index.items;
+            for (v) |vv|
+                editor.draw_state.ctx.point3D(vv, 0xffff00ff);
             if (ind.len > 0) {
                 var last = v[ind[ind.len - 1]];
                 for (0..ind.len) |ti| {

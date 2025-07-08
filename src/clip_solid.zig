@@ -211,6 +211,7 @@ pub const ClipCtx = struct {
                         }
                         const n_i = (ii + 1) % side.index.items.len;
                         const next_kind = self.verts.items[side.index.items[n_i]];
+                        // Make the cut, add verts.
                         if (next_kind != .on and next_kind != k) {
                             const start = solid.verts.items[side.index.items[n_i]];
                             const end = solid.verts.items[vi];

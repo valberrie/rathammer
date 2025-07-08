@@ -376,26 +376,32 @@ pub fn conVec(v: anytype) @TypeOf(v) {
     return @TypeOf(v).new(v.x(), v.z(), -v.y());
 }
 
+// Rounds off anything after 0.1
 pub const VecMap = struct {
     pub const HashCtx = struct {
-        const off = 100;
+        const off = 10;
         pub fn hash(self: HashCtx, k: Vec3_32) u64 {
             _ = self;
             var hasher = std.hash.Wyhash.init(0);
-            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(k.x() * off)));
-            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(k.y() * off)));
-            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(k.z() * off)));
+
+            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(@round(k.x() * off))));
+            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(@round(k.y() * off))));
+            std.hash.autoHash(&hasher, @as(i64, @intFromFloat(@round(k.z() * off))));
             return hasher.final();
         }
 
         pub fn eql(_: HashCtx, a: Vec3_32, b: Vec3_32) bool {
-            const x: i64 = @intFromFloat(a.x() * off);
-            const y: i64 = @intFromFloat(a.y() * off);
-            const z: i64 = @intFromFloat(a.z() * off);
+            //TODO maybe this sucks, look it up
+            const x: i64 = @intFromFloat(@round(a.x() * off));
+            const y: i64 = @intFromFloat(@round(a.y() * off));
+            const z: i64 = @intFromFloat(@round(a.z() * off));
 
-            const x1: i64 = @intFromFloat(b.x() * off);
-            const y1: i64 = @intFromFloat(b.y() * off);
-            const z1: i64 = @intFromFloat(b.z() * off);
+            const x1: i64 = @intFromFloat(@round(b.x() * off));
+            const y1: i64 = @intFromFloat(@round(b.y() * off));
+            const z1: i64 = @intFromFloat(@round(b.z() * off));
+
+            //return @abs(x - x1) <= THRESH and @abs(y - y1) <= THRESH and @abs(z - z1) <= THRESH;
+
             return x == x1 and y == y1 and z == z1;
         }
     };

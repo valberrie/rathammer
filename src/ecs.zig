@@ -605,6 +605,7 @@ pub const Solid = struct {
         }
         try self.verts.resize(vmap.verts.items.len);
         @memcpy(self.verts.items, vmap.verts.items);
+        //TODO
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
