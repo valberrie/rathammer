@@ -76,19 +76,21 @@ pub const Ctx2dView = struct {
                 try ent.drawEnt(ed, view_3d, draw, draw, .{});
             }
         }
-        var solids = ed.ecs.iterator(.solid);
-        while (solids.next()) |solid| {
-            solid.drawEdgeOutline(draw, 0xff00ff, 0xff0000ff, Vec3.zero());
+        var it = ed.meshmap.iterator();
+        const c = graph.c;
+        const model = graph.za.Mat4.identity();
+        while (it.next()) |mesh| {
+            if (!ed.draw_state.tog.tools) {
+                if (ed.tool_res_map.contains(mesh.key_ptr.*))
+                    continue;
+            }
+            graph.c.glUseProgram(ed.draw_state.basic_shader);
+            graph.GL.passUniform(ed.draw_state.basic_shader, "view", view_3d);
+            graph.GL.passUniform(ed.draw_state.basic_shader, "model", model);
+            graph.c.glBindVertexArray(mesh.value_ptr.*.lines_vao);
+            graph.c.glDrawElements(c.GL_LINES, @as(c_int, @intCast(mesh.value_ptr.*.lines_index.items.len)), graph.c.GL_UNSIGNED_SHORT, null);
+            //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, ed.draw_state.basic_shader);
         }
-        //var it = ed.meshmap.iterator();
-        //const mat = graph.za.Mat4.identity();
-        //while (it.next()) |mesh| {
-        //    if (!ed.draw_state.tog.tools) {
-        //        if (ed.tool_res_map.contains(mesh.key_ptr.*))
-        //            continue;
-        //    }
-        //    mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, ed.draw_state.basic_shader);
-        //}
         try draw.flushCustomMat(view_2d, view_3d);
     }
 };

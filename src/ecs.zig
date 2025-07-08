@@ -156,24 +156,38 @@ pub const MeshBatch = struct {
     contains: std.AutoHashMap(EcsT.Id, void),
     is_dirty: bool = false,
 
-    // TODO move the notify_vt into editor and store an id so there is risk of pointer madness
     notify_vt: thread_pool.DeferredNotifyVtable,
-    // Each batch needs to keep track of:
-    // needs_rebuild
-    // contained_solids:ent_id
+
+    // These are used to draw the solids in 2d views
+    lines_vao: c_uint,
+    lines_ebo: c_uint,
+    lines_index: std.ArrayList(u16),
 
     pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, tex: graph.Texture) Self {
-        return .{
+        var ret = MeshBatch{
             .mesh = meshutil.Mesh.init(alloc, tex.id),
             .tex_res_id = tex_id,
             .tex = tex,
             .contains = std.AutoHashMap(EcsT.Id, void).init(alloc),
             .notify_vt = .{ .notify_fn = &notify },
+            .lines_vao = 0,
+            .lines_ebo = 0,
+            .lines_index = std.ArrayList(u16).init(alloc),
         };
+
+        {
+            const c = graph.c;
+            c.glGenBuffers(1, &ret.lines_ebo);
+            c.glGenVertexArrays(1, &ret.lines_vao);
+            meshutil.Mesh.setVertexAttribs(ret.lines_vao, ret.mesh.vbo);
+        }
+
+        return ret;
     }
 
     pub fn deinit(self: *@This()) void {
         self.mesh.deinit();
+        self.lines_index.deinit();
         //self.tex.deinit();
         self.contains.deinit();
     }
@@ -201,6 +215,7 @@ pub const MeshBatch = struct {
         //if side.texid == this.tex_id
         //  rebuild
         self.mesh.clearRetainingCapacity();
+        self.lines_index.clearRetainingCapacity();
         var it = self.contains.iterator();
         while (it.next()) |id| {
             if (editor.ecs.getOptPtr(id.key_ptr.*, .solid) catch null) |solid| {
@@ -215,6 +230,11 @@ pub const MeshBatch = struct {
             }
         }
         self.mesh.setData();
+        {
+            graph.c.glBindVertexArray(self.lines_vao);
+            graph.GL.bufferData(graph.c.GL_ARRAY_BUFFER, self.mesh.vbo, meshutil.MeshVert, self.mesh.vertices.items);
+            graph.GL.bufferData(graph.c.GL_ELEMENT_ARRAY_BUFFER, self.lines_ebo, u16, self.lines_index.items);
+        }
     }
 };
 pub const AABB = struct {
@@ -486,6 +506,7 @@ pub const Side = struct {
 
         try mesh.vertices.ensureUnusedCapacity(side.index.items.len);
 
+        try batch.lines_index.ensureUnusedCapacity(side.index.items.len * 2);
         const uvs = try editor.csgctx.calcUVCoordsIndexed(
             solid.verts.items,
             side.index.items,
@@ -508,6 +529,9 @@ pub const Side = struct {
                 .nz = norm.z(),
                 .color = 0xffffffff,
             });
+            const next = (i + 1) % side.index.items.len;
+            try batch.lines_index.append(@intCast(offset + i));
+            try batch.lines_index.append(@intCast(offset + next));
         }
         const indexs = try editor.csgctx.triangulateIndex(@intCast(side.index.items.len), @intCast(offset));
         try mesh.indicies.appendSlice(indexs);
