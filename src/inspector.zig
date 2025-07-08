@@ -34,7 +34,7 @@ pub fn classCombo(os9gui: *Os9Gui, ent: *ecs.Entity, editor: *Editor) !void {
     );
     os9gui.gui.setTooltip("Select the class", .{});
     if (index != old_i) {
-        try ent.setClass(editor, editor.fgd_ctx.nameFromId(index) orelse ent.class);
+        //try ent.setClass(editor, editor.fgd_ctx.nameFromId(index) orelse ent.class, );
     }
 }
 

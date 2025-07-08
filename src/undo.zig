@@ -188,10 +188,8 @@ pub const UndoTranslate = struct {
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid|
             solid.translate(self.id, self.vec.scale(-1), editor) catch return;
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
-            const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
-            ent.origin = ent.origin.add(self.vec.scale(-1));
+            ent.setOrigin(editor, self.id, ent.origin.add(self.vec.scale(-1))) catch return;
             ent.setAngle(editor, self.id, ent.angle.sub(self.angle_delta)) catch return;
-            bb.setFromOrigin(ent.origin);
         }
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
@@ -199,10 +197,8 @@ pub const UndoTranslate = struct {
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid|
             solid.translate(self.id, self.vec, editor) catch return;
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
-            const bb = editor.ecs.getPtr(self.id, .bounding_box) catch return;
-            ent.origin = ent.origin.add(self.vec);
+            ent.setOrigin(editor, self.id, ent.origin.add(self.vec)) catch return;
             ent.setAngle(editor, self.id, ent.angle.add(self.angle_delta)) catch return;
-            bb.setFromOrigin(ent.origin);
         }
     }
 

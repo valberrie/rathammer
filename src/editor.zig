@@ -660,7 +660,7 @@ pub const Context = struct {
                         ent._model_id = self.modelIdFromName(model) catch null;
                     }
                 }
-                try ent.setClass(self, ent.class);
+                try ent.setClass(self, ent.class, it.i);
                 // Clear before we iterate solids as they will insert themselves into here
                 //ent.solids.clearRetainingCapacity();
             }
@@ -704,15 +704,7 @@ pub const Context = struct {
         if (!res.found_existing) {
             const tex = try self.getTexture(res_id);
             res.value_ptr.* = try self.alloc.create(MeshBatch);
-            res.value_ptr.*.* = .{
-                .notify_vt = .{ .notify_fn = &MeshBatch.notify },
-                .tex = tex,
-                .tex_res_id = res_id,
-                .mesh = undefined,
-                .contains = std.AutoHashMap(EcsT.Id, void).init(self.alloc),
-            };
-            res.value_ptr.*.mesh = meshutil.Mesh.init(self.alloc, res.value_ptr.*.tex.id);
-
+            res.value_ptr.*.* = MeshBatch.init(self.alloc, res_id, tex);
             try self.async_asset_load.addNotify(res_id, &res.value_ptr.*.notify_vt);
         }
         return res.value_ptr.*;
@@ -936,7 +928,7 @@ pub const Context = struct {
 
                     {
                         var new_ent = try self.ecs.getPtr(new, .entity);
-                        try new_ent.setClass(self, ent.classname);
+                        try new_ent.setClass(self, ent.classname, new);
                         try new_ent.setAngle(self, new, new_ent.angle);
                     }
                 }

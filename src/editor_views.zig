@@ -349,6 +349,7 @@ pub fn draw3Dview(
 
 pub const Pane = enum {
     main_3d_view,
+    main_2d_view,
     asset_browser,
     inspector,
     new_inspector,
@@ -376,6 +377,7 @@ pub const Tab = struct {
 };
 
 const CamState = graph.ptypes.Camera3D.MoveState;
+const Ctx2DView = @import("view_2d.zig").Ctx2dView;
 pub fn drawPane(
     editor: *Context,
     pane: Pane,
@@ -388,6 +390,11 @@ pub fn drawPane(
     const owns = editor.draw_state.grab_pane.tryOwn(pane_area, win, pane);
     switch (pane) {
         .none, .new_inspector => {},
+        .main_2d_view => {
+            const vt = try editor.panes.getVt(Ctx2DView);
+            if (vt.draw_fn) |drawf|
+                drawf(vt, pane_area, editor, draw, win);
+        },
         .main_3d_view => {
             const vt = try editor.panes.getVt(Main3DView);
             //editor.draw_state.grab_pane.tryOwn(pane_area, win, pane);

@@ -507,6 +507,7 @@ pub const EntClass = struct {
     doc: []const u8 = "",
     iconsprite: []const u8 = "",
     studio_model: []const u8 = "",
+    has_hull: bool = false,
 
     pub fn init(alloc: Allocator) Self {
         return .{
@@ -706,9 +707,11 @@ pub const ParseCtx = struct {
                                 base,
                                 iconsprite,
                                 studio,
+                                sweptplayerhull,
                             }, parent_name)) |en| {
                                 const ps = tkz.params.items;
                                 switch (en) {
+                                    .sweptplayerhull => new_class.has_hull = true,
                                     .studio => {
                                         if (ps.len != 1 or ps[0].tag != .quoted_string) {
                                             //std.debug.print("Invalid studio mdl: {s}\n", .{});

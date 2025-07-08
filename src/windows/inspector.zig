@@ -236,7 +236,7 @@ pub const InspectorWindow = struct {
                         const led = lself.editor;
                         if (led.selection.getGroupOwnerExclusive(&led.groups)) |lsel_id| {
                             if (led.ecs.getOptPtr(lsel_id, .entity) catch null) |lent| {
-                                lent.setClass(led, fields[id].name) catch return;
+                                lent.setClass(led, fields[id].name, lsel_id) catch return;
                             }
                         }
                     }

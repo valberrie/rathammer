@@ -18,6 +18,7 @@ const editor_view = @import("editor_views.zig");
 const G = graph.RGui;
 const PauseWindow = @import("windows/pause.zig").PauseWindow;
 const InspectorWindow = @import("windows/inspector.zig").InspectorWindow;
+const Ctx2dView = @import("view_2d.zig").Ctx2dView;
 
 const Conf = @import("config.zig");
 
@@ -150,6 +151,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
 
     try editor.panes.registerCustom("main_3d_view", editor_view.Main3DView, try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
+    try editor.panes.registerCustom("main_2d_view", Ctx2dView, try Ctx2dView.create(editor.panes.alloc));
 
     loadctx.cb("Loading");
 
@@ -212,6 +214,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .{
             .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
             .panes = Tab.newPane(&panes, &PI, &.{.main_3d_view}),
+        },
+        .{
+            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .top, 1 } }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .main_2d_view, .new_inspector }),
         },
     };
 

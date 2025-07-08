@@ -53,6 +53,16 @@ pub const EcsT = graph.Ecs.Registry(&.{
         }
     }),
     Comp("connections", Connections),
+    Comp("ladder_translate_hull", struct {
+        //For the ladder entity.
+        //We need to put two bb's that are far from the actual entity
+        //Just need one bb that exists as bb
+        ladder_ent: ?EcsT.Id = null,
+        pub const ECS_NO_SERIAL = void;
+        pub fn dupe(_: *@This(), _: anytype, _: anytype) !@This() {
+            return .{};
+        }
+    }),
 });
 
 /// Groups are used to group entities together. Any entities can be grouped but it is mainly used for brush entities
@@ -152,6 +162,16 @@ pub const MeshBatch = struct {
     // needs_rebuild
     // contained_solids:ent_id
 
+    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, tex: graph.Texture) Self {
+        return .{
+            .mesh = meshutil.Mesh.init(alloc, tex.id),
+            .tex_res_id = tex_id,
+            .tex = tex,
+            .contains = std.AutoHashMap(EcsT.Id, void).init(alloc),
+            .notify_vt = .{ .notify_fn = &notify },
+        };
+    }
+
     pub fn deinit(self: *@This()) void {
         self.mesh.deinit();
         //self.tex.deinit();
@@ -237,6 +257,7 @@ pub const Entity = struct {
         origin,
         angles,
         model,
+        point0,
 
         pub fn needsSync(key: []const u8) @This() {
             return std.meta.stringToEnum(@This(), key) orelse .none;
@@ -251,6 +272,9 @@ pub const Entity = struct {
     /// These are used to draw the entity
     _model_id: ?vpk.VpkResId = null,
     _sprite: ?vpk.VpkResId = null,
+
+    //CRAP
+    _multi_bb_index: bool = false,
 
     //When we duplicate a brush entity what must happen?
     //How does selection of brush entities work?
@@ -286,18 +310,31 @@ pub const Entity = struct {
     pub fn setKvString(self: *@This(), ed: *Editor, id: EcsT.Id, val: *const KeyValues.Value) !void {
         std.debug.print("set kv string with {s} :{s}\n", .{ val.slice(), @tagName(val.sync) });
         switch (val.sync) {
-            .origin => {
+            .origin, .point0 => {
                 const floats = val.getFloats(3);
-                self.origin = Vec3.new(floats[0], floats[1], floats[2]);
+                try self.setOrigin(ed, id, Vec3.new(floats[0], floats[1], floats[2]));
             },
             .angles => {
                 const floats = val.getFloats(3);
-                self.angle = Vec3.new(floats[0], floats[1], floats[2]);
+                try self.setAngle(ed, id, Vec3.new(floats[0], floats[1], floats[2]));
             },
             .model => {
                 try self.setModel(ed, id, .{ .name = val.slice() });
             },
             .none => {},
+        }
+    }
+
+    pub fn setOrigin(self: *@This(), ed: *Editor, self_id: EcsT.Id, origin: Vec3) !void {
+        self.origin = origin;
+        const bb = try ed.ecs.getPtr(self_id, .bounding_box);
+        bb.setFromOrigin(origin);
+        if (try ed.ecs.getOptPtr(self_id, .key_values)) |kvs| {
+            try kvs.putStringNoNotify("origin", try ed.printScratch("{d} {d} {d}", .{ origin.x(), origin.y(), origin.z() }));
+            //If we are a ladder, update that
+            if (self._multi_bb_index) {
+                try kvs.putStringNoNotify("point0", try ed.printScratch("{d} {d} {d}", .{ origin.x(), origin.y(), origin.z() }));
+            }
         }
     }
 
@@ -315,8 +352,9 @@ pub const Entity = struct {
         }
     }
 
-    pub fn setClass(self: *@This(), editor: *Editor, class: []const u8) !void {
+    pub fn setClass(self: *@This(), editor: *Editor, class: []const u8, self_id: EcsT.Id) !void {
         self.class = try editor.storeString(class);
+        self._multi_bb_index = false;
 
         self._sprite = null;
         { //Fgd stuff
@@ -335,6 +373,14 @@ pub const Entity = struct {
                     if (id != 0)
                         self._model_id = id;
                 }
+                if (base.has_hull) {
+                    self._multi_bb_index = true;
+                    const bb = (try editor.ecs.getPtr(self_id, .bounding_box));
+                    bb.a = Vec3.new(0, 0, 0);
+                    bb.b = Vec3.new(32, 32, 72);
+                    bb.origin_offset = Vec3.new(16, 16, 0);
+                    bb.setFromOrigin(self.origin);
+                }
             }
         }
     }
@@ -343,6 +389,9 @@ pub const Entity = struct {
         frame_color: u32 = 0x00ff00ff,
         draw_model_bb: bool = false,
     }) !void {
+        //if(ent._multi_bb_index != null) {
+        //    draw.cube(ent.origin)
+        //}
         const ENT_RENDER_DIST = 64 * 10;
         const dist = ent.origin.distance(editor.draw_state.cam3d.pos);
         if (editor.draw_state.tog.models and dist < editor.draw_state.tog.model_render_dist) {
