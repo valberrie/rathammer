@@ -77,10 +77,13 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
         });
         var side_id_start: usize = 0;
 
+        const vis_mask = ecs.EcsT.getComponentMask(&.{.deleted});
         var group_ent_map = std.AutoHashMap(GroupId, std.ArrayList(ecs.EcsT.Id)).init(alloc);
 
         var solids = ecs_p.iterator(.solid);
         while (solids.next()) |solid| {
+            if (ecs_p.intersects(solids.i, vis_mask))
+                continue;
             if (try ecs_p.getOpt(solids.i, .group)) |g| {
                 if (g.id != 0) {
                     const res = try group_ent_map.getOrPut(g.id);
@@ -99,7 +102,6 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
         try vr.endObject(); //world
 
         var ents = ecs_p.iterator(.entity);
-        const vis_mask = ecs.EcsT.getComponentMask(&.{.deleted});
         while (ents.next()) |ent| {
             if (ecs_p.intersects(ents.i, vis_mask))
                 continue;
