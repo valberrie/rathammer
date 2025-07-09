@@ -194,10 +194,7 @@ pub const PauseWindow = struct {
             vt.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Force autosave", .{ .cb_fn = &btnCb, .id = Buttons.id(.force_autosave), .cb_vt = &self.area }));
 
             {
-                var hy = guis.HorizLayout{
-                    .bounds = ly.getArea() orelse return,
-                    .count = 4,
-                };
+                var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
                 vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
                 vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));
                 vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
@@ -210,6 +207,11 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.edit_state.default_group_entity, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "Entity render distance", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
+            {
+                var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_near_plane, 1, 512, .{ .nudge = 1 }));
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_far_plane, 512 * 64, 512 * 512, .{ .nudge = 1 }));
+            }
 
             if (label(vt, gui, win, ly.getArea(), "Select entity id", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ar, &self.ent_select, win, .{

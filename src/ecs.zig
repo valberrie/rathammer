@@ -161,7 +161,7 @@ pub const MeshBatch = struct {
     // These are used to draw the solids in 2d views
     lines_vao: c_uint,
     lines_ebo: c_uint,
-    lines_index: std.ArrayList(u16),
+    lines_index: std.ArrayList(u32),
 
     pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, tex: graph.Texture) Self {
         var ret = MeshBatch{
@@ -172,7 +172,7 @@ pub const MeshBatch = struct {
             .notify_vt = .{ .notify_fn = &notify },
             .lines_vao = 0,
             .lines_ebo = 0,
-            .lines_index = std.ArrayList(u16).init(alloc),
+            .lines_index = std.ArrayList(u32).init(alloc),
         };
 
         {
@@ -233,7 +233,7 @@ pub const MeshBatch = struct {
         {
             graph.c.glBindVertexArray(self.lines_vao);
             graph.GL.bufferData(graph.c.GL_ARRAY_BUFFER, self.mesh.vbo, meshutil.MeshVert, self.mesh.vertices.items);
-            graph.GL.bufferData(graph.c.GL_ELEMENT_ARRAY_BUFFER, self.lines_ebo, u16, self.lines_index.items);
+            graph.GL.bufferData(graph.c.GL_ELEMENT_ARRAY_BUFFER, self.lines_ebo, u32, self.lines_index.items);
         }
     }
 };

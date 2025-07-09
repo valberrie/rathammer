@@ -183,6 +183,7 @@ pub const Context = struct {
         basic_shader: graph.glID,
         cam3d: graph.Camera3D = .{ .up = .z, .move_speed = 10, .max_move_speed = 100, .fwd_back_kind = .planar },
         cam_far_plane: f32 = 512 * 64,
+        cam_near_plane: f32 = 1,
 
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,

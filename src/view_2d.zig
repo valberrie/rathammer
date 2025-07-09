@@ -69,7 +69,7 @@ pub const Ctx2dView = struct {
 
         const cb = self.cam.cam_area;
         const view_2d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -100000, 1);
-        const view_3d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -4096, 4096);
+        const view_3d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -4096, 4096).rotate(90, Vec3.new(1, 0, 0));
         {
             var ent_it = ed.ecs.iterator(.entity);
             while (ent_it.next()) |ent| {
@@ -88,7 +88,7 @@ pub const Ctx2dView = struct {
             graph.GL.passUniform(ed.draw_state.basic_shader, "view", view_3d);
             graph.GL.passUniform(ed.draw_state.basic_shader, "model", model);
             graph.c.glBindVertexArray(mesh.value_ptr.*.lines_vao);
-            graph.c.glDrawElements(c.GL_LINES, @as(c_int, @intCast(mesh.value_ptr.*.lines_index.items.len)), graph.c.GL_UNSIGNED_SHORT, null);
+            graph.c.glDrawElements(c.GL_LINES, @as(c_int, @intCast(mesh.value_ptr.*.lines_index.items.len)), graph.c.GL_UNSIGNED_INT, null);
             //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, ed.draw_state.basic_shader);
         }
         try draw.flushCustomMat(view_2d, view_3d);

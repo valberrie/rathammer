@@ -179,7 +179,7 @@ pub fn draw3Dview(
     defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
     const mat = graph.za.Mat4.identity();
 
-    const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, 1, self.draw_state.cam_far_plane);
+    const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, self.draw_state.cam_near_plane, self.draw_state.cam_far_plane);
 
     var it = self.meshmap.iterator();
     while (it.next()) |mesh| {
@@ -292,15 +292,20 @@ pub fn draw3Dview(
         try vt.runTool_fn(vt, td, self);
     }
     { //sky stuff
-        const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
+        //const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
         const c = graph.c;
         c.glDepthMask(c.GL_FALSE);
         c.glDepthFunc(c.GL_LEQUAL);
         defer c.glDepthFunc(c.GL_LESS);
         defer c.glDepthMask(c.GL_TRUE);
 
+        const c3d = self.draw_state.cam3d;
+        const za = graph.za;
+        const la = za.lookAt(Vec3.zero(), c3d.front, c3d.getUp());
+        const perp = za.perspective(c3d.fov, screen_area.w / screen_area.h, 0, 1);
+
         for (self.skybox.meshes.items, 0..) |*sk, i| {
-            sk.draw(.{ .texture = self.skybox.textures.items[i].id, .shader = self.skybox.shader }, view_3d, trans);
+            sk.draw(.{ .texture = self.skybox.textures.items[i].id, .shader = self.skybox.shader }, perp.mul(la), graph.za.Mat4.identity());
         }
     }
 
