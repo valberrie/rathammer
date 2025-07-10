@@ -286,6 +286,7 @@ pub fn doesRayIntersectPlane(ray_0: V3f, ray_norm: V3f, plane_0: V3f, plane_norm
 }
 
 pub fn snapV3(v: Vec3, snap: f32) Vec3 {
+    if (snap < 1) return v;
     // @round(v / snap)  * snap
     const sn = @as(@Vector(3, f32), @splat(snap));
     return Vec3{
@@ -303,6 +304,7 @@ pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
 }
 
 pub fn snap1(comp: f32, snap: f32) f32 {
+    if (snap < 1) return comp;
     return @round(comp / snap) * snap;
 }
 

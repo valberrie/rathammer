@@ -43,7 +43,7 @@ pub const CubeDraw = struct {
         invert: bool = false,
         invert_x: bool = false,
         angle: f32 = 0,
-        theta: f32 = 0,
+        theta: f32 = 360,
     } = .{},
 
     stairs_setting: struct {
@@ -58,6 +58,8 @@ pub const CubeDraw = struct {
     start: Vec3 = undefined,
     end: Vec3 = undefined,
     z: f32 = 0,
+
+    snap_new_verts: bool = false,
 
     plane_z: f32 = 0,
 
@@ -140,6 +142,7 @@ pub const CubeDraw = struct {
                     .snap_mod = 15,
                     .snap_thresh = 4,
                 }));
+            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "snap ", .{ .bool_ptr = &self.snap_new_verts }, null));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -174,6 +177,7 @@ pub const CubeDraw = struct {
         const norm = rot.mulByVec3(Vec3.new(0, 0, 1));
         const xx = util3d.getBasis(norm);
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
+        const snap = if (tool.snap_new_verts) ed.edit_state.grid_snap else 0;
         const bounds = tool.bb_gizmo.aabbGizmo(tool.start, tool.end, rc, ed.edit_state.lmouse, ed.edit_state.grid_snap, draw_nd);
         if (ed.edit_state.lmouse == .falling) {
             tool.start = bounds[0];
@@ -190,6 +194,7 @@ pub const CubeDraw = struct {
                     .r = r,
                     .z = z,
                     .num_segment = tool.primitive_settings.nsegment,
+                    .snap = snap,
                 });
 
                 const center = cc[0].add(cc[1].scale(0.5));
@@ -209,6 +214,7 @@ pub const CubeDraw = struct {
                     .r2 = r,
                     .z = z,
                     .num_segment = tool.primitive_settings.nsegment,
+                    .snap = snap,
                 });
 
                 const center = cc[0].add(cc[1].scale(0.5));
@@ -225,6 +231,7 @@ pub const CubeDraw = struct {
                     .phi = tool.primitive_settings.theta,
                     .phi_seg = set.nsegment,
                     .theta_seg = set.nsegment,
+                    .snap = snap,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
@@ -245,6 +252,7 @@ pub const CubeDraw = struct {
 
                     .front_perc = tool.stairs_setting.front_perc,
                     .back_perc = tool.stairs_setting.back_perc,
+                    .snap = snap,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);

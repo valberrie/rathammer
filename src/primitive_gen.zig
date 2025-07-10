@@ -4,9 +4,8 @@ const _Vec = struct { x: f32, y: f32, z: f32 };
 const Vec3 = graph.za.Vec3;
 const util3d = @import("util_3d.zig");
 
-pub fn snap1(comp: f32, snap: f32) f32 {
-    return @round(comp / snap) * snap;
-}
+const snap1 = util3d.snap1;
+const snap3 = util3d.snapV3;
 //Ideally we use the same functions to generate the solids and immediate draw.
 //somekind of callback
 //we have a draw.convexPolygonIndexed function
@@ -84,7 +83,6 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
     num_segment: u32 = 16,
     snap: f32 = 1,
 }) !Primitive {
-    const snap = 1;
     var prim = Primitive.init(alloc);
     const r = param.r;
     const num_segment = param.num_segment;
@@ -97,8 +95,8 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
         const thet = fi * dtheta;
         const x_f = @cos(thet) * r;
         const y_f = @sin(thet) * r;
-        const x = @round(x_f / snap) * snap;
-        const y = @round(y_f / snap) * snap;
+        const x = snap1(x_f, param.snap);
+        const y = snap1(y_f, param.snap);
 
         prim.verts.items[ni] = Vec3.new(x, y, -z / 2);
         prim.verts.items[ni + num_segment] = Vec3.new(x, y, z / 2);
@@ -178,7 +176,7 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     const r = param.r;
     const r2 = param.r2;
     const num_segment = param.num_segment;
-    const z = param.z;
+    const z = snap1(param.z, snap);
     try prim.verts.resize(num_segment * 4);
     const dtheta: f32 = std.math.degreesToRadians(param.theta_deg) / @as(f32, @floatFromInt(num_segment - 1)); //Do half only
     for (0..num_segment) |ni| {
@@ -315,6 +313,7 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     rise_pad: f32 = 0,
     front_perc: f32 = -1,
     back_perc: f32 = 1,
+    snap: f32 = 1,
 }) !Primitive {
     var prim = Primitive.init(alloc);
 
@@ -332,6 +331,7 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     const x0 = param.width / -2;
     const y0 = param.height / -2;
 
+    const s = param.snap;
     var last_back: f32 = 0;
     try prim.verts.resize(num_stairs * 8);
     for (0..num_stairs) |ns| {
@@ -346,15 +346,15 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
         last_back = y + yb;
 
         const i: u32 = @intCast(ns * 8);
-        prim.verts.items[i + 0] = Vec3.new(x, y + yo, z); //bottom left
-        prim.verts.items[i + 1] = Vec3.new(x + run_a, y + yb, z); //bot r
-        prim.verts.items[i + 2] = Vec3.new(x + run_a, y + rise_a, z); //top r
-        prim.verts.items[i + 3] = Vec3.new(x, y + rise_a, z); //top l
+        prim.verts.items[i + 0] = snap3(Vec3.new(x, y + yo, z), s); //bottom left
+        prim.verts.items[i + 1] = snap3(Vec3.new(x + run_a, y + yb, z), s); //bot r
+        prim.verts.items[i + 2] = snap3(Vec3.new(x + run_a, y + rise_a, z), s); //top r
+        prim.verts.items[i + 3] = snap3(Vec3.new(x, y + rise_a, z), s); //top l
 
-        prim.verts.items[i + 4] = Vec3.new(x, y + yo, zf);
-        prim.verts.items[i + 5] = Vec3.new(x + run_a, y + yb, zf);
-        prim.verts.items[i + 6] = Vec3.new(x + run_a, y + rise_a, zf);
-        prim.verts.items[i + 7] = Vec3.new(x, y + rise_a, zf);
+        prim.verts.items[i + 4] = snap3(Vec3.new(x, y + yo, zf), s);
+        prim.verts.items[i + 5] = snap3(Vec3.new(x + run_a, y + yb, zf), s);
+        prim.verts.items[i + 6] = snap3(Vec3.new(x + run_a, y + rise_a, zf), s);
+        prim.verts.items[i + 7] = snap3(Vec3.new(x, y + rise_a, zf), s);
 
         try rectPrism(
             &prim,
@@ -373,7 +373,13 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     return prim;
 }
 
-pub fn uvSphere(alloc: std.mem.Allocator, param: struct { r: f32, theta_seg: u32 = 11, phi_seg: u32 = 11, phi: f32 = 360 }) !Primitive {
+pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
+    r: f32,
+    theta_seg: u32 = 11,
+    phi_seg: u32 = 11,
+    phi: f32 = 360,
+    snap: f32 = 1,
+}) !Primitive {
     var prim = Primitive.init(alloc);
 
     const dtheta: f32 = std.math.pi / @as(f32, @floatFromInt(param.theta_seg)) / 2;
@@ -392,8 +398,8 @@ pub fn uvSphere(alloc: std.mem.Allocator, param: struct { r: f32, theta_seg: u32
             const y = @sin(th) * @sin(phi);
             const z = @cos(th);
             const gi = dth * param.theta_seg + dpi;
-            prim.verts.items[gi] = Vec3.new(x, y, z).scale(r);
-            prim.verts.items[gi + num] = Vec3.new(x, y, z).scale(r2);
+            prim.verts.items[gi] = snap3(Vec3.new(x, y, z).scale(r), param.snap);
+            prim.verts.items[gi + num] = snap3(Vec3.new(x, y, z).scale(r2), param.snap);
         }
     }
 

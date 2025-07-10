@@ -493,12 +493,14 @@ pub const FastFaceManip = struct {
                             try solid.removeFromMeshMap(sel, editor);
 
                             const init_plane = solid.sides.items[@intCast(self.face_id)].normal(solid);
+                            const NORM_THRESH = 0.99;
                             for (selected_slice) |other| {
                                 if (other == sel)
                                     continue;
                                 if (editor.getComponent(other, .solid)) |o_solid| {
                                     for (o_solid.sides.items, 0..) |*side, fi| {
-                                        if (init_plane.eql(side.normal(o_solid))) {
+                                        if (init_plane.dot(side.normal(o_solid)) > NORM_THRESH) {
+                                            //if (init_plane.eql(side.normal(o_solid))) {
                                             try self.selected.append(.{ .id = other, .face_id = @intCast(fi) });
                                             try o_solid.removeFromMeshMap(other, editor);
                                             break; //Only one side per solid can be coplanar
