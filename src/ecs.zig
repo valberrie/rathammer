@@ -453,6 +453,11 @@ pub const Side = struct {
         axis: Vec3 = Vec3.zero(),
         trans: f32 = 0,
         scale: f32 = 0.25,
+
+        pub fn eql(a: @This(), b: @This()) bool {
+            return a.trans == b.trans and a.scale == b.scale and a.axis.x() == b.axis.x() and a.axis.y() == b.axis.y() and
+                a.axis.z() == b.axis.z();
+        }
     };
     displacement_id: ?EcsT.Id = null,
     index: std.ArrayList(u32) = undefined,

@@ -8,7 +8,7 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const edit = @import("../editor.zig");
 const Editor = edit.Context;
 const guis = graph.RGui;
-const RGui = guis.Gui;
+const Gui = guis.Gui;
 const iArea = guis.iArea;
 const iWindow = guis.iWindow;
 const Wg = guis.Widget;
@@ -17,10 +17,26 @@ const ecs = @import("../ecs.zig");
 const undo = @import("../undo.zig");
 const snapV3 = util3d.snapV3;
 
+//TODO when selection changes, change the gui
 pub const TextureTool = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
     const GuiBtnEnum = enum {
         reset,
+    };
+    const GuiTextEnum = enum {
+        uscale,
+        vscale,
+        utrans,
+        vtrans,
+        lightmap,
+
+        un_x,
+        un_y,
+        un_z,
+
+        vn_x,
+        vn_y,
+        vn_z,
     };
     vt: i3DTool,
     id: ?ecs.EcsT.Id = null,
@@ -66,7 +82,7 @@ pub const TextureTool = struct {
         self.run(td, editor) catch return error.fatal;
     }
 
-    pub fn buildGui(vt: *i3DTool, inspector: *tools.Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+    pub fn buildGui(vt: *i3DTool, inspector: *tools.Inspector, area_vt: *iArea, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         const doc =
             \\This is the Texture tool.
@@ -83,8 +99,8 @@ pub const TextureTool = struct {
         }));
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
-        const ar = ly.getArea() orelse return;
-        inspector.selectedTextureWidget(area_vt, gui, win, ar);
+        const t_ar = ly.getArea() orelse return;
+        inspector.selectedTextureWidget(area_vt, gui, win, t_ar);
 
         //Begin all selected face stuff
         const e_id = self.id orelse return;
@@ -92,10 +108,96 @@ pub const TextureTool = struct {
         const solid = (self.ed.getComponent(e_id, .solid)) orelse return;
         if (f_id >= solid.sides.items.len) return;
         const side = &solid.sides.items[f_id];
-        _ = side;
+        const H = struct {
+            fn param(s: *TextureTool, id: GuiTextEnum) Wg.TextboxOptions {
+                return .{
+                    .commit_cb = &TextureTool.textbox_cb,
+                    .commit_vt = &s.cb_vt,
+                    .user_id = @intFromEnum(id),
+                };
+            }
+        };
+
+        {
+            const Tb = Wg.TextboxNumber.build;
+            ly.pushCount(4);
+            var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
+            area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "X", null));
+            area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "Y", null));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Scale", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.u.scale, win, H.param(self, .uscale)));
+
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Scale ", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.v.scale, win, H.param(self, .vscale)));
+
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Trans ", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.u.trans, win, H.param(self, .utrans)));
+
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Trans ", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.v.trans, win, H.param(self, .vtrans)));
+
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar| {
+                var hy = guis.HorizLayout{ .bounds = ar, .count = 3 };
+                const a = side.u.axis;
+                area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.x(), win, H.param(self, .un_x)));
+                area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.y(), win, H.param(self, .un_y)));
+                area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.z(), win, H.param(self, .un_z)));
+            }
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar| {
+                var hy = guis.HorizLayout{ .bounds = ar, .count = 3 };
+                const a = side.v.axis;
+                area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.x(), win, H.param(self, .vn_x)));
+                area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.y(), win, H.param(self, .vn_y)));
+                area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.z(), win, H.param(self, .vn_z)));
+            }
+
+            if (guis.label(area_vt, gui, win, tly.getArea(), "lux scale (hu / luxel): ", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.lightmapscale, win, H.param(self, .lightmap)));
+        }
     }
 
-    pub fn btn_cb(vt: *iArea, id: usize, _: *RGui, _: *guis.iWindow) void {
+    fn textbox_cb(vt: *iArea, _: *Gui, string: []const u8, id: usize) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+
+        self.textboxErr(string, id) catch return;
+    }
+
+    fn textboxErr(self: *@This(), string: []const u8, id: usize) !void {
+        const num = std.fmt.parseFloat(f32, string) catch return;
+        const sel = (self.getCurrentlySelected(self.ed) catch null) orelse return;
+        const side = sel.side;
+        const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
+        var new = old;
+        switch (@as(GuiTextEnum, @enumFromInt(id))) {
+            .uscale => new.u.scale = num,
+            .vscale => new.v.scale = num,
+            .utrans => new.u.trans = num,
+            .vtrans => new.v.trans = num,
+            .lightmap => {
+                if (num < 1) return;
+                new.lightmapscale = @intFromFloat(num);
+            },
+            .un_x => new.u.axis.xMut().* = num,
+            .un_y => new.u.axis.yMut().* = num,
+            .un_z => new.u.axis.zMut().* = num,
+            .vn_x => new.v.axis.xMut().* = num,
+            .vn_y => new.v.axis.yMut().* = num,
+            .vn_z => new.v.axis.zMut().* = num,
+        }
+        if (!old.eql(new)) {
+            const ustack = try self.ed.undoctx.pushNewFmt("texture manip", .{});
+            try ustack.append(try undo.UndoTextureManip.create(
+                self.ed.undoctx.alloc,
+                old,
+                new,
+                self.id orelse return,
+                self.face_index orelse return,
+            ));
+            undo.applyRedo(ustack.items, self.ed);
+        }
+    }
+
+    pub fn btn_cb(vt: *iArea, id: usize, _: *Gui, _: *guis.iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
         switch (@as(GuiBtnEnum, @enumFromInt(id))) {
             .reset => {
@@ -156,8 +258,8 @@ pub const TextureTool = struct {
                             break :src side.*;
                         };
 
-                        const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id };
-                        const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id };
+                        const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
+                        const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id, .lightmapscale = side.lightmapscale };
 
                         const ustack = try editor.undoctx.pushNewFmt("texture manip", .{});
                         try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
