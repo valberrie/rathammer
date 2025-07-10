@@ -32,6 +32,10 @@ pub const TextureTool = struct {
         j_top,
         j_bottom,
         j_center,
+
+        u_flip,
+        v_flip,
+        swap,
     };
     const GuiTextEnum = enum {
         uscale,
@@ -58,6 +62,7 @@ pub const TextureTool = struct {
     // Only used for a pointer
     // todo, fix the gui stuff
     cb_vt: iArea = undefined,
+    win_ptr: ?*iWindow = null,
 
     //Left click to select a face,
     //right click to apply texture to any face
@@ -94,6 +99,7 @@ pub const TextureTool = struct {
 
     pub fn buildGui(vt: *i3DTool, inspector: *tools.Inspector, area_vt: *iArea, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.win_ptr = win;
         const doc =
             \\This is the Texture tool.
             \\Right click applies the selected texture
@@ -134,7 +140,7 @@ pub const TextureTool = struct {
 
         {
             const Tb = Wg.TextboxNumber.build;
-            ly.pushCount(4);
+            ly.pushCount(5);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "X", null));
             area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "Y", null));
@@ -164,6 +170,8 @@ pub const TextureTool = struct {
                 area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.y(), win, H.param(self, .vn_y)));
                 area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.z(), win, H.param(self, .vn_z)));
             }
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, tly.getArea(), "flip", H.btn(self, .u_flip)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, tly.getArea(), "flip", H.btn(self, .v_flip)));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "lux scale (hu / luxel): ", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Tb(gui, ar, side.lightmapscale, win, H.param(self, .lightmap)));
@@ -178,6 +186,7 @@ pub const TextureTool = struct {
             area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "bot", H.btn(self, .j_bottom)));
             area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "cent", H.btn(self, .j_center)));
         }
+        area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "swap axis", H.btn(self, .swap)));
     }
 
     fn textbox_cb(vt: *iArea, _: *Gui, string: []const u8, id: usize) void {
@@ -209,6 +218,8 @@ pub const TextureTool = struct {
             .vn_z => new.v.axis.zMut().* = num,
         }
         if (!old.eql(new)) {
+            if (self.win_ptr) |win|
+                win.needs_rebuild = true;
             const ustack = try self.ed.undoctx.pushNewFmt("texture manip", .{});
             try ustack.append(try undo.UndoTextureManip.create(
                 self.ed.undoctx.alloc,
@@ -230,42 +241,24 @@ pub const TextureTool = struct {
         const side = sel.side;
         const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
         var new = old;
-        switch (@as(GuiBtnEnum, @enumFromInt(id))) {
-            .j_left => new.u.trans = 0,
-            .j_top => new.v.trans = 0,
-            else => {},
-            .j_fit => {
-                if (side.index.items.len < 3) return;
-                const p0 = sel.solid.verts.items[side.index.items[0]];
-                var umin = std.math.floatMax(f32);
-                var umax = -std.math.floatMax(f32);
-                var vmin = std.math.floatMax(f32);
-                var vmax = -std.math.floatMax(f32);
-
-                for (side.index.items) |ind| {
-                    const vert = sel.solid.verts.items[ind].sub(p0);
-                    const udot = vert.dot(side.u.axis);
-                    const vdot = vert.dot(side.v.axis);
-
-                    umin = @min(udot, umin);
-                    umax = @max(udot, umax);
-
-                    vmin = @min(vdot, vmin);
-                    vmax = @max(vdot, vmax);
-                }
-                const u_dist = umax - umin;
-                const v_dist = vmax - vmin;
-
-                const tw: f32 = @floatFromInt(side.tw);
-                const th: f32 = @floatFromInt(side.th);
-                new.u.scale = u_dist / tw;
-                new.v.scale = v_dist / th;
-                std.debug.print("new scale {d} {d}\n", .{ new.u.scale, new.v.scale });
-                //Set trans to make p0 the zero point
-
-                new.u.trans = -p0.dot(side.u.axis) / new.u.scale;
-                new.v.trans = -p0.dot(side.v.axis) / new.v.scale;
+        const btn_k = @as(GuiBtnEnum, @enumFromInt(id));
+        switch (btn_k) {
+            .j_fit, .j_left, .j_right, .j_top, .j_bottom, .j_center => {
+                const res = side.justify(sel.solid.verts.items, switch (btn_k) {
+                    .j_fit => .fit,
+                    .j_left => .left,
+                    .j_right => .right,
+                    .j_top => .top,
+                    .j_bottom => .bottom,
+                    .j_center => .center,
+                    else => unreachable,
+                });
+                new.u = res.u;
+                new.v = res.v;
             },
+            .u_flip => new.u.axis = new.u.axis.scale(-1),
+            .v_flip => new.v.axis = new.v.axis.scale(-1),
+            .swap => std.mem.swap(Vec3, &new.u.axis, &new.v.axis),
             .reset => {
                 const norm = side.normal(sel.solid);
                 side.resetUv(norm);
@@ -275,8 +268,9 @@ pub const TextureTool = struct {
             },
         }
         if (!old.eql(new)) {
+            if (self.win_ptr) |win|
+                win.needs_rebuild = true;
             const ustack = try self.ed.undoctx.pushNewFmt("texture manip", .{});
-            std.debug.print("PUTTING NEW\n", .{});
             try ustack.append(try undo.UndoTextureManip.create(
                 self.ed.undoctx.alloc,
                 old,

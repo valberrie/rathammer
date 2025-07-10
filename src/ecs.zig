@@ -449,6 +449,14 @@ pub const Entity = struct {
 };
 
 pub const Side = struct {
+    const Justify = enum {
+        left,
+        right,
+        center,
+        fit,
+        top,
+        bottom,
+    };
     pub const UVaxis = struct {
         axis: Vec3 = Vec3.zero(),
         trans: f32 = 0,
@@ -597,6 +605,54 @@ pub const Side = struct {
 
         self.u = .{ .axis = b[0], .trans = 0, .scale = 0.25 };
         self.v = .{ .axis = b[1], .trans = 0, .scale = 0.25 };
+    }
+
+    pub fn justify(self: *@This(), verts: []const Vec3, kind: Justify) struct { u: UVaxis, v: UVaxis } {
+        var u = self.u;
+        var v = self.v;
+        if (self.index.items.len < 3) return .{ .u = u, .v = v };
+
+        const p0 = verts[self.index.items[0]];
+        var umin = std.math.floatMax(f32);
+        var umax = -std.math.floatMax(f32);
+        var vmin = std.math.floatMax(f32);
+        var vmax = -std.math.floatMax(f32);
+
+        for (self.index.items) |ind| {
+            const vert = verts[ind];
+            const udot = vert.dot(self.u.axis);
+            const vdot = vert.dot(self.v.axis);
+
+            umin = @min(udot, umin);
+            umax = @max(udot, umax);
+
+            vmin = @min(vdot, vmin);
+            vmax = @max(vdot, vmax);
+        }
+        const u_dist = umax - umin;
+        const v_dist = vmax - vmin;
+
+        const tw: f32 = @floatFromInt(self.tw);
+        const th: f32 = @floatFromInt(self.th);
+
+        switch (kind) {
+            .fit => {
+                u.scale = u_dist / tw;
+                v.scale = v_dist / th;
+
+                u.trans = @mod(-p0.dot(self.u.axis) / u.scale, tw);
+                v.trans = @mod(-p0.dot(self.v.axis) / v.scale, th);
+            },
+            .left => u.trans = @mod(-umin / u.scale, tw),
+            .right => u.trans = @mod(-umax / u.scale, tw),
+            .top => v.trans = @mod(-vmin / v.scale, th),
+            .bottom => v.trans = @mod(-vmax / v.scale, th),
+            .center => {
+                u.trans = @mod((-(umin + u_dist / 2) / u.scale) - tw / 2, tw);
+                v.trans = @mod((-(vmin + v_dist / 2) / v.scale) - th / 2, th);
+            },
+        }
+        return .{ .u = u, .v = v };
     }
 };
 
