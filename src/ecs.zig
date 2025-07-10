@@ -512,12 +512,14 @@ pub const Side = struct {
         try mesh.vertices.ensureUnusedCapacity(side.index.items.len);
 
         try batch.lines_index.ensureUnusedCapacity(side.index.items.len * 2);
+        //const uv_origin = solid.verts.items[side.index.items[0]];
         const uvs = try editor.csgctx.calcUVCoordsIndexed(
             solid.verts.items,
             side.index.items,
             side.*,
             @intCast(batch.tex.w),
             @intCast(batch.tex.h),
+            Vec3.zero(),
         );
         const offset = mesh.vertices.items.len;
         for (side.index.items, 0..) |v_i, i| {
@@ -898,6 +900,7 @@ pub const Solid = struct {
                 side,
                 @intCast(side.tw),
                 @intCast(side.th),
+                Vec3.zero(),
             );
             const ioffset = batch.vertices.items.len;
             for (side.index.items, 0..) |vi, i| {
@@ -941,6 +944,7 @@ pub const Solid = struct {
                 side,
                 @intCast(side.tw),
                 @intCast(side.th),
+                Vec3.zero(),
             );
             const ioffset = batch.vertices.items.len;
             for (side.index.items, 0..) |vi, i| {
@@ -1081,6 +1085,7 @@ pub const Displacement = struct {
         const mesh = &batch.mesh;
         try mesh.vertices.ensureUnusedCapacity(self._verts.items.len);
         try mesh.indicies.ensureUnusedCapacity(self._index.items.len);
+        const uv_origin = self._verts.items[0];
         const si = self.vert_start_i;
         const uvs = try editor.csgctx.calcUVCoordsIndexed(
             solid.verts.items,
@@ -1088,6 +1093,7 @@ pub const Displacement = struct {
             side.*,
             @intCast(batch.tex.w),
             @intCast(batch.tex.h),
+            uv_origin,
         );
         const vper_row = std.math.pow(u32, 2, self.power) + 1;
         const vper_rowf: f32 = @floatFromInt(vper_row);

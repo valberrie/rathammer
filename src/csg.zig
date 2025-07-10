@@ -215,14 +215,15 @@ pub const Context = struct {
         }
     }
 
-    pub fn calcUVCoords(self: *Self, winding: []const Vec3_32, side: ecs.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+    pub fn calcUVCoords(self: *Self, winding: []const Vec3_32, side: ecs.Side, tex_w: u32, tex_h: u32, origin: Vec3_32) ![]const Vec2 {
         self.uvs.clearRetainingCapacity();
         const uvs = &self.uvs;
         var umin: f32 = std.math.floatMax(f32);
         var vmin: f32 = std.math.floatMax(f32);
         const tw: f64 = @floatFromInt(tex_w);
         const th: f64 = @floatFromInt(tex_h);
-        for (winding) |item| {
+        for (winding) |item_abs| {
+            const item = item_abs.sub(origin);
             const uv = Vec2.new(
                 @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
                 @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
@@ -241,7 +242,7 @@ pub const Context = struct {
         return uvs.items;
     }
 
-    pub fn calcUVCoordsIndexed(self: *Self, winding: []const Vec3_32, index: []const u32, side: ecs.Side, tex_w: u32, tex_h: u32) ![]const Vec2 {
+    pub fn calcUVCoordsIndexed(self: *Self, winding: []const Vec3_32, index: []const u32, side: ecs.Side, tex_w: u32, tex_h: u32, origin: Vec3_32) ![]const Vec2 {
         self.uvs.clearRetainingCapacity();
         const uvs = &self.uvs;
         var umin: f32 = std.math.floatMax(f32);
@@ -249,7 +250,7 @@ pub const Context = struct {
         const tw: f64 = @floatFromInt(tex_w);
         const th: f64 = @floatFromInt(tex_h);
         for (index) |i| {
-            const item = winding[i];
+            const item = winding[i].sub(origin);
             const uv = Vec2.new(
                 @as(f32, @floatCast(item.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
                 @as(f32, @floatCast(item.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),

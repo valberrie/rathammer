@@ -18,10 +18,20 @@ const undo = @import("../undo.zig");
 const snapV3 = util3d.snapV3;
 
 //TODO when selection changes, change the gui
+
+// doing the justify buttns
+// idk, annoying
 pub const TextureTool = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
     const GuiBtnEnum = enum {
         reset,
+        j_left,
+        j_fit,
+        j_right,
+
+        j_top,
+        j_bottom,
+        j_center,
     };
     const GuiTextEnum = enum {
         uscale,
@@ -89,14 +99,27 @@ pub const TextureTool = struct {
             \\Right click applies the selected texture
             \\Holding q and right clicking picks the texture
         ;
+        const H = struct {
+            fn param(s: *TextureTool, id: GuiTextEnum) Wg.TextboxOptions {
+                return .{
+                    .commit_cb = &TextureTool.textbox_cb,
+                    .commit_vt = &s.cb_vt,
+                    .user_id = @intFromEnum(id),
+                };
+            }
+
+            fn btn(s: *TextureTool, id: GuiBtnEnum) Wg.Button.Opts {
+                return .{
+                    .cb_vt = &s.cb_vt,
+                    .cb_fn = &TextureTool.btn_cb,
+                    .id = @intFromEnum(id),
+                };
+            }
+        };
         var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
         ly.pushHeight(Wg.TextView.heightForN(gui, 4));
         area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{ .mode = .split_on_space }));
-        area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Reset face", .{
-            .cb_vt = &self.cb_vt,
-            .cb_fn = &btn_cb,
-            .id = @intFromEnum(GuiBtnEnum.reset),
-        }));
+        area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Reset face", H.btn(self, .reset)));
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
         const t_ar = ly.getArea() orelse return;
@@ -108,15 +131,6 @@ pub const TextureTool = struct {
         const solid = (self.ed.getComponent(e_id, .solid)) orelse return;
         if (f_id >= solid.sides.items.len) return;
         const side = &solid.sides.items[f_id];
-        const H = struct {
-            fn param(s: *TextureTool, id: GuiTextEnum) Wg.TextboxOptions {
-                return .{
-                    .commit_cb = &TextureTool.textbox_cb,
-                    .commit_vt = &s.cb_vt,
-                    .user_id = @intFromEnum(id),
-                };
-            }
-        };
 
         {
             const Tb = Wg.TextboxNumber.build;
@@ -136,14 +150,14 @@ pub const TextureTool = struct {
             if (guis.label(area_vt, gui, win, tly.getArea(), "Trans ", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Tb(gui, ar, side.v.trans, win, H.param(self, .vtrans)));
 
-            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar| {
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis ", .{})) |ar| {
                 var hy = guis.HorizLayout{ .bounds = ar, .count = 3 };
                 const a = side.u.axis;
                 area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.x(), win, H.param(self, .un_x)));
                 area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.y(), win, H.param(self, .un_y)));
                 area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.z(), win, H.param(self, .un_z)));
             }
-            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar| {
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Axis ", .{})) |ar| {
                 var hy = guis.HorizLayout{ .bounds = ar, .count = 3 };
                 const a = side.v.axis;
                 area_vt.addChildOpt(gui, win, Tb(gui, hy.getArea(), a.x(), win, H.param(self, .vn_x)));
@@ -153,6 +167,16 @@ pub const TextureTool = struct {
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "lux scale (hu / luxel): ", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Tb(gui, ar, side.lightmapscale, win, H.param(self, .lightmap)));
+        }
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Justify: ", .{})) |ar| {
+            var hy = guis.HorizLayout{ .bounds = ar, .count = 6 };
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "left", H.btn(self, .j_left)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "right", H.btn(self, .j_right)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "fit", H.btn(self, .j_fit)));
+
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "top", H.btn(self, .j_top)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "bot", H.btn(self, .j_bottom)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "cent", H.btn(self, .j_center)));
         }
     }
 
@@ -197,20 +221,70 @@ pub const TextureTool = struct {
         }
     }
 
-    pub fn btn_cb(vt: *iArea, id: usize, _: *Gui, _: *guis.iWindow) void {
+    pub fn btn_cb(vt: *iArea, id: usize, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+        self.btn_cbErr(id, gui, win) catch return;
+    }
+    pub fn btn_cbErr(self: *@This(), id: usize, _: *Gui, _: *guis.iWindow) !void {
+        const sel = (self.getCurrentlySelected(self.ed) catch null) orelse return;
+        const side = sel.side;
+        const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
+        var new = old;
         switch (@as(GuiBtnEnum, @enumFromInt(id))) {
+            .j_left => new.u.trans = 0,
+            .j_top => new.v.trans = 0,
+            else => {},
+            .j_fit => {
+                if (side.index.items.len < 3) return;
+                const p0 = sel.solid.verts.items[side.index.items[0]];
+                var umin = std.math.floatMax(f32);
+                var umax = -std.math.floatMax(f32);
+                var vmin = std.math.floatMax(f32);
+                var vmax = -std.math.floatMax(f32);
+
+                for (side.index.items) |ind| {
+                    const vert = sel.solid.verts.items[ind].sub(p0);
+                    const udot = vert.dot(side.u.axis);
+                    const vdot = vert.dot(side.v.axis);
+
+                    umin = @min(udot, umin);
+                    umax = @max(udot, umax);
+
+                    vmin = @min(vdot, vmin);
+                    vmax = @max(vdot, vmax);
+                }
+                const u_dist = umax - umin;
+                const v_dist = vmax - vmin;
+
+                const tw: f32 = @floatFromInt(side.tw);
+                const th: f32 = @floatFromInt(side.th);
+                new.u.scale = u_dist / tw;
+                new.v.scale = v_dist / th;
+                std.debug.print("new scale {d} {d}\n", .{ new.u.scale, new.v.scale });
+                //Set trans to make p0 the zero point
+
+                new.u.trans = -p0.dot(side.u.axis) / new.u.scale;
+                new.v.trans = -p0.dot(side.v.axis) / new.v.scale;
+            },
             .reset => {
-                const e_id = self.id orelse return;
-                const f_id = self.face_index orelse return;
-                const solid = (self.ed.getComponent(e_id, .solid)) orelse return;
-                if (f_id >= solid.sides.items.len) return;
-                const side = &solid.sides.items[f_id];
-                const norm = side.normal(solid);
+                const norm = side.normal(sel.solid);
                 side.resetUv(norm);
-                solid.rebuild(e_id, self.ed) catch return;
+                //TODO put this into the undo stack
+                sel.solid.rebuild(self.id orelse return, self.ed) catch return;
                 self.ed.draw_state.meshes_dirty = true;
             },
+        }
+        if (!old.eql(new)) {
+            const ustack = try self.ed.undoctx.pushNewFmt("texture manip", .{});
+            std.debug.print("PUTTING NEW\n", .{});
+            try ustack.append(try undo.UndoTextureManip.create(
+                self.ed.undoctx.alloc,
+                old,
+                new,
+                self.id orelse return,
+                self.face_index orelse return,
+            ));
+            undo.applyRedo(ustack.items, self.ed);
         }
     }
 
