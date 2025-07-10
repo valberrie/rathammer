@@ -489,7 +489,7 @@ pub const Side = struct {
         };
     }
 
-    pub fn normal(self: *@This(), solid: *const Solid) Vec3 {
+    pub fn normal(self: *const @This(), solid: *const Solid) Vec3 {
         const ind = self.index.items;
         if (ind.len < 3) return Vec3.zero();
         const v = solid.verts.items;
@@ -740,6 +740,13 @@ pub const Solid = struct {
             });
         }
         return ret;
+    }
+
+    pub fn roundAllVerts(self: *Self, id: EcsT.Id, ed: *Editor) !void {
+        for (self.verts.items) |*vert| {
+            vert.data = @round(vert.data);
+        }
+        try self.rebuild(id, ed);
     }
 
     pub fn deinit(self: *Self) void {
@@ -1191,7 +1198,7 @@ pub const KeyValues = struct {
         }
 
         pub fn getFloats(self: *const @This(), comptime count: usize) [count]f32 {
-            var it = std.mem.splitScalar(u8, self._string.items, ' ');
+            var it = std.mem.tokenizeScalar(u8, self._string.items, ' ');
             var ret: [count]f32 = undefined;
             for (0..count) |i| {
                 ret[i] = std.fmt.parseFloat(f32, it.next() orelse "0") catch 0;

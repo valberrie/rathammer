@@ -69,7 +69,7 @@ pub fn setToSingle(self: *Self, id: Id) !void {
 }
 
 pub fn setToMulti(self: *Self) void {
-    self.mode = .one;
+    self.mode = .many;
 }
 
 // Add an id without checking if it exists

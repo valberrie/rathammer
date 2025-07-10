@@ -87,6 +87,7 @@ pub const Console = struct {
 
         self.area.addChildOpt(gui, vt, Wg.TextView.build(gui, text_area, self.lines.items, vt, .{
             .mode = .split_on_space,
+            .force_scroll = true,
         }));
     }
 

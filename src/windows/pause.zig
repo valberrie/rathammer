@@ -213,12 +213,6 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_far_plane, 512 * 64, 512 * 512, .{ .nudge = 1 }));
             }
 
-            if (label(vt, gui, win, ly.getArea(), "Select entity id", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.TextboxNumber.build(gui, ar, &self.ent_select, win, .{
-                    .commit_vt = &self.area,
-                    .commit_cb = &commitCb,
-                }));
-
             //ly.pushHeight(Wg.TextView.heightForN(gui, 4));
             ly.pushRemaining();
             const help_area = ly.getArea() orelse return;
