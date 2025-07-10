@@ -1,7 +1,14 @@
 const std = @import("std");
 
+const graph = @import("graph");
+const Vec3 = graph.za.Vec3;
 const Console = @import("windows/console.zig");
 const Editor = @import("editor.zig").Context;
+//TODO
+//add commands for
+//rebuild all meshes
+//write a save
+//kill the vbsp
 
 const Commands = enum {
     count_ents,
@@ -10,6 +17,7 @@ const Commands = enum {
     fov,
     dump_selected,
     snap_selected,
+    tp,
 };
 
 pub const CommandCtx = struct {
@@ -102,9 +110,25 @@ pub const CommandCtx = struct {
                             try solid.roundAllVerts(id, self.ed);
                     }
                 },
+                .tp => {
+                    if (parseVec(&args)) |vec| {
+                        try wr.print("Teleporting to {d} {d} {d}\n", .{ vec.x(), vec.y(), vec.z() });
+                        self.ed.draw_state.cam3d.pos = vec;
+                    } else {
+                        try wr.print("Invalid teleport command: '{s}'\n", .{command});
+                    }
+                },
             }
         } else {
             try wr.print("Unknown command: '{s}' Type help for list of commands", .{command});
         }
     }
 };
+
+fn parseVec(it: anytype) ?Vec3 {
+    return Vec3.new(
+        std.fmt.parseFloat(f32, it.next() orelse return null) catch return null,
+        std.fmt.parseFloat(f32, it.next() orelse return null) catch return null,
+        std.fmt.parseFloat(f32, it.next() orelse return null) catch return null,
+    );
+}

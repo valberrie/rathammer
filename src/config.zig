@@ -58,6 +58,8 @@ pub const Config = struct {
         cube_draw_plane_up: Keybind = .{ .b = SC(.X, 0) },
         cube_draw_plane_down: Keybind = .{ .b = SC(.Z, 0) },
         cube_draw_plane_raycast: Keybind = .{ .b = SC(.Q, 0) },
+        texture_eyedrop: Keybind = .{ .b = SC(.Q, 0) },
+        texture_wrap: Keybind = .{ .b = SC(.Z, 0) },
 
         undo: Keybind = .{ .b = KC(.z, 0) },
         redo: Keybind = .{ .b = KC(.s, 0) },

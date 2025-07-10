@@ -277,26 +277,8 @@ pub const InspectorWindow = struct {
                 }));
             }
             if (try ed.ecs.getOptPtr(sel_id, .solid)) |sol| {
-                const Ctx = struct {
-                    pub fn btn_cb(ia: *iArea, _: usize, _: *Gui, _: *iWindow) void {
-                        const sl: *InspectorWindow = @alignCast(@fieldParentPtr("area", ia));
-                        if (sl.editor.selection.getGroupOwnerExclusive(&sl.editor.groups)) |sel| {
-                            const solid = sl.editor.ecs.getPtr(sel, .solid) catch return;
-                            for (solid.verts.items) |*v| {
-                                std.debug.print("old {any}\n", .{v.data});
-                                v.data = @round(v.data);
-                                std.debug.print("new {any}\n", .{v.data});
-                            }
-                        }
-                    }
-                };
                 _ = sol;
                 lay.addChildOpt(gui, &self.vt, Wg.Text.build(gui, ly.getArea(), "selected_solid: {d}", .{sel_id}));
-                lay.addChildOpt(gui, &self.vt, Wg.Button.build(gui, ly.getArea(), "Snap all to grid", .{
-                    .cb_vt = &self.area,
-                    .cb_fn = &Ctx.btn_cb,
-                    .id = 0,
-                }));
             }
         }
     }
