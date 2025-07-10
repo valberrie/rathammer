@@ -38,6 +38,7 @@ const DISABLE_SPLASH = false;
 const GroupId = ecs.Groups.GroupId;
 const eviews = @import("editor_views.zig");
 const path_guess = @import("path_guess.zig");
+const shell = @import("shell.zig");
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
@@ -153,6 +154,8 @@ pub const Context = struct {
     /// Used to track tool txtures, so we can easily disable drawing, remove once visgroups are good.
     tool_res_map: std.AutoHashMap(vpk.VpkResId, void),
     visgroups: VisGroups,
+
+    shell: *shell.CommandCtx,
 
     loadctx: *LoadCtx,
 
@@ -365,6 +368,7 @@ pub const Context = struct {
             .textures = std.AutoHashMap(vpk.VpkResId, graph.Texture).init(alloc),
             .skybox = try Skybox.init(alloc),
             .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
+            .shell = try shell.CommandCtx.create(alloc, ret),
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
@@ -467,6 +471,7 @@ pub const Context = struct {
         self.skybox.deinit();
         self.frame_arena.deinit();
         self.groups.deinit();
+        self.shell.destroy(self.alloc);
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {
             m.deinit(self.alloc);

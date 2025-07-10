@@ -358,6 +358,7 @@ pub const Pane = enum {
     asset_browser,
     inspector,
     new_inspector,
+    console,
     model_preview,
     model_browser,
     about,
@@ -394,7 +395,7 @@ pub fn drawPane(
 ) !void {
     const owns = editor.draw_state.grab_pane.tryOwn(pane_area, win, pane);
     switch (pane) {
-        .none, .new_inspector => {},
+        .none, .new_inspector, .console => {},
         .main_2d_view => {
             const vt = try editor.panes.getVt(Ctx2DView);
             if (vt.draw_fn) |drawf|

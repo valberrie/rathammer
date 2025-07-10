@@ -17,6 +17,7 @@ const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
 const G = graph.RGui;
 const PauseWindow = @import("windows/pause.zig").PauseWindow;
+const ConsoleWindow = @import("windows/console.zig").Console;
 const InspectorWindow = @import("windows/inspector.zig").InspectorWindow;
 const Ctx2dView = @import("view_2d.zig").Ctx2dView;
 
@@ -150,6 +151,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
     try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
 
+    const console_win = try ConsoleWindow.create(&gui, editor, &editor.shell.cb_vt);
+    try gui.addWindow(&console_win.vt, Rec(0, 0, 800, 600));
+
     try editor.panes.registerCustom("main_3d_view", editor_view.Main3DView, try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
     try editor.panes.registerCustom("main_2d_view", Ctx2dView, try Ctx2dView.create(editor.panes.alloc));
 
@@ -217,7 +221,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .main_2d_view, .new_inspector }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .console, .new_inspector }),
         },
     };
 
@@ -300,13 +304,20 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             switch (pane) {
-                .new_inspector => {
-                    const owns = editor.draw_state.grab_pane.tryOwn(pane_area, &win, pane);
-                    windows_list[win_count] = &inspector_win.vt;
-                    try gui.updateWindowSize(&inspector_win.vt, pane_area);
-                    if (owns)
-                        try gui.update(&.{&inspector_win.vt});
-                    win_count += 1;
+                .new_inspector, .console => {
+                    {
+                        const win_vt = switch (pane) {
+                            .new_inspector => &inspector_win.vt,
+                            .console => &console_win.vt,
+                            else => unreachable,
+                        };
+                        const owns = editor.draw_state.grab_pane.tryOwn(pane_area, &win, pane);
+                        windows_list[win_count] = win_vt;
+                        try gui.updateWindowSize(win_vt, pane_area);
+                        if (owns)
+                            try gui.update(&.{win_vt});
+                        win_count += 1;
+                    }
                 },
                 else => try editor_view.drawPane(editor, pane, cam_state, &win, pane_area, &draw, &os9gui),
             }
