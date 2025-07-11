@@ -244,7 +244,7 @@ pub const Side = struct {
     dispinfo: DispInfo = .{},
 };
 
-fn parseVec(
+pub fn parseVec(
     str: []const u8,
     i: *usize,
     comptime count: usize,

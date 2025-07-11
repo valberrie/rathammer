@@ -42,6 +42,10 @@ const shell = @import("shell.zig");
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
+const pointfile = @import("pointfile.zig");
+
+pub const TMP_DIR = "/tmp/mapcompile";
+pub const MAP_OUT = "dump";
 
 pub const ResourceId = struct {
     vpk_id: vpk.VpkResId,
@@ -165,6 +169,8 @@ pub const Context = struct {
     has_loaded_map: bool = false,
 
     draw_state: struct {
+        pointfile: ?pointfile.PointFile = null,
+        portalfile: ?pointfile.PortalFile = null,
         tab_index: usize = 0,
         meshes_dirty: bool = false,
 
@@ -486,6 +492,10 @@ pub const Context = struct {
         }
         self.meshmap.deinit();
         self.draw_state.ctx.deinit();
+        if (self.draw_state.pointfile) |pf|
+            pf.verts.deinit();
+        if (self.draw_state.portalfile) |pf|
+            pf.verts.deinit();
         self.async_asset_load.deinit();
 
         //destroy does not take a pointer to alloc, so this is safe.
@@ -1125,7 +1135,7 @@ pub const Context = struct {
                     .gamedir_pre = self.game_conf.base_dir,
                     .gamename = gname,
                     .outputdir = try self.printScratch("hl2/maps", .{}),
-                    .tmpdir = "/tmp/mapcompile",
+                    .tmpdir = TMP_DIR,
                 });
             }
         }

@@ -3,7 +3,9 @@ const std = @import("std");
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const Console = @import("windows/console.zig");
-const Editor = @import("editor.zig").Context;
+const edit = @import("editor.zig");
+const Editor = edit.Context;
+const pointfile = @import("pointfile.zig");
 //TODO
 //add commands for
 //rebuild all meshes
@@ -18,6 +20,10 @@ const Commands = enum {
     dump_selected,
     snap_selected,
     tp,
+    pointfile,
+    unload_pointfile,
+    unload_portalfile,
+    portalfile,
 };
 
 pub const CommandCtx = struct {
@@ -117,6 +123,35 @@ pub const CommandCtx = struct {
                     } else {
                         try wr.print("Invalid teleport command: '{s}'\n", .{command});
                     }
+                },
+                .portalfile => {
+                    const pf = &self.ed.draw_state.portalfile;
+                    if (pf.*) |pf1|
+                        pf1.verts.deinit();
+                    pf.* = null;
+
+                    const path = if (args.next()) |p| p else try self.ed.printScratch("{s}/{s}", .{ edit.TMP_DIR, "dump.prt" });
+
+                    pf.* = try pointfile.loadPortalfile(self.ed.alloc, std.fs.cwd(), path);
+                },
+                .pointfile => {
+                    if (self.ed.draw_state.pointfile) |pf|
+                        pf.verts.deinit();
+                    self.ed.draw_state.pointfile = null;
+
+                    const path = if (args.next()) |p| p else try self.ed.printScratch("{s}/{s}", .{ edit.TMP_DIR, "dump.lin" });
+
+                    self.ed.draw_state.pointfile = try pointfile.loadPointfile(self.ed.alloc, std.fs.cwd(), path);
+                },
+                .unload_pointfile => {
+                    if (self.ed.draw_state.pointfile) |pf|
+                        pf.verts.deinit();
+                    self.ed.draw_state.pointfile = null;
+                },
+                .unload_portalfile => {
+                    if (self.ed.draw_state.portalfile) |pf|
+                        pf.verts.deinit();
+                    self.ed.draw_state.portalfile = null;
                 },
             }
         } else {

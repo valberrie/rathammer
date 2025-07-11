@@ -141,7 +141,9 @@ pub const MapCompile = struct {
         defer self.destroy();
         const t = self.build_time.read();
         switch (self.status) {
-            .failed => edit.notify("Error building Map", .{}, 0xff0000ff) catch {},
+            .failed => {
+                edit.notify("Error building Map", .{}, 0xff0000ff) catch {};
+            },
             .built => edit.notify("built map in {d} s", .{t / std.time.ns_per_s}, 0x00ff00ff) catch {},
             .nothing => edit.notify("Something bad happend when building the map", .{}, 0xffff_00_ff) catch {},
         }

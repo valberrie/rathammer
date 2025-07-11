@@ -91,15 +91,19 @@ pub const Console = struct {
         }));
     }
 
-    pub fn textbox_cb(vt: *iArea, gui: *Gui, string: []const u8, _: usize) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+    pub fn execCommand(self: *@This(), command: []const u8, gui: *Gui) void {
         self.scratch.clearRetainingCapacity();
-        self.exec_vt.exec(self.exec_vt, string, &self.scratch);
+        self.exec_vt.exec(self.exec_vt, command, &self.scratch);
         const duped = self.line_arena.allocator().dupe(u8, self.scratch.items) catch return;
         self.lines.append(duped) catch return;
         var tv = self.getTextView() orelse return;
         tv.addOwnedText(duped, gui) catch return;
-        tv.rebuildScroll(gui, gui.getWindow(vt) orelse return);
+        tv.rebuildScroll(gui, gui.getWindow(&self.area) orelse return);
+    }
+
+    pub fn textbox_cb(vt: *iArea, gui: *Gui, string: []const u8, _: usize) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        self.execCommand(string, gui);
     }
 
     pub fn draw(vt: *iArea, d: DrawState) void {

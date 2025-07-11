@@ -308,6 +308,27 @@ pub fn draw3Dview(
             sk.draw(.{ .texture = self.skybox.textures.items[i].id, .shader = self.skybox.shader }, perp.mul(la), graph.za.Mat4.identity());
         }
     }
+    if (self.draw_state.pointfile) |pf| {
+        const sl = pf.verts.items;
+        if (sl.len > 1) {
+            for (sl[0 .. sl.len - 1], 0..) |v, i| {
+                const next = sl[i + 1];
+                draw.line3D(v, next, 0xff0000ff);
+            }
+        }
+    }
+    if (self.draw_state.portalfile) |pf| {
+        const sl = pf.verts.items;
+        if (sl.len % 4 == 0) {
+            for (0..sl.len / 4) |i| {
+                const sll = sl[i * 4 .. i * 4 + 4];
+                for (0..sll.len) |in| {
+                    const next = (in + 1) % sll.len;
+                    draw.line3D(sll[in], sll[next], 0x0000ffff);
+                }
+            }
+        }
+    }
 
     try draw.flush(null, self.draw_state.cam3d);
     //Crosshair
