@@ -478,37 +478,33 @@ pub const FastFaceManip = struct {
             .start => {
                 if (rm == .rising or lm == .rising) {
                     self.right = rm == .rising;
-                    const r = editor.camRay(td.screen_area, td.view_3d.*);
-                    for (selected_slice) |sel| {
-                        const solid = editor.getComponent(sel, .solid) orelse continue;
-                        const rc = try raycast.doesRayIntersectSolid(r[0], r[1], solid, &editor.csgctx);
-                        if (rc.len > 0) {
-                            const rci = if (editor.edit_state.rmouse == .rising) @min(1, rc.len - 1) else 0;
-                            try self.selected.append(.{ .id = sel, .face_id = @intCast(rc[rci].side_index) });
-                            self.main_id = sel;
-
-                            self.face_id = @intCast(rc[rci].side_index);
-                            self.start = rc[rci].point;
-                            self.state = .active;
-                            try solid.removeFromMeshMap(sel, editor);
-
-                            const init_plane = solid.sides.items[@intCast(self.face_id)].normal(solid);
-                            const NORM_THRESH = 0.99;
-                            for (selected_slice) |other| {
-                                if (other == sel)
-                                    continue;
-                                if (editor.getComponent(other, .solid)) |o_solid| {
-                                    for (o_solid.sides.items, 0..) |*side, fi| {
-                                        if (init_plane.dot(side.normal(o_solid)) > NORM_THRESH) {
-                                            //if (init_plane.eql(side.normal(o_solid))) {
-                                            try self.selected.append(.{ .id = other, .face_id = @intCast(fi) });
-                                            try o_solid.removeFromMeshMap(other, editor);
-                                            break; //Only one side per solid can be coplanar
-                                        }
+                    const rc = editor.camRay(td.screen_area, td.view_3d.*);
+                    editor.rayctx.reset();
+                    for (selected_slice) |s_id| {
+                        try editor.rayctx.addPotentialSolid(&editor.ecs, rc[0], rc[1], &editor.csgctx, s_id);
+                    }
+                    const pot = editor.rayctx.sortFine();
+                    if (pot.len > 0) {
+                        const rci = if (editor.edit_state.rmouse == .rising) @min(1, pot.len - 1) else 0;
+                        const p = pot[rci];
+                        const solid = editor.getComponent(p.id, .solid) orelse return;
+                        self.main_id = p.id;
+                        self.face_id = @intCast(p.side_id orelse return);
+                        self.state = .active;
+                        self.start = p.point;
+                        const norm = solid.sides.items[@intCast(self.face_id)].normal(solid);
+                        const NORM_THRESH = 0.99;
+                        for (selected_slice) |other| {
+                            if (editor.getComponent(other, .solid)) |o_solid| {
+                                for (o_solid.sides.items, 0..) |*side, fi| {
+                                    if (norm.dot(side.normal(o_solid)) > NORM_THRESH) {
+                                        //if (init_plane.eql(side.normal(o_solid))) {
+                                        try self.selected.append(.{ .id = other, .face_id = @intCast(fi) });
+                                        try o_solid.removeFromMeshMap(other, editor);
+                                        break; //Only one side per solid can be coplanar
                                     }
                                 }
                             }
-                            break;
                         }
                     }
                 }
@@ -1083,7 +1079,6 @@ const Proportional = struct {
             const solid = ed.getComponent(id, .solid) orelse continue;
             const temp_verts = try ed.frame_arena.allocator().alloc(Vec3, solid.verts.items.len);
             const index = try ed.frame_arena.allocator().alloc(u32, solid.verts.items.len);
-            _ = self;
             for (solid.verts.items, 0..) |v, i| {
                 temp_verts[i] = ctx.vertexOffset(v, 0, 0);
                 index[i] = @intCast(i);
@@ -1098,6 +1093,7 @@ const Proportional = struct {
             ));
         }
         undo.applyRedo(ustack.items, ed);
+        self.reset();
     }
 
     pub fn runProp(self: *Self, ed: *Editor, td: ToolData) !void {
