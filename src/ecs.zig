@@ -1048,6 +1048,8 @@ pub const Solid = struct {
     }
 };
 
+//TRANSLATE the startposition too
+//TODO make the displacment component an array of Displacment rather than making a seperate entity
 pub const Displacement = struct {
     pub const VectorRow = std.ArrayList(Vec3);
     pub const ScalarRow = std.ArrayList(f32);
@@ -1141,7 +1143,6 @@ pub const Displacement = struct {
         const mesh = &batch.mesh;
         try mesh.vertices.ensureUnusedCapacity(self._verts.items.len);
         try mesh.indicies.ensureUnusedCapacity(self._index.items.len);
-        const uv_origin = self._verts.items[0];
         const si = self.vert_start_i;
         const uvs = try editor.csgctx.calcUVCoordsIndexed(
             solid.verts.items,
@@ -1149,7 +1150,7 @@ pub const Displacement = struct {
             side.*,
             @intCast(batch.tex.w),
             @intCast(batch.tex.h),
-            uv_origin,
+            Vec3.zero(),
         );
         const vper_row = std.math.pow(u32, 2, self.power) + 1;
         const vper_rowf: f32 = @floatFromInt(vper_row);

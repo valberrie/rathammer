@@ -272,6 +272,15 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         .hull_min = h2.hull_min.toZa(),
         .hull_max = h2.hull_max.toZa(),
     };
+    errdefer {
+        info.vert_offsets.deinit();
+        for (info.texture_paths.items) |item|
+            alloc.free(item);
+        for (info.texture_names.items) |item|
+            alloc.free(item);
+        info.texture_paths.deinit();
+        info.texture_names.deinit();
+    }
 
     fbs.pos = h3.texture_offset;
     for (0..h3.texture_count) |_| {
@@ -314,6 +323,10 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
             for (0..mm.num_mesh) |_| {
                 const mesh = try parseStruct(Mesh, .little, r);
                 print("BIG DOG {d}\n", .{mesh.num_vert});
+                if (mesh.num_vert > std.math.maxInt(u16)) {
+                    std.debug.print("holy hell thats a lot of verticies {d}\n", .{mesh.num_vert});
+                    return error.TooManyVerts;
+                }
                 try info.vert_offsets.append(@intCast(mesh.num_vert));
                 print("{}\n", .{mesh});
             }

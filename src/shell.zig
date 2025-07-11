@@ -24,6 +24,7 @@ const Commands = enum {
     unload_pointfile,
     unload_portalfile,
     portalfile,
+    stats,
 };
 
 pub const CommandCtx = struct {
@@ -88,6 +89,10 @@ pub const CommandCtx = struct {
                             try wr.print("\tinvalid number: {s}\n", .{item});
                         }
                     }
+                },
+                .stats => {
+                    try wr.print("Num meshmaps/texture: {d}\n", .{self.ed.meshmap.count()});
+                    try wr.print("Num models: {d}\n", .{self.ed.models.count()});
                 },
                 .dump_selected => {
                     const selected_slice = self.ed.selection.getSlice();

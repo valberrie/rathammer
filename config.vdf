@@ -39,6 +39,7 @@ keys {
     workspace      alt+scancode:m //Model browser
     workspace      alt+2
     workspace      alt+3
+    workspace      alt+4
 
     //TODO, specify tool names,
     //Currently this maps to tools in the order they are registered in editor.zig.Context.postInit
@@ -165,6 +166,24 @@ games {
         game_dir    "Portal 2/portal2"
         fgd_dir     "Portal 2/bin"
         fgd         "portal2.fgd"
+
+        asset_browser_exclude {
+            prefix "materials/"
+            entry "models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+        }
+    }
+
+    black_mesa {
+        base_dir    "Black Mesa"
+        game_dir    "Black Mesa/bms"
+        fgd_dir     "Black Mesa/bin"
+        fgd         "bms.fgd"
 
         asset_browser_exclude {
             prefix "materials/"
