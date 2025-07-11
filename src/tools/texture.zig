@@ -316,10 +316,24 @@ pub const TextureTool = struct {
                             if (dupe) {
                                 if (try self.getCurrentlySelected(editor)) |f| {
                                     var duped = side.*;
-                                    duped.u.trans = f.side.u.trans;
-                                    duped.v.trans = f.side.v.trans;
-                                    duped.u.scale = f.side.u.scale;
-                                    duped.v.scale = f.side.v.scale;
+
+                                    if (f.side.u.axis.dot(duped.u.axis) > 0.5) {
+                                        duped.u.axis = f.side.u.axis;
+                                        duped.u.trans = f.side.u.trans;
+                                        duped.u.scale = f.side.u.scale;
+                                    } else {
+                                        duped.u.trans = f.side.v.trans;
+                                        duped.u.scale = f.side.v.scale;
+                                    }
+                                    if (f.side.v.axis.dot(duped.v.axis) > 0.5) {
+                                        duped.v.axis = f.side.v.axis;
+                                        duped.v.trans = f.side.v.trans;
+                                        duped.v.scale = f.side.v.scale;
+                                    } else {
+                                        duped.v.trans = f.side.u.trans;
+                                        duped.v.scale = f.side.u.scale;
+                                    }
+
                                     break :src duped;
                                 }
                             }
