@@ -199,6 +199,7 @@ pub const Context = struct {
             var obj = try vdf.parse(self.alloc, tt);
             defer obj.deinit();
             //All vmt are a single root object with a shader name as key
+            var was_found = false;
             if (obj.value.list.items.len > 0) {
                 const fallback_keys = [_][]const u8{
                     "$basetexture", "%tooltexture",
@@ -221,15 +222,20 @@ pub const Context = struct {
                                         },
                                         self.alloc,
                                     );
+                                    was_found = true;
                                     try self.insertCompleted(.{
                                         .data = buf,
                                         .vpk_res_id = vpk_res_id,
                                     });
+                                    break;
                                 }
                             }
                         }
                     },
                     else => {},
+                }
+                if (!was_found) {
+                    std.debug.print("A texture was not found\n", .{});
                 }
             }
         }
