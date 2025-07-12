@@ -1411,7 +1411,7 @@ pub const KeyValues = struct {
         }
 
         /// Create a new value with 'value' and notify entity if synced
-        pub fn initValue(alloc: std.mem.Allocator, ed: *Editor, id: EcsT.Id, key: []const u8, value: []const u8) !@This() {
+        fn initValue(alloc: std.mem.Allocator, ed: *Editor, id: EcsT.Id, key: []const u8, value: []const u8) !?@This() {
             var ret = @This(){
                 ._string = std.ArrayList(u8).init(alloc),
                 .sync = Entity.KvSync.needsSync(key),
@@ -1421,6 +1421,8 @@ pub const KeyValues = struct {
                 //Replace the default with whatever the entity has
                 if (try ed.ecs.getOptPtr(id, .entity)) |ent| {
                     try ent.setKvString(ed, id, &ret);
+                    ret._string.deinit();
+                    return null;
                 }
             }
             return ret;
@@ -1495,11 +1497,14 @@ pub const KeyValues = struct {
 
     ///Key is not duped or freed. value is duped
     pub fn putString(self: *Self, ed: *Editor, id: EcsT.Id, key: []const u8, value: []const u8) !void {
-        if (self.map.getPtr(key)) |old|
+        if (self.map.getPtr(key)) |old| {
             old.deinit();
-        const new = try Value.initValue(self.map.allocator, ed, id, key, value);
-        try self.map.put(key, new);
+            _ = self.map.remove(key);
+        }
+        if (try Value.initValue(self.map.allocator, ed, id, key, value)) |new|
+            try self.map.put(key, new);
     }
+    //IF initValue syncs, then there is a key put into map
 
     pub fn putStringNoNotify(self: *Self, key: []const u8, value: []const u8) !void {
         if (self.map.getPtr(key)) |old|
