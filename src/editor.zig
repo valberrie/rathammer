@@ -700,7 +700,7 @@ pub const Context = struct {
             }
         }
         {
-            var it = self.ecs.iterator(.displacement);
+            var it = self.ecs.iterator(.displacements);
             while (it.next()) |disp| {
                 try disp.rebuild(it.i, self);
             }
@@ -756,18 +756,25 @@ pub const Context = struct {
         if (group_id) |gid| {
             try self.ecs.attach(new, .group, .{ .id = gid });
         }
+        var opt_disps: ?ecs.Displacements = null;
+
         for (solid.side, 0..) |*side, s_i| {
             const tex = try self.loadTextureFromVpk(side.material);
             const res = try self.getOrPutMeshBatch(tex.res_id);
             try res.contains.put(new, {});
 
             if (side.dispinfo.power != -1) {
+                if (opt_disps == null)
+                    opt_disps = try ecs.Displacements.init(self.alloc, solid.side.len);
                 //for (newsolid.sides.items) |*sp|
                 //    sp.Displacement_id = true;
-                const disp_id = try self.ecs.createEntity();
+                //const disp_id = try self.ecs.createEntity();
                 var disp_gen = try Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
+                try disp_gen.setStartI(&newsolid, self, side.dispinfo.startposition.v);
                 try disp_gen.genVerts(&newsolid, self);
-                try res.contains.put(disp_id, {});
+                try opt_disps.?.put(disp_gen, s_i);
+
+                //try res.contains.put(disp_id, {});
                 if (false) { //dump to obj
                     std.debug.print("o disp\n", .{});
                     for (disp_gen.verts.items) |vert| {
@@ -782,11 +789,13 @@ pub const Context = struct {
                     }
                 }
 
-                try self.ecs.attach(disp_id, .displacement, disp_gen);
+                //try self.ecs.attach(disp_id, .displacement, disp_gen);
             }
         }
         try self.ecs.attach(new, .solid, newsolid);
         try self.ecs.attach(new, .bounding_box, .{});
+        if (opt_disps) |disps|
+            try self.ecs.attach(new, .displacements, disps);
         //try self.set.insert(newsolid.id, newsolid);
     }
 

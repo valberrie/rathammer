@@ -37,7 +37,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
     Comp("bounding_box", AABB),
     Comp("solid", Solid),
     Comp("entity", Entity),
-    Comp("displacement", Displacement),
+    Comp("displacements", Displacements),
     Comp("key_values", KeyValues),
     Comp("invisible", struct {
         pub const ECS_NO_SERIAL = void;
@@ -225,7 +225,7 @@ pub const MeshBatch = struct {
                     }
                 }
             }
-            if (editor.ecs.getOptPtr(id.key_ptr.*, .displacement) catch null) |disp| {
+            if (editor.ecs.getOptPtr(id.key_ptr.*, .displacements) catch null) |disp| {
                 try disp.rebuild(id.key_ptr.*, editor);
             }
         }
@@ -838,6 +838,7 @@ pub const Solid = struct {
         }
     }
 
+    // TODO Update displacemnt
     pub fn translateVerts(self: *@This(), id: EcsT.Id, offset: Vec3, editor: *Editor, vert_i: []const u32, vert_offsets: ?[]const Vec3, factor: f32) !void {
         if (vert_offsets) |offs| {
             for (vert_i, 0..) |v_i, i| {
@@ -861,6 +862,7 @@ pub const Solid = struct {
         editor.draw_state.meshes_dirty = true;
     }
 
+    //Update displacement
     pub fn translateSide(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Editor, side_i: usize) !void {
         if (side_i >= self.sides.items.len) return;
         for (self.sides.items[side_i].index.items) |ind| {
@@ -891,6 +893,7 @@ pub const Solid = struct {
         editor.draw_state.meshes_dirty = true;
     }
 
+    //Update displacament
     pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Editor) !void {
         //move all verts, recompute bounds
         //for each batchid, call rebuild
@@ -1048,6 +1051,70 @@ pub const Solid = struct {
     }
 };
 
+pub const Displacements = struct {
+    const Self = @This();
+    disps: std.ArrayList(Displacement) = undefined,
+
+    //Solid.sides index map into disps
+    sides: std.ArrayList(?usize) = undefined,
+
+    pub fn init(alloc: std.mem.Allocator, side_count: usize) !Self {
+        var ret = Self{
+            .disps = std.ArrayList(Displacement).init(alloc),
+            .sides = std.ArrayList(?usize).init(alloc),
+        };
+        try ret.sides.appendNTimes(null, side_count);
+
+        return ret;
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.disps.items) |*disp|
+            disp.deinit();
+        self.sides.deinit();
+        self.disps.deinit();
+    }
+
+    pub fn dupe(self: *Self, ecs: *EcsT, new_id: EcsT.Id) !Self {
+        const ret = Self{
+            .disps = try self.disps.clone(),
+            .sides = try self.sides.clone(),
+        };
+        for (ret.disps.items) |*disp| {
+            disp.* = try disp.dupe(ecs, new_id);
+        }
+        return ret;
+    }
+
+    pub fn rebuild(self: *Self, ent_id: EcsT.Id, ed: *Editor) !void {
+        for (self.disps.items) |*disp| {
+            try disp.rebuild(ent_id, ed);
+        }
+    }
+
+    pub fn getDispPtr(self: *Self, side_id: usize) ?*Displacement {
+        if (side_id >= self.sides.items.len) return null;
+        const index = self.sides.items[side_id] orelse return null;
+        if (index >= self.disps.items.len) return null;
+        return &self.disps.items[index];
+    }
+
+    pub fn put(self: *Self, disp: Displacement, side_id: usize) !void {
+        if (side_id >= self.sides.items.len) {
+            try self.sides.appendNTimes(null, side_id - self.sides.items.len);
+        }
+        const disp_index = self.disps.items.len;
+        try self.disps.append(disp);
+        if (self.sides.items[side_id]) |ex_disp| {
+            std.debug.print("CLOBBERING A DISPLACMENT, THIS MAY BE BAD\n", .{});
+            self.disps.items[ex_disp].deinit();
+            self.sides.items[side_id] = null;
+        }
+
+        self.sides.items[side_id] = disp_index;
+    }
+};
+
 //TRANSLATE the startposition too
 //TODO make the displacment component an array of Displacment rather than making a seperate entity
 pub const Displacement = struct {
@@ -1057,8 +1124,11 @@ pub const Displacement = struct {
     _verts: std.ArrayList(Vec3) = undefined,
     _index: std.ArrayList(u32) = undefined,
     tex_id: vpk.VpkResId = 0,
+
+    //DEPRECATION
     parent_id: EcsT.Id = 0,
     parent_side_i: usize = 0,
+
     vert_start_i: usize = 0,
     power: u32 = 0,
 
@@ -1068,7 +1138,7 @@ pub const Displacement = struct {
     dists: ScalarRow = undefined,
     alphas: ScalarRow = undefined,
 
-    start_pos: Vec3 = Vec3.zero(),
+    //start_pos: Vec3 = Vec3.zero(),
     elevation: f32 = 0,
     //tri_tags: ScalarRow = undefined,
 
@@ -1077,6 +1147,11 @@ pub const Displacement = struct {
         var ret = self.*;
         ret._verts = try self._verts.clone();
         ret._index = try self._index.clone();
+        ret.normals = try self.normals.clone();
+        ret.offsets = try self.offsets.clone();
+        ret.normal_offsets = try self.normal_offsets.clone();
+        ret.dists = try self.dists.clone();
+        ret.alphas = try self.alphas.clone();
 
         return ret;
     }
@@ -1091,7 +1166,6 @@ pub const Displacement = struct {
             .power = @intCast(dispinfo.power),
             .elevation = dispinfo.elevation,
 
-            .start_pos = dispinfo.startposition.v,
             .normals = try dispinfo.normals.clone(alloc),
             .offsets = try dispinfo.offsets.clone(alloc),
             .normal_offsets = try dispinfo.offset_normals.clone(alloc),
@@ -1100,6 +1174,14 @@ pub const Displacement = struct {
             .alphas = try dispinfo.alphas.clone(alloc),
             //.tri_tags = ScalarRow.init(alloc),
         };
+    }
+
+    pub fn getStartPos(self: *const Self, solid: *const Solid) !Vec3 {
+        const si = self.vert_start_i;
+        if (self.parent_side_i >= solid.sides.items.len) return error.invalidSideIndex;
+        const side = &solid.sides.items[self.parent_side_i];
+        if (si >= side.index.items.len) return error.invalidIndex;
+        return solid.verts.items[side.index.items[si]];
     }
 
     pub fn deinit(self: *Self) void {
@@ -1112,6 +1194,17 @@ pub const Displacement = struct {
         self.dists.deinit();
         self.alphas.deinit();
         //self.tri_tags.deinit();
+    }
+
+    pub fn setStartI(self: *Self, solid: *const Solid, ed: *Editor, start_pos: Vec3) !void {
+        const ss = solid.sides.items[self.parent_side_i].index.items;
+        const corners = [4]Vec3{
+            solid.verts.items[ss[0]],
+            solid.verts.items[ss[1]],
+            solid.verts.items[ss[2]],
+            solid.verts.items[ss[3]],
+        };
+        self.vert_start_i = try ed.csgctx.findDisplacmentStartI(&corners, start_pos);
     }
 
     pub fn genVerts(self: *Self, solid: *const Solid, editor: *Editor) !void {

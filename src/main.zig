@@ -314,6 +314,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         const owns = editor.draw_state.grab_pane.tryOwn(pane_area, &win, pane);
                         windows_list[win_count] = win_vt;
                         try gui.updateWindowSize(win_vt, pane_area);
+                        //The reason sometimes the console fails is because it does not own it when it gets switch ed to
                         if (owns)
                             try gui.update(&.{win_vt});
                         win_count += 1;
@@ -338,7 +339,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{
-        .stack_trace_frames = if (IS_DEBUG) 0 else 0,
+        .stack_trace_frames = if (IS_DEBUG) 8 else 0,
     }){};
     const alloc = gpa.allocator();
     var arg_it = try std.process.argsWithAllocator(alloc);

@@ -227,11 +227,12 @@ fn ensurePlanar(index: []const u32) ?[3]u32 {
 }
 
 fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start: *usize, vpkmapper: anytype, ecs_p: *ecs.EcsT) !void {
+    const disps: ?*ecs.Displacements = try ecs_p.getOptPtr(ent_id, .displacements);
     try vr.writeKey("solid");
     try vr.beginObject();
     {
         try vr.writeKv("id", ent_id);
-        for (solid.sides.items) |side| {
+        for (solid.sides.items, 0..) |side, i| {
             if (side.index.items.len < 3) continue;
             try vr.writeKey("side");
             try vr.beginObject();
@@ -261,9 +262,10 @@ fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start
                 try vr.writeKv("lightmapscale", side.lightmapscale);
                 try vr.writeKv("smoothing_groups", side.smoothing_groups);
 
-                if (side.displacement_id) |disp_id| {
-                    if (try ecs_p.getOptPtr(disp_id, .displacement)) |disp|
-                        try writeDisp(vr, disp);
+                if (disps) |dispptr| {
+                    if (dispptr.getDispPtr(i)) |disp| {
+                        try writeDisp(vr, disp, solid);
+                    }
                 }
             }
             try vr.endObject();
@@ -272,13 +274,14 @@ fn writeSolid(vr: anytype, ent_id: ecs.EcsT.Id, solid: *ecs.Solid, side_id_start
     try vr.endObject();
 }
 
-fn writeDisp(vr: anytype, disp: *ecs.Displacement) !void {
+fn writeDisp(vr: anytype, disp: *ecs.Displacement, solid: *ecs.Solid) !void {
+    const start_pos = try disp.getStartPos(solid);
     try vr.writeKey("dispinfo");
     try vr.beginObject();
     {
         try vr.writeKv("power", disp.power);
         try vr.writeKey("startposition");
-        try vr.printValue("\"[{d} {d} {d}]\"\n", .{ disp.start_pos.x(), disp.start_pos.y(), disp.start_pos.z() });
+        try vr.printValue("\"[{d} {d} {d}]\"\n", .{ start_pos.x(), start_pos.y(), start_pos.z() });
         try vr.writeKv("elevation", disp.elevation);
         const vper_row = std.math.pow(u32, 2, disp.power) + 1;
         try vr.writeKey("normals");

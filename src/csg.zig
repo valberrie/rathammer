@@ -282,20 +282,23 @@ pub const Context = struct {
         return &self.base_winding;
     }
 
-    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, disp: *ecs.Displacement) !void {
+    pub fn findDisplacmentStartI(self: *Self, side_winding: []const Vec3_32, start_pos: Vec3_32) !usize {
         _ = self;
-        if (side_winding.len != 4)
-            return error.invalidSideWinding;
         var nearest: f32 = std.math.floatMax(f32);
         var start_i: usize = 0;
         for (side_winding, 0..) |vert, i| {
-            const dist = vert.distance(disp.start_pos);
+            const dist = vert.distance(start_pos);
             if (dist < nearest) {
                 start_i = i;
                 nearest = dist;
             }
         }
-        disp.vert_start_i = start_i;
+        return start_i;
+    }
+
+    pub fn genMeshDisplacement(self: *Self, side_winding: []const Vec3_32, disp: *ecs.Displacement) !void {
+        _ = self;
+        const start_i = disp.vert_start_i;
 
         const v0 = side_winding[start_i];
         const v1 = side_winding[(start_i + 1) % side_winding.len];
