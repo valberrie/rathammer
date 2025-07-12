@@ -1205,13 +1205,15 @@ pub const Context = struct {
             while (m_it.next()) |ent| {
                 if (ent._model_id) |mid| {
                     if (std.mem.indexOfScalar(vpk.VpkResId, completed_ids.items, mid) != null) {
-                        const mod = self.models.getPtr(mid) orelse continue;
-                        const mesh = mod.mesh orelse continue;
-                        const bb = try self.ecs.getPtr(m_it.i, .bounding_box);
-                        bb.origin_offset = mesh.hull_min.scale(-1);
-                        bb.a = mesh.hull_min;
-                        bb.b = mesh.hull_max;
-                        bb.setFromOrigin(ent.origin);
+                        try ent.setModel(self, m_it.i, .{ .id = mid });
+
+                        //const mod = self.models.getPtr(mid) orelse continue;
+                        //const mesh = mod.mesh orelse continue;
+                        //const bb = try self.ecs.getPtr(m_it.i, .bounding_box);
+                        //bb.origin_offset = mesh.hull_min.scale(-1);
+                        //bb.a = mesh.hull_min;
+                        //bb.b = mesh.hull_max;
+                        //bb.setFromOrigin(ent.origin);
                     }
                 }
             }

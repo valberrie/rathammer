@@ -363,6 +363,21 @@ pub const Entity = struct {
         self.angle = angle;
         if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs|
             try kvs.putStringNoNotify("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
+        try self.updateModelbb(editor, self_id);
+    }
+
+    fn updateModelbb(self: *@This(), editor: *Editor, self_id: EcsT.Id) !void {
+        if (editor.models.getPtr(self._model_id orelse return)) |mod| {
+            const mesh = mod.mesh orelse return;
+            const bb = try editor.ecs.getPtr(self_id, .bounding_box);
+            const quat = util3d.extEulerToQuat(self.angle);
+            const rot = quat.toMat3();
+            const rbb = util3d.bbRotate(rot, Vec3.zero(), mesh.hull_min, mesh.hull_max);
+            bb.origin_offset = rbb[0].scale(-1);
+            bb.a = rbb[0];
+            bb.b = rbb[1];
+            bb.setFromOrigin(self.origin);
+        }
     }
 
     pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
@@ -371,6 +386,7 @@ pub const Entity = struct {
         if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
             try kvs.putStringNoNotify("model", idAndName.name);
         }
+        try self.updateModelbb(editor, self_id);
     }
 
     pub fn setClass(self: *@This(), editor: *Editor, class: []const u8, self_id: EcsT.Id) !void {
@@ -420,21 +436,11 @@ pub const Entity = struct {
                 if (editor.models.getPtr(m)) |o_mod| {
                     if (o_mod.mesh) |mod| {
                         const mat1 = Mat4.fromTranslate(ent.origin);
-                        const fr = Quat.fromAxis;
-                        const x1 = fr(ent.angle.z(), Vec3.new(1, 0, 0));
-                        const y1 = fr(ent.angle.x(), Vec3.new(0, 1, 0));
-                        const z1 = fr(ent.angle.y(), Vec3.new(0, 0, 1));
-
-                        const mat8 = z1.mul(y1.mul(x1));
-
-                        const mat3 = mat1.mul(mat8.toMat4());
+                        const quat = util3d.extEulerToQuat(ent.angle);
+                        const mat3 = mat1.mul(quat.toMat4());
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
-                        { //unrotated bb
-                            const cc = util3d.cubeFromBounds(mod.hull_min, mod.hull_max);
-                            draw.cubeFrame(ent.origin.add(cc[0]), cc[1], 0xff0000ff);
-                        }
                         if (param.draw_model_bb) {
-                            const rot = mat8.toMat3();
+                            const rot = quat.toMat3();
                             //const rot = util3d.extrinsicEulerAnglesToMat3(ent.angle);
                             const bb = util3d.bbRotate(rot, ent.origin, mod.hull_min, mod.hull_max);
                             const cc = util3d.cubeFromBounds(bb[0], bb[1]);

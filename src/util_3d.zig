@@ -20,6 +20,14 @@ pub fn extrinsicEulerAnglesToMat4(angles: Vec3) Mat4 {
     return z1.mul(y1.mul(x1));
 }
 
+pub fn extEulerToQuat(angle_deg: Vec3) Quat {
+    const fr = Quat.fromAxis;
+    const x1 = fr(angle_deg.z(), Vec3.new(1, 0, 0));
+    const y1 = fr(angle_deg.x(), Vec3.new(0, 1, 0));
+    const z1 = fr(angle_deg.y(), Vec3.new(0, 0, 1));
+    return z1.mul(y1.mul(x1));
+}
+
 pub fn extrinsicEulerAnglesToMat3(angles: Vec3) Mat3 {
     //Wow this sucks.
     const fr = Mat3.fromRotation;
