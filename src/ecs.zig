@@ -1126,7 +1126,6 @@ pub const Displacement = struct {
     tex_id: vpk.VpkResId = 0,
 
     //DEPRECATION
-    parent_id: EcsT.Id = 0,
     parent_side_i: usize = 0,
 
     vert_start_i: usize = 0,
@@ -1156,12 +1155,11 @@ pub const Displacement = struct {
         return ret;
     }
 
-    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_: EcsT.Id, parent_s: usize, dispinfo: *const vmf.DispInfo) !Self {
+    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_s: usize, dispinfo: *const vmf.DispInfo) !Self {
         return .{
             ._verts = std.ArrayList(Vec3).init(alloc),
             ._index = std.ArrayList(u32).init(alloc),
             .tex_id = tex_id,
-            .parent_id = parent_,
             .parent_side_i = parent_s,
             .power = @intCast(dispinfo.power),
             .elevation = dispinfo.elevation,
@@ -1224,7 +1222,7 @@ pub const Displacement = struct {
         try batch.*.contains.put(id, {});
 
         self.tex_id = batch.tex_res_id;
-        const solid = try editor.ecs.getOptPtr(self.parent_id, .solid) orelse return;
+        const solid = try editor.ecs.getOptPtr(id, .solid) orelse return;
         if (self.parent_side_i >= solid.sides.items.len) return;
         solid.sides.items[self.parent_side_i].displacement_id = id;
 

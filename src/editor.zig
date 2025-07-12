@@ -769,7 +769,7 @@ pub const Context = struct {
                 //for (newsolid.sides.items) |*sp|
                 //    sp.Displacement_id = true;
                 //const disp_id = try self.ecs.createEntity();
-                var disp_gen = try Displacement.init(self.alloc, tex.res_id, new, s_i, &side.dispinfo);
+                var disp_gen = try Displacement.init(self.alloc, tex.res_id, s_i, &side.dispinfo);
                 try disp_gen.setStartI(&newsolid, self, side.dispinfo.startposition.v);
                 try disp_gen.genVerts(&newsolid, self);
                 try opt_disps.?.put(disp_gen, s_i);
