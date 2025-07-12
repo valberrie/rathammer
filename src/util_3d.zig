@@ -1,5 +1,6 @@
 const std = @import("std");
 const graph = @import("graph");
+const Quat = graph.za.Quat;
 const V3f = graph.za.Vec3;
 const Vec3 = V3f;
 const Mat4 = graph.za.Mat4;
@@ -135,8 +136,8 @@ pub fn bbRotate(rot: Mat3, translate: Vec3, box_min: Vec3, box_max: Vec3) [2]Vec
 
     for (0..3) |i| {
         for (0..3) |j| {
-            const a = rot.data[i][j] * a_min[j];
-            const b = rot.data[i][j] * a_max[j];
+            const a = rot.data[j][i] * a_min[j];
+            const b = rot.data[j][i] * a_max[j];
             if (a < b) {
                 b_min[i] += a;
                 b_max[i] += b;

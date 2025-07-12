@@ -3,6 +3,7 @@ const graph = @import("graph");
 const profile = @import("profile.zig");
 const Vec3 = graph.za.Vec3;
 const Mat4 = graph.za.Mat4;
+const Quat = graph.za.Quat;
 const vpk = @import("vpk.zig");
 const vmf = @import("vmf.zig");
 const util3d = @import("util_3d.zig");
@@ -419,10 +420,22 @@ pub const Entity = struct {
                 if (editor.models.getPtr(m)) |o_mod| {
                     if (o_mod.mesh) |mod| {
                         const mat1 = Mat4.fromTranslate(ent.origin);
-                        const mat3 = mat1.mul(util3d.extrinsicEulerAnglesToMat4(ent.angle));
+                        const fr = Quat.fromAxis;
+                        const x1 = fr(ent.angle.z(), Vec3.new(1, 0, 0));
+                        const y1 = fr(ent.angle.x(), Vec3.new(0, 1, 0));
+                        const z1 = fr(ent.angle.y(), Vec3.new(0, 0, 1));
+
+                        const mat8 = z1.mul(y1.mul(x1));
+
+                        const mat3 = mat1.mul(mat8.toMat4());
                         mod.drawSimple(view_3d, mat3, editor.draw_state.basic_shader);
+                        { //unrotated bb
+                            const cc = util3d.cubeFromBounds(mod.hull_min, mod.hull_max);
+                            draw.cubeFrame(ent.origin.add(cc[0]), cc[1], 0xff0000ff);
+                        }
                         if (param.draw_model_bb) {
-                            const rot = util3d.extrinsicEulerAnglesToMat3(ent.angle);
+                            const rot = mat8.toMat3();
+                            //const rot = util3d.extrinsicEulerAnglesToMat3(ent.angle);
                             const bb = util3d.bbRotate(rot, ent.origin, mod.hull_min, mod.hull_max);
                             const cc = util3d.cubeFromBounds(bb[0], bb[1]);
                             //TODO rotate it

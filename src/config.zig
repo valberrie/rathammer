@@ -27,6 +27,8 @@ pub const Config = struct {
 
         cam_slow: Keybind = .{ .b = SC(.LCTRL, 0) },
 
+        toggle_console: Keybind = .{ .b = SC(.GRAVE, 0) },
+
         quit: Keybind = .{ .b = SC(.ESCAPE, mask(&.{.CTRL})) },
         focus_search: Keybind = .{ .b = KC(.f, mask(&.{.CTRL})) },
 
