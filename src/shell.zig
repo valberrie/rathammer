@@ -93,6 +93,11 @@ pub const CommandCtx = struct {
                 .stats => {
                     try wr.print("Num meshmaps/texture: {d}\n", .{self.ed.meshmap.count()});
                     try wr.print("Num models: {d}\n", .{self.ed.models.count()});
+                    try wr.print("comp solid: {d} \n", .{self.ed.ecs.data.solid.dense.items.len});
+                    try wr.print("comp ent  : {d} \n", .{self.ed.ecs.data.entity.dense.items.len});
+                    try wr.print("comp kvs  : {d} \n", .{self.ed.ecs.data.key_values.dense.items.len});
+                    try wr.print("comp AABB : {d} \n", .{self.ed.ecs.data.bounding_box.dense.items.len});
+                    try wr.print("comp deleted : {d} \n", .{self.ed.ecs.data.deleted.dense.items.len});
                 },
                 .dump_selected => {
                     const selected_slice = self.ed.selection.getSlice();
