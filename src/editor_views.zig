@@ -350,7 +350,11 @@ pub fn draw3Dview(
         const MANY_COLOR = 0xfc58d6ff;
 
         var mt = graph.MultiLineText.start(draw, screen_area.pos(), font);
-        mt.textFmt("grid: {d:.2}", .{self.edit_state.grid_snap}, fh, col);
+        if (self.grid.isOne()) {
+            mt.textFmt("grid: {d:.2}", .{self.grid.s.x()}, fh, col);
+        } else {
+            mt.textFmt("grid: {d:.2} {d:.2} {d:.2}", .{ self.grid.s.x(), self.grid.s.y(), self.grid.s.z() }, fh, col);
+        }
         mt.textFmt("pos: {d:.2} {d:.2} {d:.2}", .{ p.data[0], p.data[1], p.data[2] }, fh, col);
         mt.textFmt("select: {s}", .{@tagName(self.selection.mode)}, fh, switch (self.selection.mode) {
             .one => SINGLE_COLOR,

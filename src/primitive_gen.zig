@@ -3,9 +3,8 @@ const graph = @import("graph");
 const _Vec = struct { x: f32, y: f32, z: f32 };
 const Vec3 = graph.za.Vec3;
 const util3d = @import("util_3d.zig");
+const gridutil = @import("grid.zig");
 
-const snap1 = util3d.snap1;
-const snap3 = util3d.snapV3;
 //Ideally we use the same functions to generate the solids and immediate draw.
 //somekind of callback
 //we have a draw.convexPolygonIndexed function
@@ -81,7 +80,7 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
     r: f32,
     z: f32,
     num_segment: u32 = 16,
-    snap: f32 = 1,
+    grid: gridutil.Snap,
 }) !Primitive {
     var prim = Primitive.init(alloc);
     const r = param.r;
@@ -95,8 +94,8 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
         const thet = fi * dtheta;
         const x_f = @cos(thet) * r;
         const y_f = @sin(thet) * r;
-        const x = snap1(x_f, param.snap);
-        const y = snap1(y_f, param.snap);
+        const x = param.grid.swiz1(x_f, "x");
+        const y = param.grid.swiz1(y_f, "y");
 
         prim.verts.items[ni] = Vec3.new(x, y, -z / 2);
         prim.verts.items[ni + num_segment] = Vec3.new(x, y, z / 2);
@@ -167,16 +166,15 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
     r: f32,
     r2: f32,
     num_segment: u32 = 16,
-    snap: f32 = 1,
+    grid: gridutil.Snap,
     z: f32,
     theta_deg: f32 = 180,
 }) !Primitive {
     var prim = Primitive.init(alloc);
-    const snap = param.snap;
     const r = param.r;
     const r2 = param.r2;
     const num_segment = param.num_segment;
-    const z = snap1(param.z, snap);
+    const z = param.grid.swiz1(param.z, "z");
     try prim.verts.resize(num_segment * 4);
     const dtheta: f32 = std.math.degreesToRadians(param.theta_deg) / @as(f32, @floatFromInt(num_segment - 1)); //Do half only
     for (0..num_segment) |ni| {
@@ -189,10 +187,10 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
         const x2_f = @cos(thet) * r2;
         const y2_f = @sin(thet) * r2;
 
-        const x1 = snap1(x1_f, snap);
-        const y1 = snap1(y1_f, snap);
-        const x2 = snap1(x2_f, snap);
-        const y2 = snap1(y2_f, snap);
+        const x1 = param.grid.swiz1(x1_f, "x");
+        const y1 = param.grid.swiz1(y1_f, "y");
+        const x2 = param.grid.swiz1(x2_f, "x");
+        const y2 = param.grid.swiz1(y2_f, "y");
 
         prim.verts.items[ni + num_segment * 0] = Vec3.new(x1, y1, -z / 2); //lower
         prim.verts.items[ni + num_segment * 1] = Vec3.new(x1, y1, z / 2); //lower far
@@ -313,7 +311,7 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     rise_pad: f32 = 0,
     front_perc: f32 = -1,
     back_perc: f32 = 1,
-    snap: f32 = 1,
+    grid: gridutil.Snap,
 }) !Primitive {
     var prim = Primitive.init(alloc);
 
@@ -331,7 +329,6 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
     const x0 = param.width / -2;
     const y0 = param.height / -2;
 
-    const s = param.snap;
     var last_back: f32 = 0;
     try prim.verts.resize(num_stairs * 8);
     for (0..num_stairs) |ns| {
@@ -346,15 +343,15 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
         last_back = y + yb;
 
         const i: u32 = @intCast(ns * 8);
-        prim.verts.items[i + 0] = snap3(Vec3.new(x, y + yo, z), s); //bottom left
-        prim.verts.items[i + 1] = snap3(Vec3.new(x + run_a, y + yb, z), s); //bot r
-        prim.verts.items[i + 2] = snap3(Vec3.new(x + run_a, y + rise_a, z), s); //top r
-        prim.verts.items[i + 3] = snap3(Vec3.new(x, y + rise_a, z), s); //top l
+        prim.verts.items[i + 0] = param.grid.snapV3(Vec3.new(x, y + yo, z)); //bottom left
+        prim.verts.items[i + 1] = param.grid.snapV3(Vec3.new(x + run_a, y + yb, z)); //bot r
+        prim.verts.items[i + 2] = param.grid.snapV3(Vec3.new(x + run_a, y + rise_a, z)); //top r
+        prim.verts.items[i + 3] = param.grid.snapV3(Vec3.new(x, y + rise_a, z)); //top l
 
-        prim.verts.items[i + 4] = snap3(Vec3.new(x, y + yo, zf), s);
-        prim.verts.items[i + 5] = snap3(Vec3.new(x + run_a, y + yb, zf), s);
-        prim.verts.items[i + 6] = snap3(Vec3.new(x + run_a, y + rise_a, zf), s);
-        prim.verts.items[i + 7] = snap3(Vec3.new(x, y + rise_a, zf), s);
+        prim.verts.items[i + 4] = param.grid.snapV3(Vec3.new(x, y + yo, zf));
+        prim.verts.items[i + 5] = param.grid.snapV3(Vec3.new(x + run_a, y + yb, zf));
+        prim.verts.items[i + 6] = param.grid.snapV3(Vec3.new(x + run_a, y + rise_a, zf));
+        prim.verts.items[i + 7] = param.grid.snapV3(Vec3.new(x, y + rise_a, zf));
 
         try rectPrism(
             &prim,
@@ -378,7 +375,7 @@ pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
     theta_seg: u32 = 11,
     phi_seg: u32 = 11,
     phi: f32 = 360,
-    snap: f32 = 1,
+    grid: gridutil.Snap,
 }) !Primitive {
     var prim = Primitive.init(alloc);
 
@@ -398,8 +395,8 @@ pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
             const y = @sin(th) * @sin(phi);
             const z = @cos(th);
             const gi = dth * param.theta_seg + dpi;
-            prim.verts.items[gi] = snap3(Vec3.new(x, y, z).scale(r), param.snap);
-            prim.verts.items[gi + num] = snap3(Vec3.new(x, y, z).scale(r2), param.snap);
+            prim.verts.items[gi] = param.grid.snapV3(Vec3.new(x, y, z).scale(r));
+            prim.verts.items[gi + num] = param.grid.snapV3(Vec3.new(x, y, z).scale(r2));
         }
     }
 

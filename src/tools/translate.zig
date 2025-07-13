@@ -51,14 +51,16 @@ pub const Translate = struct {
         }
     } = .translate,
     angle_snap: f32 = 15,
+    ed: *Editor,
 
     //TODO support this
     origin_mode: enum {
         mean,
         last_selected,
     } = .last_selected,
+    cb_vt: iArea = undefined,
 
-    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+    pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vt = .{
@@ -67,6 +69,7 @@ pub const Translate = struct {
                 .tool_icon_fn = &@This().drawIcon,
                 .gui_build_cb = &buildGui,
             },
+            .ed = ed,
             .gizmo_rotation = .{},
             .gizmo_translate = .{},
             .mode = .translate,
@@ -242,7 +245,7 @@ pub const Translate = struct {
             tool.modeSwitchCube(self, origin, giz_active == .high, draw_nd, td);
             const commit = self.edit_state.rmouse == .rising;
             const real_commit = giz_active == .high and commit;
-            const dist = snapV3(origin_mut.sub(origin), self.edit_state.grid_snap);
+            const dist = self.grid.snapV3(origin_mut.sub(origin));
             const selected = self.selection.getSlice();
             const MAX_DRAWN_VERTS = 500;
             const draw_verts = selected.len < MAX_DRAWN_VERTS;
@@ -307,6 +310,20 @@ pub const Translate = struct {
                 .snap_mod = 15,
                 .snap_thresh = 3,
             }));
+
+        const com_o = Wg.SliderOptions{ .nudge = 1, .snap_mod = 1, .snap_thresh = 0.5 };
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid x", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, self.ed.grid.s.xMut(), 0, 1024, com_o));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid y", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, self.ed.grid.s.yMut(), 0, 1024, com_o));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid z", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, self.ed.grid.s.zMut(), 0, 1024, com_o));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Set grid", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                .commit_cb = &@This().textbox_cb,
+                .commit_vt = &self.cb_vt,
+                .clear_on_commit = true,
+            }));
     }
 
     fn commit_(self: *Editor, dupe: bool, angle_delta: ?Vec3, origin: Vec3, dist: Vec3) !void {
@@ -369,5 +386,17 @@ pub const Translate = struct {
             //now iterate the new_ent_list and update the group mapping
         }
         undo.applyRedo(ustack.items, self);
+    }
+
+    fn textbox_cb(vt: *iArea, _: *RGui, string: []const u8, id: usize) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+        self.textboxErr(string, id) catch return;
+    }
+
+    fn textboxErr(self: *@This(), string: []const u8, id: usize) !void {
+        _ = id;
+
+        const num = try std.fmt.parseFloat(f32, string);
+        self.ed.grid.setAll(num);
     }
 };

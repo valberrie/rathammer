@@ -18,6 +18,7 @@ const undo = @import("../undo.zig");
 const snapV3 = util3d.snapV3;
 const prim_gen = @import("../primitive_gen.zig");
 const BBGizmo = @import("../aabb_gizmo.zig");
+const grid = @import("../grid.zig");
 
 pub const CubeDraw = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
@@ -164,7 +165,7 @@ pub const CubeDraw = struct {
     fn getHeight(self: *const @This(), ed: *Editor, p2: Vec3) f32 {
         const dim = self.start.sub(p2);
         return switch (self.height_setting) {
-            .grid => ed.edit_state.grid_snap,
+            .grid => ed.grid.s.z(),
             .custom => self.custom_height,
             .min_w => @min(@abs(dim.x()), @abs(dim.y())),
             .max_w => @max(@abs(dim.x()), @abs(dim.y())),
@@ -178,8 +179,8 @@ pub const CubeDraw = struct {
         const norm = rot.mulByVec3(Vec3.new(0, 0, 1));
         const xx = util3d.getBasis(norm);
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
-        const snap = if (tool.snap_new_verts) ed.edit_state.grid_snap else 0;
-        const bounds = tool.bb_gizmo.aabbGizmo(&tool.start, &tool.end, rc, ed.edit_state.lmouse, ed.edit_state.grid_snap, draw_nd);
+        const snap = if (tool.snap_new_verts) ed.grid else grid.Snap.zero();
+        const bounds = tool.bb_gizmo.aabbGizmo(&tool.start, &tool.end, rc, ed.edit_state.lmouse, ed.grid, draw_nd);
         if (ed.edit_state.lmouse == .falling) {
             //tool.start = bounds[0];
             //tool.end = bounds[1];
@@ -195,7 +196,7 @@ pub const CubeDraw = struct {
                     .r = r,
                     .z = z,
                     .num_segment = tool.primitive_settings.nsegment,
-                    .snap = snap,
+                    .grid = snap,
                 });
 
                 const center = cc[0].add(cc[1].scale(0.5));
@@ -215,7 +216,7 @@ pub const CubeDraw = struct {
                     .r2 = r,
                     .z = z,
                     .num_segment = tool.primitive_settings.nsegment,
-                    .snap = snap,
+                    .grid = snap,
                 });
 
                 const center = cc[0].add(cc[1].scale(0.5));
@@ -232,7 +233,7 @@ pub const CubeDraw = struct {
                     .phi = tool.primitive_settings.theta,
                     .phi_seg = set.nsegment,
                     .theta_seg = set.nsegment,
-                    .snap = snap,
+                    .grid = snap,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
@@ -253,7 +254,7 @@ pub const CubeDraw = struct {
 
                     .front_perc = tool.stairs_setting.front_perc,
                     .back_perc = tool.stairs_setting.back_perc,
-                    .snap = snap,
+                    .grid = snap,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
@@ -324,30 +325,7 @@ pub const CubeDraw = struct {
             .init, .reinit => tool.state = .start,
             .normal => {},
         }
-        const helper = struct {
-            fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: f32, count: usize) void {
-                //const cpos = inter;
-                const cpos = snapV3(inter, snap);
-                const nline: f32 = @floatFromInt(count);
-
-                const iline2: f32 = @floatFromInt(count / 2);
-
-                const oth = @trunc(nline * snap / 2);
-                for (0..count) |n| {
-                    const fnn: f32 = @floatFromInt(n);
-                    {
-                        const start = Vec3.new((fnn - iline2) * snap + cpos.x(), cpos.y() - oth, plane_z);
-                        const end = start.add(Vec3.new(0, 2 * oth, 0));
-                        d.line3D(start, end, 0xffffffff);
-                    }
-                    const start = Vec3.new(cpos.x() - oth, (fnn - iline2) * snap + cpos.y(), plane_z);
-                    const end = start.add(Vec3.new(2 * oth, 0, 0));
-                    d.line3D(start, end, 0xffffffff);
-                }
-                //d.point3D(cpos, 0xff0000ee);
-            }
-        };
-        const snap = self.edit_state.grid_snap;
+        const snap = self.grid;
         const ray = self.camRay(td.screen_area, td.view_3d.*);
         switch (tool.state) {
             .start => {
@@ -355,15 +333,15 @@ pub const CubeDraw = struct {
                 const plane_down = self.isBindState(self.config.keys.cube_draw_plane_down.b, .rising);
                 const send_raycast = self.isBindState(self.config.keys.cube_draw_plane_raycast.b, .high);
                 if (plane_up)
-                    tool.plane_z += snap;
+                    tool.plane_z += snap.s.z();
                 if (plane_down)
-                    tool.plane_z -= snap;
+                    tool.plane_z -= snap.s.z();
                 if (send_raycast) {
                     const pot = self.screenRay(td.screen_area, td.view_3d.*);
                     if (pot.len > 0) {
                         const inter = pot[0].point;
-                        const cc = snapV3(inter, snap);
-                        helper.drawGrid(inter, cc.z(), draw, snap, 11);
+                        const cc = self.grid.snapV3(inter);
+                        grid.drawGrid(inter, cc.z(), draw, snap, 11);
                         if (self.edit_state.lmouse == .rising) {
                             tool.plane_z = cc.z();
                         }
@@ -371,9 +349,9 @@ pub const CubeDraw = struct {
                 } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
                     //user has a xy plane
                     //can reposition using keys or doing a raycast into world
-                    helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
+                    grid.drawGrid(inter, tool.plane_z, draw, snap, 11);
 
-                    const cc = if (tool.snap_z) snapV3(inter, snap) else util3d.snapSwiz(inter, snap, "xy");
+                    const cc = if (tool.snap_z) self.grid.snapV3(inter) else self.grid.swiz(inter, "xy");
                     draw.point3D(cc, 0xff0000ee);
 
                     if (self.edit_state.lmouse == .rising) {
@@ -384,8 +362,8 @@ pub const CubeDraw = struct {
             },
             .planar => {
                 if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                    helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
-                    const in = if (tool.snap_z) snapV3(inter, snap) else util3d.snapSwiz(inter, snap, "xy");
+                    grid.drawGrid(inter, tool.plane_z, draw, snap, 11);
+                    const in = if (tool.snap_z) snap.snapV3(inter) else snap.swiz(inter, "xy");
                     const height = tool.getHeight(self, in);
                     const cc = util3d.cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, height)));
                     draw.cube(cc[0], cc[1], 0xffffff88);

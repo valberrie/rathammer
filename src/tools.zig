@@ -323,7 +323,7 @@ pub const VertexTranslate = struct {
             const commit = ed.edit_state.rmouse == .rising;
             const real_commit = giz_active == .high and commit;
 
-            const dist = snapV3(origin_mut.sub(origin), ed.edit_state.grid_snap);
+            const dist = ed.grid.snapV3(origin_mut.sub(origin));
             for (selected_slice) |id| {
                 const manip_verts = self.selected.getPtr(id) orelse continue;
                 const solid = ed.getComponent(id, .solid) orelse continue;
@@ -542,7 +542,7 @@ pub const FastFaceManip = struct {
                                 //const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
                                 //const acc = dist_n.dot(plane_norm);
                                 _, const pos = inter_;
-                                const dist = snapV3(pos, editor.edit_state.grid_snap);
+                                const dist = editor.grid.snapV3(pos);
 
                                 for (self.selected.items) |sel| {
                                     const solid_o = editor.getComponent(sel.id, .solid) orelse continue;
@@ -667,7 +667,7 @@ pub const PlaceModel = struct {
         const pot = self.screenRay(td.screen_area, td.view_3d.*);
         if (pot.len > 0) {
             const p = pot[0];
-            const point = snapV3(p.point, self.edit_state.grid_snap);
+            const point = self.grid.snapV3(p.point);
             const mat1 = graph.za.Mat4.fromTranslate(point);
             const model_id = self.asset_browser.selected_model_vpk_id;
             const mod = blk: {
@@ -868,7 +868,7 @@ const Proportional = struct {
 
                     const sign = self.start_n.dot(Vec3.set(1));
                     _, const p_unsnapped = inter;
-                    const p = snapV3(p_unsnapped, ed.edit_state.grid_snap);
+                    const p = ed.grid.snapV3(p_unsnapped);
                     const bmin = if (sign > 0) self.bb_min else self.bb_min.add(p);
                     const bmax = if (sign < 0) self.bb_max else self.bb_max.add(p);
                     const fr0zen = if (sign > 0) self.bb_min else self.bb_max;
@@ -989,7 +989,7 @@ pub const TranslateFace = struct {
                     }
 
                     if (giz_active == .high) {
-                        const dist = snapV3(origin.sub(origin_i), self.edit_state.grid_snap);
+                        const dist = self.grid.snapV3(origin.sub(origin_i));
                         try solid.drawImmediate(td.draw, self, dist, side.index.items);
                         if (self.edit_state.rmouse == .rising) {
                             //try solid.translateSide(id, dist, self, s_i);
@@ -1130,7 +1130,7 @@ pub const Clipping = struct {
                 if (pot.len > 0) {
                     const inter = pot[0];
                     const solid = try ed.ecs.getPtr(inter.id, .solid);
-                    const snapped = snapV3(inter.point, ed.edit_state.grid_snap);
+                    const snapped = ed.grid.snapV3(inter.point);
                     draw_nd.point3D(snapped, 0xff_0000_ff);
                     if (lm != .rising) return;
                     const side_id = inter.side_id orelse return;
@@ -1153,7 +1153,7 @@ pub const Clipping = struct {
                 if (self.state == .point1)
                     draw_nd.point3D(self.points[0], 0xff_0000_ff);
                 if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter| {
-                    const snapped = snapV3(inter, ed.edit_state.grid_snap);
+                    const snapped = ed.grid.snapV3(inter);
                     draw_nd.point3D(snapped, 0xff_0000_ff);
                     if (lm != .rising) return;
                     self.points[if (self.state == .point0) 0 else 1] = snapped;
@@ -1175,7 +1175,7 @@ pub const Clipping = struct {
                         break :grab_blk;
                     }
                     if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter|
-                        grab.ptr.* = snapV3(inter, ed.edit_state.grid_snap);
+                        grab.ptr.* = ed.grid.snapV3(inter);
                     const rm = ed.edit_state.rmouse;
                     if (rm == .rising)
                         self.commitGrab();

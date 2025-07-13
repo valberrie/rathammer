@@ -39,6 +39,7 @@ const GroupId = ecs.Groups.GroupId;
 const eviews = @import("editor_views.zig");
 const path_guess = @import("path_guess.zig");
 const shell = @import("shell.zig");
+const grid_stuff = @import("grid.zig");
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
@@ -268,8 +269,9 @@ pub const Context = struct {
         rmouse: ButtonState = .low,
         mpos: graph.Vec2f = undefined,
 
-        grid_snap: f32 = 16,
+        //grid_snap: f32 = 16,
     } = .{},
+    grid: grid_stuff.Snap = .{ .s = Vec3.set(16) },
 
     //TODO this is inspector state
     misc_gui_state: struct {
@@ -454,7 +456,7 @@ pub const Context = struct {
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
 
-        try self.tools.register("translate", tool_def.Translate);
+        try self.tools.registerCustom("translate", tool_def.Translate, try tool_def.Translate.create(self.alloc, self));
         try self.tools.register("translate_face", tool_def.TranslateFace);
         try self.tools.register("place_model", tool_def.PlaceModel);
         try self.tools.register("cube_draw", tool_def.CubeDraw);
@@ -1248,10 +1250,9 @@ pub const Context = struct {
             }
 
             if (ed.isBindState(config.keys.grid_inc.b, .rising))
-                ed.edit_state.grid_snap *= 2;
+                ed.grid.double();
             if (ed.isBindState(config.keys.grid_dec.b, .rising))
-                ed.edit_state.grid_snap /= 2;
-            ed.edit_state.grid_snap = std.math.clamp(ed.edit_state.grid_snap, 1, 4096);
+                ed.grid.half();
             ds.tab_index = @min(ds.tab_index, tabs.len - 1);
 
             ed.edit_state.tool_reinit = false;
