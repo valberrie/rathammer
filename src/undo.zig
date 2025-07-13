@@ -6,6 +6,7 @@ const graph = @import("graph");
 const vpk = @import("vpk.zig");
 const Vec3 = graph.za.Vec3;
 const ecs = @import("ecs.zig");
+const util3d = @import("util_3d.zig");
 
 //Stack based undo,
 //we push operations onto the stack.
@@ -166,10 +167,11 @@ pub const SelectionUndo = struct {
 };
 
 pub const UndoTranslate = struct {
+    const Quat = graph.za.Quat;
     vt: iUndo,
 
     vec: Vec3,
-    angle_delta: Vec3,
+    angle_delta: ?Vec3,
     rot_origin: Vec3,
     id: Id,
 
@@ -177,7 +179,7 @@ pub const UndoTranslate = struct {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vec = vec,
-            .angle_delta = angle_delta orelse Vec3.zero(),
+            .angle_delta = angle_delta,
             .rot_origin = rot_origin,
             .id = id,
             .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
@@ -185,22 +187,27 @@ pub const UndoTranslate = struct {
         return &obj.vt;
     }
 
+    //TODO translate entity about rot_origin;
     pub fn undo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid|
-            solid.translate(self.id, self.vec.scale(-1), editor) catch return;
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.translate(self.id, self.vec.scale(-1), editor, self.rot_origin, if (self.angle_delta) |ad| util3d.extEulerToQuat(ad.scale(-1)) else null) catch return;
+        }
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             ent.setOrigin(editor, self.id, ent.origin.add(self.vec.scale(-1))) catch return;
-            ent.setAngle(editor, self.id, ent.angle.sub(self.angle_delta)) catch return;
+            if (self.angle_delta) |angd|
+                ent.setAngle(editor, self.id, ent.angle.sub(angd)) catch return;
         }
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid|
-            solid.translate(self.id, self.vec, editor) catch return;
+        if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
+            solid.translate(self.id, self.vec, editor, self.rot_origin, if (self.angle_delta) |ad| util3d.extEulerToQuat(ad) else null) catch return;
+        }
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             ent.setOrigin(editor, self.id, ent.origin.add(self.vec)) catch return;
-            ent.setAngle(editor, self.id, ent.angle.add(self.angle_delta)) catch return;
+            if (self.angle_delta) |angd|
+                ent.setAngle(editor, self.id, ent.angle.add(angd)) catch return;
         }
     }
 

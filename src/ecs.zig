@@ -913,16 +913,30 @@ pub const Solid = struct {
     }
 
     //Update displacament
-    pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Editor) !void {
+    pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Editor, rot_origin: Vec3, rot: ?Quat) !void {
         //move all verts, recompute bounds
         //for each batchid, call rebuild
 
-        for (self.verts.items) |*vert| {
-            vert.* = vert.add(vec);
+        if (rot) |quat| {
+            for (self.verts.items) |*vert| {
+                const v = vert.sub(rot_origin);
+                const rotv = quat.rotateVec(v);
+
+                vert.* = rotv.add(rot_origin);
+            }
+        } else {
+            for (self.verts.items) |*vert| {
+                vert.* = vert.add(vec);
+            }
         }
         for (self.sides.items) |*side| {
             side.u.trans = side.u.trans - (vec.dot(side.u.axis)) / side.u.scale;
             side.v.trans = side.v.trans - (vec.dot(side.v.axis)) / side.v.scale;
+
+            if (rot) |quat| {
+                side.u.axis = quat.rotateVec(side.u.axis);
+                side.v.axis = quat.rotateVec(side.v.axis);
+            }
         }
         try self.rebuild(id, editor);
         editor.draw_state.meshes_dirty = true;

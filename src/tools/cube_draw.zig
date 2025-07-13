@@ -294,7 +294,7 @@ pub const CubeDraw = struct {
                 try ed.ecs.attach(new, .solid, newsolid);
                 try ed.ecs.attach(new, .bounding_box, .{});
                 const solid_ptr = try ed.ecs.getPtr(new, .solid);
-                try solid_ptr.translate(new, Vec3.zero(), ed);
+                try solid_ptr.translate(new, Vec3.zero(), ed, Vec3.zero(), null);
                 {
                     try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
                 }

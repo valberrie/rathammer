@@ -335,7 +335,7 @@ pub const VertexTranslate = struct {
                         try solid.removeFromMeshMap(id, ed);
                     },
                     .falling => {
-                        try solid.translate(id, Vec3.zero(), ed); //Dummy to put it bake in the mesh batch
+                        try solid.translate(id, Vec3.zero(), ed, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
 
                         //Draw it here too so we it doesn't flash for a single frame
                         try solid.drawImmediate(td.draw, ed, dist, null);
@@ -793,7 +793,7 @@ const Proportional = struct {
         const sel = ed.selection.getSlice();
         for (sel) |id| {
             if (ed.getComponent(id, .solid)) |solid| {
-                if (!add) try solid.removeFromMeshMap(id, ed) else try solid.translate(id, Vec3.zero(), ed);
+                if (!add) try solid.removeFromMeshMap(id, ed) else try solid.translate(id, Vec3.zero(), ed, Vec3.zero(), null);
             }
         }
     }
@@ -984,7 +984,7 @@ pub const TranslateFace = struct {
                         try solid.removeFromMeshMap(id, self);
                     }
                     if (giz_active == .falling) {
-                        try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+                        try solid.translate(id, Vec3.zero(), self, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
                         tool.face_origin = origin;
                     }
 
@@ -1226,7 +1226,7 @@ pub const Clipping = struct {
                         try ed.ecs.attach(new, .solid, r.*);
                         try ed.ecs.attach(new, .bounding_box, .{});
                         const solid_ptr = try ed.ecs.getPtr(new, .solid);
-                        try solid_ptr.translate(new, Vec3.zero(), ed);
+                        try solid_ptr.translate(new, Vec3.zero(), ed, Vec3.zero(), null);
                     }
                     undo.applyRedo(ustack.items, ed);
                 }

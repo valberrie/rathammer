@@ -55,7 +55,8 @@ pub const Translate = struct {
     //TODO support this
     origin_mode: enum {
         mean,
-    } = .mean,
+        last_selected,
+    } = .last_selected,
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -96,6 +97,23 @@ pub const Translate = struct {
         }
     }
 
+    fn getOrigin(self: *Translate, ed: *Editor) ?Vec3 {
+        switch (self.origin_mode) {
+            .mean => {},
+            .last_selected => {
+                const last_id = ed.selection.getLast() orelse return null;
+                const last_bb = ed.getComponent(last_id, .bounding_box) orelse return null;
+                if (ed.getComponent(last_id, .solid)) |solid| { //check Solid before Entity
+                    _ = solid;
+                    return last_bb.a.add(last_bb.b).scale(0.5);
+                } else if (ed.getComponent(last_id, .entity)) |ent| {
+                    return ent.origin;
+                }
+            },
+        }
+        return null;
+    }
+
     pub fn rotate(tool: *Translate, self: *Editor, td: tools.ToolData) !void {
         const draw_nd = &self.draw_state.ctx;
         const draw = td.draw;
@@ -104,22 +122,9 @@ pub const Translate = struct {
         const COLOR_DUPE = 0xfc35ac_ee;
         const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
 
-        const last_id = self.selection.getLast() orelse return;
         var angle: Vec3 = Vec3.zero();
         var angle_delta = Vec3.zero();
-        const giz_origin: ?Vec3 = blk: {
-            const last_bb = self.getComponent(last_id, .bounding_box) orelse return;
-            if (self.getComponent(last_id, .solid)) |solid| { //check Solid before Entity
-                angle = Vec3.zero();
-                _ = solid;
-                break :blk last_bb.a.add(last_bb.b).scale(0.5);
-            } else if (self.getComponent(last_id, .entity)) |ent| {
-                angle = Vec3.zero();
-                //angle = ent.angle;
-                break :blk ent.origin;
-            }
-            break :blk null;
-        };
+        const giz_origin = tool.getOrigin(self);
         if (giz_origin) |origin| {
             // Care must be taken if selection is changed while gizmo is active, as solids are removed from meshmaps
             const giz_active = tool.gizmo_rotation.drawGizmo(
@@ -128,9 +133,11 @@ pub const Translate = struct {
                 self.draw_state.cam3d.pos,
                 self.edit_state.lmouse,
                 draw_nd,
-                td.screen_area.dim(),
-                td.view_3d.*,
-                self.edit_state.mpos,
+
+                self.camRay(td.screen_area, td.view_3d.*),
+                //td.screen_area.dim(),
+                //td.view_3d.*,
+                //self.edit_state.mpos,
             );
             tool.modeSwitchCube(self, origin, giz_active == .high, draw_nd, td);
             const commit = self.edit_state.rmouse == .rising;
@@ -146,7 +153,7 @@ pub const Translate = struct {
                         try solid.removeFromMeshMap(id, self);
                     }
                     if (giz_active == .falling) {
-                        try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+                        try solid.translate(id, Vec3.zero(), self, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
 
                         //Draw it here too so we it doesn't flash for a single frame
                         //try solid.drawImmediate(draw, self, dist, null);
@@ -156,6 +163,7 @@ pub const Translate = struct {
                         .origin = origin,
                         .quat = util3d.extEulerToQuat(snapV3(angle, tool.angle_snap)),
                     };
+                    angle_delta = snapV3(angle, tool.angle_snap);
 
                     if (giz_active == .high) {
                         try solid.drawImmediateCustom(draw, self, ctx, DrawCustomCtx.vertOffset);
@@ -198,7 +206,7 @@ pub const Translate = struct {
         const ce = Vec3.set(switcher_sz);
         draw.cube(co, ce, 0xffffff88);
         if (active) {} else {
-            const rc = util3d.screenSpaceRay(td.screen_area.dim(), ed.edit_state.mpos, td.view_3d.*);
+            const rc = ed.camRay(td.screen_area, td.view_3d.*);
             if (ed.edit_state.lmouse == .rising) {
                 if (util3d.doesRayIntersectBBZ(rc[0], rc[1], co, co.add(ce))) |_| {
                     tool.mode.next();
@@ -215,17 +223,7 @@ pub const Translate = struct {
         const COLOR_DUPE = 0xfc35ac_ee;
         const color: u32 = if (dupe) COLOR_DUPE else COLOR_MOVE;
 
-        const last_id = self.selection.getLast() orelse return;
-        const giz_origin: ?Vec3 = blk: {
-            const last_bb = self.getComponent(last_id, .bounding_box) orelse return;
-            if (self.getComponent(last_id, .solid)) |solid| { //check Solid before Entity
-                _ = solid;
-                break :blk last_bb.a.add(last_bb.b).scale(0.5);
-            } else if (self.getComponent(last_id, .entity)) |ent| {
-                break :blk ent.origin;
-            }
-            break :blk null;
-        };
+        const giz_origin = tool.getOrigin(self);
         if (giz_origin) |origin| {
             // Care must be taken if selection is changed while gizmo is active, as solids are removed from meshmaps
             var origin_mut = origin;
@@ -256,7 +254,7 @@ pub const Translate = struct {
                         try solid.removeFromMeshMap(id, self);
                     }
                     if (giz_active == .falling) {
-                        try solid.translate(id, Vec3.zero(), self); //Dummy to put it bake in the mesh batch
+                        try solid.translate(id, Vec3.zero(), self, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
 
                         //Draw it here too so we it doesn't flash for a single frame
                         try solid.drawImmediate(draw, self, dist, null);
@@ -283,7 +281,7 @@ pub const Translate = struct {
                 }
             }
             if (real_commit) {
-                try commit_(self, dupe, Vec3.zero(), origin, dist);
+                try commit_(self, dupe, null, origin, dist);
             }
         }
     }
@@ -311,7 +309,7 @@ pub const Translate = struct {
             }));
     }
 
-    fn commit_(self: *Editor, dupe: bool, angle_delta: Vec3, origin: Vec3, dist: Vec3) !void {
+    fn commit_(self: *Editor, dupe: bool, angle_delta: ?Vec3, origin: Vec3, dist: Vec3) !void {
         const selected = self.selection.getSlice();
         var new_ent_list = std.ArrayList(ecs.EcsT.Id).init(self.frame_arena.allocator());
         //Map old groups to duped groups

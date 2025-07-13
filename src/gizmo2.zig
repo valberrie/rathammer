@@ -22,9 +22,10 @@ pub const Gizmo = struct {
         camera_pos: Vec3,
         lmouse: BtnState,
         draw: *graph.ImmediateDrawingContext,
-        screen_area: graph.Vec2f,
-        view: graph.za.Mat4,
-        mouse_pos: graph.Vec2f,
+        rc: [2]Vec3,
+        //screen_area: graph.Vec2f,
+        //view: graph.za.Mat4,
+        //mouse_pos: graph.Vec2f,
     ) BtnState {
         const CIRCLE_DIST_SCALE = 3;
         const gizmo_size = orig.distance(camera_pos) / 64 * 10;
@@ -59,7 +60,7 @@ pub const Gizmo = struct {
         switch (lmouse) {
             .rising => {
                 var caught_one = false;
-                const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
+                //const rc = ed.screenRay(screen_area, view);
                 //TODO do a depth test
                 for (cube_orig, 0..) |co, ci| {
                     const ce = cube_ext[ci];
@@ -88,7 +89,7 @@ pub const Gizmo = struct {
             },
             .high => {
                 const si = self.selected_index orelse return .low;
-                const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
+                //const rc = util3d.screenSpaceRay(screen_area, mouse_pos, view);
                 if (util3d.doesRayIntersectPlane(
                     rc[0],
                     rc[1],
