@@ -170,13 +170,15 @@ pub const UndoTranslate = struct {
 
     vec: Vec3,
     angle_delta: Vec3,
+    rot_origin: Vec3,
     id: Id,
 
-    pub fn create(alloc: std.mem.Allocator, vec: Vec3, angle_delta: ?Vec3, id: Id) !*iUndo {
+    pub fn create(alloc: std.mem.Allocator, vec: Vec3, angle_delta: ?Vec3, id: Id, rot_origin: Vec3) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vec = vec,
             .angle_delta = angle_delta orelse Vec3.zero(),
+            .rot_origin = rot_origin,
             .id = id,
             .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
         };
