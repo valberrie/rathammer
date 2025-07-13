@@ -26,12 +26,17 @@ const Commands = enum {
     portalfile,
     stats,
     wireframe,
+    set,
+    env,
+    pos,
 };
 
 pub const CommandCtx = struct {
     cb_vt: Console.ConsoleCb,
 
     ed: *Editor,
+    env: std.StringHashMap([]const u8),
+    arena: std.heap.ArenaAllocator,
 
     pub fn create(alloc: std.mem.Allocator, editor: *Editor) !*@This() {
         const self = try alloc.create(@This());
@@ -39,12 +44,16 @@ pub const CommandCtx = struct {
         self.* = .{
             .cb_vt = .{ .exec = &exec_command_cb },
             .ed = editor,
+            .env = std.StringHashMap([]const u8).init(alloc),
+            .arena = std.heap.ArenaAllocator.init(alloc),
         };
 
         return self;
     }
 
     pub fn destroy(self: *@This(), alloc: std.mem.Allocator) void {
+        self.env.deinit();
+        self.arena.deinit();
         alloc.destroy(self);
     }
 
@@ -55,9 +64,28 @@ pub const CommandCtx = struct {
         };
     }
 
-    pub fn execErr(self: *@This(), command: []const u8, output: *std.ArrayList(u8)) !void {
+    pub fn resolveArg(self: *@This(), token: []const u8, output: *std.ArrayList(u8)) !void {
+        if (token.len == 0) return;
+        switch (token[0]) {
+            '$' => try output.appendSlice(self.env.get(token[1..]) orelse return error.notAVar),
+            '!' => try self.execErr(token[1..], output),
+            else => try output.appendSlice(token),
+        }
+    }
+
+    pub fn execErr(self: *@This(), command: []const u8, output: *std.ArrayList(u8)) anyerror!void {
         const wr = output.writer();
-        var args = std.mem.tokenizeScalar(u8, command, ' ');
+        var scratch = std.ArrayList(u8).init(self.ed.alloc);
+        defer scratch.deinit();
+        {
+            var args = std.mem.tokenizeAny(u8, command, " \n");
+            //const com_name = args.next() orelse return;
+            while (args.next()) |ar| {
+                try scratch.append(' ');
+                try self.resolveArg(ar, &scratch);
+            }
+        }
+        var args = std.mem.tokenizeAny(u8, scratch.items, " \n");
         const com_name = args.next() orelse return;
         if (std.meta.stringToEnum(Commands, com_name)) |com| {
             switch (com) {
@@ -69,6 +97,24 @@ pub const CommandCtx = struct {
                     const field = @typeInfo(Commands).@"enum".fields;
                     inline for (field) |f| {
                         try wr.print("{s}\n", .{f.name});
+                    }
+                },
+                .set => {
+                    const name = args.next() orelse return error.expectedName;
+                    const name_duped = try self.arena.allocator().dupe(u8, name);
+                    const rest = args.rest();
+                    try self.env.put(name_duped, try self.arena.allocator().dupe(u8, rest));
+                    try wr.print("${s}={s}\n", .{ name, rest });
+                },
+                .pos => {
+                    const p = self.ed.draw_state.cam3d.pos;
+                    try wr.print("{d} {d} {d}", .{ p.x(), p.y(), p.z() });
+                    try wr.print("\n", .{});
+                },
+                .env => {
+                    var it = self.env.iterator();
+                    while (it.next()) |item| {
+                        try wr.print("{s}: {s}\n", .{ item.key_ptr.*, item.value_ptr.* });
                     }
                 },
                 .fov => {
@@ -135,7 +181,7 @@ pub const CommandCtx = struct {
                         try wr.print("Teleporting to {d} {d} {d}\n", .{ vec.x(), vec.y(), vec.z() });
                         self.ed.draw_state.cam3d.pos = vec;
                     } else {
-                        try wr.print("Invalid teleport command: '{s}'\n", .{command});
+                        try wr.print("Invalid teleport command: '{s}'\n", .{scratch.items});
                     }
                 },
                 .portalfile => {
@@ -169,7 +215,7 @@ pub const CommandCtx = struct {
                 },
             }
         } else {
-            try wr.print("Unknown command: '{s}' Type help for list of commands", .{command});
+            try wr.print("Unknown command: '{s}' Type help for list of commands", .{scratch.items});
         }
     }
 };

@@ -202,11 +202,14 @@ pub const Context = struct {
             grabbed: bool = false,
             was_grabbed: bool = false,
 
+            overridden: bool = false,
+
             //if the mouse is ungrabbed, the pane who contains it gets own
             //if the mouse is ungrabbed, and a pane contain it, it can grab it
             //nobody else can own it until the owner calls ungrab
 
             pub fn tryOwn(self: *@This(), area: graph.Rect, win: *graph.SDL.Window, own: eviews.Pane) bool {
+                if (self.overridden) return false;
                 if (self.was_grabbed) return self.owner == own;
                 if (area.containsPoint(win.mouse.pos)) {
                     self.owner = own;
@@ -214,12 +217,18 @@ pub const Context = struct {
                 return self.owner == own;
             }
 
+            pub fn override(self: *@This()) void {
+                self.overridden = true;
+            }
+
             pub fn endFrame(self: *@This()) void {
                 self.was_grabbed = self.grabbed;
                 self.grabbed = false;
+                self.overridden = false;
             }
 
             pub fn trySetGrab(self: *@This(), own: eviews.Pane, should_grab: bool) enum { ungrabbed, grabbed, none } {
+                if (self.overridden) return .none;
                 if (self.was_grabbed) {
                     if (own == self.owner) {
                         self.grabbed = should_grab;

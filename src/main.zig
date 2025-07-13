@@ -151,6 +151,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
     try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
 
+    var console_active = false;
     const console_win = try ConsoleWindow.create(&gui, editor, &editor.shell.cb_vt);
     try gui.addWindow(&console_win.vt, Rec(0, 0, 800, 600));
 
@@ -234,6 +235,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         if (win.isBindState(config.keys.pause.b, .rising)) {
             editor.paused = !editor.paused;
         }
+        if (console_active)
+            editor.draw_state.grab_pane.override();
 
         if (editor.paused) {
             switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
@@ -293,6 +296,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
 
         try gui.pre_update(gui.windows.items);
+        if (win.isBindState(config.keys.toggle_console.b, .rising)) {
+            console_active = !console_active;
+            if (console_active) {
+                console_win.area.dirty(&gui);
+            }
+        }
         win_count = 0;
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
@@ -315,6 +324,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 },
                 else => try editor_view.drawPane(editor, pane, cam_state, &win, pane_area, &draw, &os9gui),
             }
+        }
+        if (console_active) {
+            try gui.update(&.{&console_win.vt});
+            windows_list[win_count] = &console_win.vt;
+            win_count += 1;
         }
 
         editor.draw_state.grab_pane.endFrame();

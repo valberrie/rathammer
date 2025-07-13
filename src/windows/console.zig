@@ -84,6 +84,9 @@ pub const Console = struct {
             .user_id = 0,
             .clear_on_commit = true,
         }));
+        if (self.area.children.items.len > 0) {
+            gui.grabFocus(self.area.children.items[0], vt);
+        }
 
         self.area.addChildOpt(gui, vt, Wg.TextView.build(gui, text_area, self.lines.items, vt, .{
             .mode = .split_on_space,
@@ -98,6 +101,7 @@ pub const Console = struct {
         self.lines.append(duped) catch return;
         var tv = self.getTextView() orelse return;
         tv.addOwnedText(duped, gui) catch return;
+        tv.gotoBottom();
         tv.rebuildScroll(gui, gui.getWindow(&self.area) orelse return);
     }
 
