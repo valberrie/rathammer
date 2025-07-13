@@ -874,12 +874,15 @@ pub const Context = struct {
                         try self.asset_browser.recent_mats.put(id.id);
                     }
                 }
+                if (self.asset_browser.recent_mats.list.items.len > 0) {
+                    self.asset_browser.selected_mat_vpk_id = self.asset_browser.recent_mats.list.items[0];
+                }
             } else |_| {} //This data is not essential to parse
         }
 
         try self.visgroups.insertVisgroupsFromJson(parsed.value.visgroup);
 
-        loadctx.cb("Building meshes}");
+        loadctx.cb("Building meshes");
         try self.rebuildAllDependentState();
     }
 
@@ -1217,14 +1220,6 @@ pub const Context = struct {
                 if (ent._model_id) |mid| {
                     if (std.mem.indexOfScalar(vpk.VpkResId, completed_ids.items, mid) != null) {
                         try ent.setModel(self, m_it.i, .{ .id = mid });
-
-                        //const mod = self.models.getPtr(mid) orelse continue;
-                        //const mesh = mod.mesh orelse continue;
-                        //const bb = try self.ecs.getPtr(m_it.i, .bounding_box);
-                        //bb.origin_offset = mesh.hull_min.scale(-1);
-                        //bb.a = mesh.hull_min;
-                        //bb.b = mesh.hull_max;
-                        //bb.setFromOrigin(ent.origin);
                     }
                 }
             }
