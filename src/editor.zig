@@ -394,8 +394,8 @@ pub const Context = struct {
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
                 .basic_shader = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
-                    .{ .path = "ratgraph/asset/shader/gbuffer.vert", .t = .vert },
-                    .{ .path = "src/basic.frag", .t = .frag },
+                    .{ .path = "ratasset/shader/basic.vert", .t = .vert },
+                    .{ .path = "ratasset/shader/basic.frag", .t = .frag },
                 }),
             },
         };
