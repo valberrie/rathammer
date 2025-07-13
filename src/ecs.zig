@@ -600,30 +600,30 @@ pub const Side = struct {
         try jw.endObject();
     }
 
-    pub fn resetUv(self: *@This(), norm: Vec3) void {
-        var n: u8 = 0;
-        var dist: f32 = 0;
-        const vs = [3]Vec3{ Vec3.new(1, 0, 0), Vec3.new(0, 1, 0), Vec3.new(0, 0, 1) };
-        for (vs, 0..) |v, i| {
-            const d = @abs(norm.dot(v));
-            if (d > dist) {
-                n = @intCast(i);
-                dist = d;
+    pub fn resetUv(self: *@This(), norm: Vec3, face: bool) void {
+        if (face) {
+            const basis = Vec3.new(0, 0, 1);
+            const ang = std.math.radiansToDegrees(
+                std.math.acos(basis.dot(norm)),
+            );
+            const mat = graph.za.Mat3.fromRotation(ang, basis.cross(norm));
+            self.u = .{ .axis = mat.mulByVec3(Vec3.new(1, 0, 0)), .trans = 0, .scale = 0.25 };
+            self.v = .{ .axis = mat.mulByVec3(Vec3.new(0, 1, 0)), .trans = 0, .scale = 0.25 };
+        } else {
+            var n: u8 = 0;
+            var dist: f32 = 0;
+            const vs = [3]Vec3{ Vec3.new(1, 0, 0), Vec3.new(0, 1, 0), Vec3.new(0, 0, 1) };
+            for (vs, 0..) |v, i| {
+                const d = @abs(norm.dot(v));
+                if (d > dist) {
+                    n = @intCast(i);
+                    dist = d;
+                }
             }
+            const b = util3d.getBasis(norm);
+            self.u = .{ .axis = b[0], .trans = 0, .scale = 0.25 };
+            self.v = .{ .axis = b[1], .trans = 0, .scale = 0.25 };
         }
-        //0 -> 1 2
-        //1 -> 0 2
-        //2 -> 1 0
-
-        const v: u8 = if (n == 2) 0 else 2;
-        const u: u8 = if (n == 1) 0 else 1;
-        _ = u;
-        _ = v;
-
-        const b = util3d.getBasis(norm);
-
-        self.u = .{ .axis = b[0], .trans = 0, .scale = 0.25 };
-        self.v = .{ .axis = b[1], .trans = 0, .scale = 0.25 };
     }
 
     pub fn justify(self: *@This(), verts: []const Vec3, kind: Justify) struct { u: UVaxis, v: UVaxis } {
@@ -736,7 +736,7 @@ pub const Solid = struct {
             });
             const side = &ret.sides.items[ret.sides.items.len - 1];
             const norm = side.normal(&ret);
-            side.resetUv(norm);
+            side.resetUv(norm, true);
         }
         try ret.optimizeMesh();
         return ret;
@@ -912,7 +912,6 @@ pub const Solid = struct {
         editor.draw_state.meshes_dirty = true;
     }
 
-    //Update displacament
     pub fn translate(self: *@This(), id: EcsT.Id, vec: Vec3, editor: *Editor, rot_origin: Vec3, rot: ?Quat) !void {
         //move all verts, recompute bounds
         //for each batchid, call rebuild
@@ -922,7 +921,7 @@ pub const Solid = struct {
                 const v = vert.sub(rot_origin);
                 const rotv = quat.rotateVec(v);
 
-                vert.* = rotv.add(rot_origin);
+                vert.* = rotv.add(rot_origin).add(vec);
             }
         } else {
             for (self.verts.items) |*vert| {

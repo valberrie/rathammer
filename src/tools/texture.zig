@@ -24,7 +24,8 @@ const snapV3 = util3d.snapV3;
 pub const TextureTool = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
     const GuiBtnEnum = enum {
-        reset,
+        reset_world,
+        reset_norm,
         j_left,
         j_fit,
         j_right,
@@ -125,7 +126,11 @@ pub const TextureTool = struct {
         var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
         ly.pushHeight(Wg.TextView.heightForN(gui, 4));
         area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{ .mode = .split_on_space }));
-        area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Reset face", H.btn(self, .reset)));
+        {
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Reset face world", H.btn(self, .reset_world)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Reset face norm", H.btn(self, .reset_norm)));
+        }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
         const t_ar = ly.getArea() orelse return;
@@ -259,9 +264,9 @@ pub const TextureTool = struct {
             .u_flip => new.u.axis = new.u.axis.scale(-1),
             .v_flip => new.v.axis = new.v.axis.scale(-1),
             .swap => std.mem.swap(Vec3, &new.u.axis, &new.v.axis),
-            .reset => {
+            .reset_world, .reset_norm => {
                 const norm = side.normal(sel.solid);
-                side.resetUv(norm);
+                side.resetUv(norm, btn_k == .reset_norm);
                 //TODO put this into the undo stack
                 sel.solid.rebuild(self.id orelse return, self.ed) catch return;
                 self.ed.draw_state.meshes_dirty = true;
@@ -316,22 +321,36 @@ pub const TextureTool = struct {
                             if (dupe) {
                                 if (try self.getCurrentlySelected(editor)) |f| {
                                     var duped = side.*;
+                                    duped.u.trans = f.side.u.trans;
+                                    duped.u.scale = f.side.u.scale;
+                                    duped.v.trans = f.side.v.trans;
+                                    duped.v.scale = f.side.v.scale;
 
-                                    if (f.side.u.axis.dot(duped.u.axis) > 0.5) {
-                                        duped.u.axis = f.side.u.axis;
-                                        duped.u.trans = f.side.u.trans;
-                                        duped.u.scale = f.side.u.scale;
-                                    } else {
-                                        duped.u.trans = f.side.v.trans;
-                                        duped.u.scale = f.side.v.scale;
-                                    }
-                                    if (f.side.v.axis.dot(duped.v.axis) > 0.5) {
-                                        duped.v.axis = f.side.v.axis;
-                                        duped.v.trans = f.side.v.trans;
-                                        duped.v.scale = f.side.v.scale;
-                                    } else {
-                                        duped.v.trans = f.side.u.trans;
-                                        duped.v.scale = f.side.u.scale;
+                                    {
+                                        const v2 = duped.normal(solid);
+                                        const v1 = f.side.normal(f.solid);
+                                        const dot = v1.dot(v2);
+                                        const ang = std.math.radiansToDegrees(
+                                            std.math.acos(dot),
+                                        );
+                                        const mat = graph.za.Mat3.fromRotation(ang, v1.cross(v2));
+                                        duped.u.axis = mat.mulByVec3(f.side.u.axis);
+                                        duped.v.axis = mat.mulByVec3(f.side.v.axis);
+
+                                        const rstart = f.solid.verts.items[f.side.index.items[0]];
+                                        const p0 = pot[0].point;
+                                        const pn = v2;
+                                        if (util3d.doesRayIntersectPlane(rstart, f.side.u.axis, p0, pn)) |I| {
+                                            const tw: f32 = @floatFromInt(duped.tw);
+                                            const sc = duped.u.scale;
+
+                                            duped.u.trans += @mod((I.dot(f.side.u.axis) - I.dot(duped.u.axis)) / sc, tw);
+                                        }
+                                        if (util3d.doesRayIntersectPlane(rstart, f.side.v.axis, p0, pn)) |I| {
+                                            const th: f32 = @floatFromInt(duped.th);
+                                            const sc = duped.v.scale;
+                                            duped.v.trans += @mod((I.dot(f.side.v.axis) - I.dot(duped.v.axis)) / sc, th);
+                                        }
                                     }
 
                                     break :src duped;

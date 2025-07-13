@@ -253,7 +253,7 @@ pub const ClipCtx = struct {
             const plane = util_3d.trianglePlane(.{ rv[it[0]], rv[it[1]], rv[it[2]] });
             self.split_side.tex_id = tex_id orelse 0;
 
-            self.split_side.resetUv(plane);
+            self.split_side.resetUv(plane, false);
             try ret[0].sides.append(try self.split_side.dupe());
             var duped = try self.split_side.dupe();
             duped.flipNormal();
