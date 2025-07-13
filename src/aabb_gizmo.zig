@@ -8,8 +8,8 @@ start_point: Vec3 = Vec3.zero(),
 start_norm: Vec3 = Vec3.zero(),
 active: bool = false,
 
-pub fn aabbGizmo(self: *@This(), min_: Vec3, max_: Vec3, rc: [2]Vec3, btn: BtnState, snap: f32, draw: *graph.ImmediateDrawingContext) [2]Vec3 {
-    const cube1 = util3d.cubeFromBounds(min_, max_);
+pub fn aabbGizmo(self: *@This(), min_: *Vec3, max_: *Vec3, rc: [2]Vec3, btn: BtnState, snap: f32, draw: *graph.ImmediateDrawingContext) [2]Vec3 {
+    const cube1 = util3d.cubeFromBounds(min_.*, max_.*);
     const min = cube1[0];
     const max = cube1[0].add(cube1[1]);
     var ret = [2]Vec3{ min, max };
@@ -36,6 +36,10 @@ pub fn aabbGizmo(self: *@This(), min_: Vec3, max_: Vec3, rc: [2]Vec3, btn: BtnSt
                     ret[1] = if (sign < 0) max else max.add(p);
 
                     draw.line3D(self.start_point, self.start_point.add(p), 0x00ffffff);
+                }
+                if (btn == .falling) {
+                    min_.* = ret[0];
+                    max_.* = ret[1];
                 }
             }
             if (btn == .falling)

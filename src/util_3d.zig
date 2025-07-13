@@ -304,6 +304,19 @@ pub fn snapV3(v: Vec3, snap: f32) Vec3 {
     };
 }
 
+pub fn snapSwiz(v: Vec3, snap: f32, comptime comp: []const u8) Vec3 {
+    var ret = v;
+    inline for (comp) |cc| {
+        switch (cc) {
+            'x' => ret.xMut().* = snap1(ret.x(), snap),
+            'y' => ret.yMut().* = snap1(ret.y(), snap),
+            'z' => ret.zMut().* = snap1(ret.z(), snap),
+            else => @compileError("not a component"),
+        }
+    }
+    return ret;
+}
+
 pub fn cubeFromBounds(p1: Vec3, p2: Vec3) struct { Vec3, Vec3 } {
     const ext = p1.sub(p2);
     return .{

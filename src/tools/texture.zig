@@ -145,7 +145,7 @@ pub const TextureTool = struct {
 
         {
             const Tb = Wg.TextboxNumber.build;
-            ly.pushCount(5);
+            ly.pushCount(6);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "X", null));
             area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "Y", null));

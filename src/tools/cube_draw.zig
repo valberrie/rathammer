@@ -60,6 +60,7 @@ pub const CubeDraw = struct {
     z: f32 = 0,
 
     snap_new_verts: bool = false,
+    snap_z: bool = false,
 
     plane_z: f32 = 0,
 
@@ -178,10 +179,10 @@ pub const CubeDraw = struct {
         const xx = util3d.getBasis(norm);
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
         const snap = if (tool.snap_new_verts) ed.edit_state.grid_snap else 0;
-        const bounds = tool.bb_gizmo.aabbGizmo(tool.start, tool.end, rc, ed.edit_state.lmouse, ed.edit_state.grid_snap, draw_nd);
+        const bounds = tool.bb_gizmo.aabbGizmo(&tool.start, &tool.end, rc, ed.edit_state.lmouse, ed.edit_state.grid_snap, draw_nd);
         if (ed.edit_state.lmouse == .falling) {
-            tool.start = bounds[0];
-            tool.end = bounds[1];
+            //tool.start = bounds[0];
+            //tool.end = bounds[1];
         }
         switch (tool.primitive) {
             .cylinder => {
@@ -372,7 +373,7 @@ pub const CubeDraw = struct {
                     //can reposition using keys or doing a raycast into world
                     helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
 
-                    const cc = snapV3(inter, snap);
+                    const cc = if (tool.snap_z) snapV3(inter, snap) else util3d.snapSwiz(inter, snap, "xy");
                     draw.point3D(cc, 0xff0000ee);
 
                     if (self.edit_state.lmouse == .rising) {
@@ -384,7 +385,7 @@ pub const CubeDraw = struct {
             .planar => {
                 if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
                     helper.drawGrid(inter, tool.plane_z, draw, snap, 11);
-                    const in = snapV3(inter, snap);
+                    const in = if (tool.snap_z) snapV3(inter, snap) else util3d.snapSwiz(inter, snap, "xy");
                     const height = tool.getHeight(self, in);
                     const cc = util3d.cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, height)));
                     draw.cube(cc[0], cc[1], 0xffffff88);
@@ -395,7 +396,7 @@ pub const CubeDraw = struct {
                         tool.end = in;
                         tool.end.data[2] += height;
                         tool.state = .finished;
-
+                        tool.bb_gizmo.active = false;
                         //Put it into the
                     }
                 }
