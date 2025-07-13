@@ -244,18 +244,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         }
         try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
 
-        graph.c.glPolygonMode(
-            graph.c.GL_FRONT_AND_BACK,
-            if (editor.draw_state.tog.wireframe) graph.c.GL_LINE else graph.c.GL_FILL,
-        );
         //win.grabMouse(editor.draw_state.grab.is);
         win.grabMouse(editor.draw_state.grab_pane.was_grabbed);
         win.pumpEvents(.poll);
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
-
-        if (win.keyRising(._9))
-            editor.draw_state.tog.wireframe = !editor.draw_state.tog.wireframe;
 
         const owner_3d = editor.draw_state.grab_pane.owner == .main_3d_view;
         editor.edit_state.mpos = win.mouse.pos;

@@ -25,6 +25,7 @@ const Commands = enum {
     unload_portalfile,
     portalfile,
     stats,
+    wireframe,
 };
 
 pub const CommandCtx = struct {
@@ -89,6 +90,9 @@ pub const CommandCtx = struct {
                             try wr.print("\tinvalid number: {s}\n", .{item});
                         }
                     }
+                },
+                .wireframe => {
+                    self.ed.draw_state.tog.wireframe = !self.ed.draw_state.tog.wireframe;
                 },
                 .stats => {
                     try wr.print("Num meshmaps/texture: {d}\n", .{self.ed.meshmap.count()});

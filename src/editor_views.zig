@@ -161,6 +161,11 @@ pub fn draw3Dview(
     font: *graph.FontUtil.PublicFontInterface,
     fh: f32,
 ) !void {
+    graph.c.glPolygonMode(
+        graph.c.GL_FRONT_AND_BACK,
+        if (self.draw_state.tog.wireframe) graph.c.GL_LINE else graph.c.GL_FILL,
+    );
+    defer graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_FILL);
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
     // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
     // "draw" still has depth buffer
