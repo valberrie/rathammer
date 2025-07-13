@@ -222,6 +222,10 @@ pub const Context = struct {
                 self.overridden = true;
             }
 
+            pub fn owns(self: *@This(), owner: eviews.Pane) bool {
+                return self.owner == owner;
+            }
+
             pub fn endFrame(self: *@This()) void {
                 self.was_grabbed = self.grabbed;
                 self.grabbed = false;

@@ -217,8 +217,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .panes = Tab.newPane(&panes, &PI, &.{ .model_browser, .model_preview }),
         },
         .{
-            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
-            .panes = Tab.newPane(&panes, &PI, &.{.main_3d_view}),
+            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .left, 1 } }),
+            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .main_2d_view }),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .top, 1 } }),

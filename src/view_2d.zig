@@ -18,9 +18,9 @@ pub const Ctx2dView = struct {
         .screen_area = graph.Rec(0, 0, 0, 0),
     },
 
-    pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, draw: *DrawCtx, win: *graph.SDL.Window) void {
+    pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, d: views.ViewDrawState) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.draw2dView(editor, screen_area, draw, win) catch return;
+        self.draw2dView(editor, screen_area, d.draw, d.win) catch return;
     }
 
     pub fn create(alloc: std.mem.Allocator) !*iPane {
