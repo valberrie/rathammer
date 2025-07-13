@@ -15,7 +15,6 @@ const fgd = @import("fgd.zig");
 const undo = @import("undo.zig");
 const tools = @import("tools.zig");
 const ecs = @import("ecs.zig");
-const inspector = @import("inspector.zig");
 const eql = std.mem.eql;
 const VisGroup = @import("visgroup.zig");
 const Os9Gui = graph.Os9Gui;
@@ -69,90 +68,6 @@ pub const Main3DView = struct {
         alloc.destroy(self);
     }
 };
-
-pub fn drawPauseMenu(editor: *Context, os9gui: *graph.Os9Gui, draw: *graph.ImmediateDrawingContext, paused: *bool) !enum { quit, nothing } {
-    if (try os9gui.beginTlWindow(graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y))) {
-        defer os9gui.endTlWindow();
-        const vlayout = try os9gui.beginV();
-        defer os9gui.endL();
-        os9gui.label("You are paused", .{});
-        {
-            const hl = os9gui.style.config.text_h;
-            vlayout.pushHeight(hl * 3);
-            if (os9gui.textView(hl, 0xff)) |tvc| {
-                if (os9gui.gui.tooltip_text.len > 0) {
-                    var tv = tvc;
-                    tv.text("{s}", .{os9gui.gui.tooltip_text});
-                }
-            }
-        }
-        if (os9gui.button("Unpause"))
-            paused.* = false;
-        if (os9gui.button("Quit"))
-            return .quit;
-        if (os9gui.button("Force autosave"))
-            editor.autosaver.force = true;
-        //try editor.writeToJsonFile(std.fs.cwd(), "serial.json");
-        const ds = &editor.draw_state;
-        _ = os9gui.checkbox("draw tools", &ds.tog.tools);
-        _ = os9gui.checkbox("draw sprite", &ds.tog.sprite);
-        _ = os9gui.checkbox("draw model", &ds.tog.models);
-        _ = os9gui.checkbox("ignore groups", &editor.selection.ignore_groups);
-        _ = os9gui.sliderEx(&ds.tog.model_render_dist, 64, 1024 * 10, "Model render dist", .{});
-        os9gui.gui.setTooltip("Models further than {d:.2}hu will not be drawn", .{ds.tog.model_render_dist});
-        os9gui.label("num model {d}", .{editor.models.count()});
-        os9gui.label("num mesh {d}", .{editor.meshmap.count()});
-        os9gui.gui.setTooltip("The number of mesh batches", .{});
-
-        try os9gui.enumCombo("cam move kind {s}", .{@tagName(editor.draw_state.cam3d.fwd_back_kind)}, &editor.draw_state.cam3d.fwd_back_kind);
-        os9gui.gui.setTooltip("kind: \"Planar\", fwd, back only affect xz of camera pos\nkind: \"normal\", fwd back move camera along its normal", .{});
-        try os9gui.enumCombo("new brush entity: {s}", .{@tagName(editor.edit_state.default_group_entity)}, &editor.edit_state.default_group_entity);
-
-        var needs_rebuild = false;
-        if (editor.visgroups.getRoot()) |vg_| {
-            const Help = struct {
-                fn recur(vs: *VisGroup, vg: *VisGroup.Group, depth: usize, os9g: *Os9Gui, vl: *Gui.VerticalLayout, rebuild_: *bool, cascade_down: ?bool) void {
-                    vl.padding.left = @floatFromInt(depth * 20);
-                    var the_bool = !vs.disabled.isSet(vg.id);
-                    const changed = os9g.checkbox(vg.name, &the_bool);
-                    rebuild_.* = rebuild_.* or changed;
-                    vs.disabled.setValue(vg.id, if (cascade_down) |cd| cd else !the_bool); //We invert the bool so the checkbox looks nice
-                    for (vg.children.items) |id| {
-                        recur(
-                            vs,
-                            &vs.groups.items[id],
-                            depth + 2,
-                            os9g,
-                            vl,
-                            rebuild_,
-                            if (cascade_down) |cd| cd else (if (changed) !the_bool else null),
-                        );
-                        //_ = os9gui.buttonEx("{s} {d}", .{ group.name, group.id }, .{});
-                    }
-                }
-            };
-            Help.recur(&editor.visgroups, vg_, 0, os9gui, vlayout, &needs_rebuild, null);
-        }
-        if (needs_rebuild) {
-            std.debug.print("Rebild\n", .{});
-            var it = editor.ecs.iterator(.editor_info);
-            while (it.next()) |info| {
-                var copy = editor.visgroups.disabled;
-                copy.setIntersection(info.vis_mask);
-                if (copy.findFirstSet() != null) {
-                    editor.ecs.attachComponent(it.i, .invisible, .{}) catch {}; // We discard error incase it is already attached
-                    if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
-                        try solid.removeFromMeshMap(it.i, editor);
-                } else {
-                    _ = try editor.ecs.removeComponentOpt(it.i, .invisible);
-                    if (try editor.ecs.getOptPtr(it.i, .solid)) |solid|
-                        try solid.rebuild(it.i, editor);
-                }
-            }
-        }
-    }
-    return .nothing;
-}
 
 pub fn draw3Dview(
     self: *Context,
@@ -386,7 +301,6 @@ pub const Pane = enum {
     main_3d_view,
     main_2d_view,
     asset_browser,
-    inspector,
     new_inspector,
     console,
     model_preview,
@@ -462,12 +376,6 @@ pub fn drawPane(
         .asset_browser => {
             try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .texture);
         },
-        .inspector => {
-            var time = try std.time.Timer.start();
-            try inspector.newInspector(editor, pane_area, os9gui);
-            std.debug.print("Built gui in: {d:.2} us\n", .{time.read() / std.time.ns_per_us});
-        },
-        //.inspector => try inspector.drawInspector(editor, pane_area, os9gui),
         .model_preview => {
             _ = editor.draw_state.grab_pane.trySetGrab(pane, win.mouse.left == .high);
             try editor.asset_browser.drawModelPreview(
