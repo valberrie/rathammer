@@ -39,7 +39,8 @@ float shadowCalculation(vec3 fp, vec3 norm){
     vec4 frag_pos_ls = ls * vec4(fp, 1.0);
     vec3 proj_coord = frag_pos_ls.xyz / frag_pos_ls.w;
     //vec3 proj_coord = frag_pos_ls.xyz ;
-    proj_coord = proj_coord * 0.5 + 0.5;
+    //proj_coord = proj_coord * 0.5 + 0.5;
+    proj_coord = proj_coord * 0.5 + 0.5 ;
     //float current_depth = proj_coord.z;
     //if(current_depth > 1.0){
     //    return 0.0;
@@ -49,12 +50,13 @@ float shadowCalculation(vec3 fp, vec3 norm){
     const float bias_mod = 0.5;
     bias *= 1 / (cascadePlaneDistances[layer] * bias_mod);
 
-    float closest_depth = texture(shadow_map, vec3(proj_coord.xy, layer)).r;
+    //float closest_depth = texture(shadow_map, vec3(proj_coord.xy, layer)).r;
     float current_depth = proj_coord.z;
-    float shadow = current_depth - bias > closest_depth ? 0.9: 0.0;
+    //float shadow = current_depth - bias > closest_depth ? 0.9: 0.0;
+    //return shadow;
 
 
-    shadow = 0.0;
+    float shadow = 0.0;
     vec2 texel_size = 1.0 / vec2(textureSize(shadow_map, 0));
     for(int x = -1; x <= 1; x++){
         for(int y = -1; y <= 1; y++){
@@ -67,8 +69,10 @@ float shadowCalculation(vec3 fp, vec3 norm){
 }
 
 
-float ambient_strength = 0.3;
-vec3 ambient_color = vec3(135 / 255.0, 172 / 255.0, 180 / 255.0 );
+float ambient_strength = 100.0 / 255.0;
+//vec3 ambient_color = vec3(135 / 255.0, 172 / 255.0, 180 / 255.0 );
+//190 201 220 100  
+vec3 ambient_color = vec3(190.0 / 255.0, 201.0 / 255.0, 220.0 / 255.0 );
 float specular_strength = 0.5;
 
 vec3 calculateDirLight(vec3 normal, vec3 ldir, vec3 lcolor, vec3 view_dir, float shadow){
@@ -84,27 +88,33 @@ vec3 calculateDirLight(vec3 normal, vec3 ldir, vec3 lcolor, vec3 view_dir, float
 }
 
 void main(){
-    vec2 uv = gl_FragCoord.xy / screenSize;
+    vec2 uv = (gl_FragCoord.xy / screenSize);
     //vec2 uv = TexCoords;
 
     vec3 frag_pos = texture(g_pos, uv).rgb;
     vec3 normal = texture(g_norm, uv).rgb;
     vec3 diffuse = texture(g_albedo, uv).rgb;
 
+    //vec2 uv2 = uv * screenSize / vec2(2048, 2048);
+    //FragColor.a = 1;
+    //FragColor.rgb = vec3(texture(shadow_map, vec3( uv, 0 )));
 
     vec3 view_dir = normalize(view_pos - frag_pos);
 
     float shadow = shadowCalculation(frag_pos, normal);
 
-    vec3 lights = calculateDirLight(normal, light_dir, light_color, view_dir, shadow);
-    //vec3 result = (ambient + (1.0 - shadow) * lights) * diffuse;
-    vec3 result =  lights * diffuse;
+    //vec3 lights = calculateDirLight(normal, light_dir, light_color, view_dir, shadow);
+    vec3 result = (ambient_color + (1.0 - shadow) * light_color ) * diffuse;
+    FragColor = vec4(result, 1.0);
+    //vec3 result =  lights * diffuse;
 
 
-    //vec3 mapped = vec3(1.0) - exp(-result * exposure);
-    //mapped = pow(mapped, vec3(1.0/gamma));
-    //FragColor = vec4(mapped, 1.0);
-    FragColor = vec4(result,1.0);
+    vec3 mapped = vec3(1.0) - exp(-result * exposure);
+    mapped = pow(mapped, vec3(1.0/gamma));
+    FragColor = vec4(mapped, 1.0);
+
+    //FragColor.r = texture(shadow_map, vec3(uv, 1)).r;
+    //FragColor = vec4(result,1.0);
 }
 
 

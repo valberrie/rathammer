@@ -171,7 +171,11 @@ pub const Context = struct {
     has_loaded_map: bool = false,
 
     draw_state: struct {
-        factor: f32 = 8,
+        factor: f32 = 64,
+        far: f32 = 512 * 64,
+        pad: f32 = 40,
+        index: usize = 0,
+        planes: [4]f32 = [4]f32{ 512.0 * 64 / 50.0, 512 * 64.0 / 25.0, 512 * 64.0 / 10.0, 512 * 64.0 / 2.0 },
         pointfile: ?pointfile.PointFile = null,
         portalfile: ?pointfile.PortalFile = null,
         tab_index: usize = 0,

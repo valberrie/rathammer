@@ -126,11 +126,13 @@ pub fn draw3Dview(
         //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
     }
 
-    try self.renderer.draw(self.draw_state.cam3d, screen_area.w, screen_area.h, view_3d, .{
+    try self.renderer.draw(self.draw_state.cam3d, screen_area.w, screen_area.h, .{
         .fac = self.draw_state.factor,
         .near = self.draw_state.cam_near_plane,
-        .far = self.draw_state.cam_far_plane,
-    }, draw_nd);
+        .far = self.draw_state.far,
+        .pad = self.draw_state.pad,
+        .index = self.draw_state.index,
+    }, draw_nd, self.draw_state.planes);
 
     if (false) { //draw displacment vert
         var d_it = self.ecs.iterator(.displacement);

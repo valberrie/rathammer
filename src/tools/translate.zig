@@ -324,6 +324,22 @@ pub const Translate = struct {
                 .commit_vt = &self.cb_vt,
                 .clear_on_commit = true,
             }));
+        const ps = &self.ed.draw_state.planes;
+        const max = 512 * 64;
+        if (guis.label(area_vt, gui, win, ly.getArea(), "p0", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[0], 0.1, max, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "p1", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[1], 0.1, max, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "p2", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[2], 0.1, max, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "p3", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[3], 4096, max, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "far", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.far, 4096, 512 * 64, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "pad", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.pad, 1, 4096, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "index", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.index, 0, 5, .{}));
     }
 
     fn commit_(self: *Editor, dupe: bool, angle_delta: ?Vec3, origin: Vec3, dist: Vec3) !void {

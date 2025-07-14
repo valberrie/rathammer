@@ -35,7 +35,11 @@ pub const iJob = struct {
     onComplete: *const fn (*iJob, editor: *edit.Context) void,
 };
 
-pub const CompletedVtfItem = struct { data: vtf.VtfBuf, vpk_res_id: vpk.VpkResId };
+pub const CompletedVtfItem = struct {
+    data: vtf.VtfBuf,
+    vpk_res_id: vpk.VpkResId,
+    kind: enum { none, tool },
+};
 const log = std.log.scoped(.vtf);
 
 const ThreadId = std.Thread.Id;
@@ -226,6 +230,7 @@ pub const Context = struct {
                                     try self.insertCompleted(.{
                                         .data = buf,
                                         .vpk_res_id = vpk_res_id,
+                                        .kind = if (std.mem.eql(u8, fbkey, "%tooltexture")) .tool else .none,
                                     });
                                     break;
                                 }
@@ -235,7 +240,12 @@ pub const Context = struct {
                     else => {},
                 }
                 if (!was_found) {
+                    const names = vpkctx.namesFromId(vpk_res_id);
                     std.debug.print("A texture was not found\n", .{});
+                    if (names) |n| {
+                        std.debug.print("{s}/{s}\n", .{ n.path, n.name });
+                    }
+                    std.debug.print("{s}\n", .{tt});
                 }
             }
         }

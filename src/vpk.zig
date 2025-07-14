@@ -155,6 +155,7 @@ pub const Context = struct {
 
     /// These map the strings found in vpk to a numeric id.
     /// Ids are not unique between maps. using encodeResourceId they uniquely identify any resource.
+    /// Id's are not shelf stable
     extension_map: IdMap,
     path_map: IdMap,
     res_map: IdMap,
@@ -242,6 +243,7 @@ pub const Context = struct {
         };
     }
 
+    /// Thread safe
     pub fn namesFromId(self: *Self, id: VpkResId) ?Names {
         self.mutex.lock();
         defer self.mutex.unlock();

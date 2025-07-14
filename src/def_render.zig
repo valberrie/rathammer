@@ -34,6 +34,11 @@ pub const Renderer = struct {
     last_frame_view_mat: Mat4 = undefined,
     light_batch: LightQuadBatch,
 
+    param: struct {
+        exposure: f32 = 1,
+        gamma: f32 = 2.2,
+    } = .{},
+
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
         const shadow_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
             .{ .path = "shadow_map.vert", .t = .vert },
@@ -79,9 +84,26 @@ pub const Renderer = struct {
         try self.draw_calls.append(d);
     }
 
-    pub fn draw(self: *Self, cam: graph.Camera3D, w: f32, h: f32, view: Mat4, param: struct { far: f32, near: f32, fac: f32 }, dctx: *DrawCtx) !void {
+    pub fn draw(
+        self: *Self,
+        cam: graph.Camera3D,
+        w: f32,
+        h: f32,
+        param: struct {
+            far: f32,
+            near: f32,
+            fac: f32,
+            pad: f32,
+            index: usize,
+        },
+        dctx: *DrawCtx,
+        pl: anytype,
+    ) !void {
+        const view1 = cam.getMatrix(w / h, param.near, param.far);
+        self.csm.pad = param.pad;
         switch (self.mode) {
             .forward => {
+                const view = view1;
                 const sh = self.shader.forward;
                 c.glUseProgram(sh);
                 GL.passUniform(sh, "view", view);
@@ -98,12 +120,27 @@ pub const Renderer = struct {
                 }
             },
             .def => {
-                const light_dir = Vec3.new(-20, 40, -20).norm();
+                //self.csm.pad = param.fac;
+                //const view = view1;
+                const view = if (param.index == 0) view1 else self.csm.mats[(param.index - 1) % self.csm.mats.len];
+                //self.csm.mats[0];
+                self.last_frame_view_mat = cam.getViewMatrix();
+                const light_dir = Vec3.new(1, 1, 1).norm();
+                //const light_dir = Vec3.new(0, 0, param.fac - 10).norm();
                 //const light_dir = Vec3.new(-20, 50, -20).norm();
-                const fac = param.fac;
-                const planes = [_]f32{ fac * 3, 8 * fac, 25 * fac };
-                const last_plane = 400 * fac;
-                self.csm.calcMats(cam.fov, w / h, param.near, param.far, self.last_frame_view_mat, light_dir, planes);
+                const far = param.far;
+                const planes = [_]f32{
+                    pl[0],
+                    pl[1],
+                    pl[2],
+
+                    //far * 0.005,
+                    //far * 0.015,
+                    //far * 0.058,
+                };
+                const last_plane = pl[3];
+                //const last_plane = far * 0.58;
+                self.csm.calcMats(cam.fov, w / h, param.near, far, self.last_frame_view_mat, light_dir, planes);
                 self.csm.draw(self);
                 self.gbuffer.updateResolution(@intFromFloat(w), @intFromFloat(h));
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.gbuffer.buffer);
@@ -119,6 +156,7 @@ pub const Renderer = struct {
                     for (self.draw_calls.items) |dc| {
                         c.glBindTextureUnit(0, dc.diffuse);
                         GL.passUniform(sh, "view", view);
+                        GL.passUniform(sh, "model", Mat4.identity());
                         c.glBindVertexArray(dc.vao);
                         c.glDrawElements(@intFromEnum(dc.prim), dc.num_elements, dc.element_type, null);
                     }
@@ -151,8 +189,9 @@ pub const Renderer = struct {
                             .{ .pos = graph.Vec3f.new(1, -1, 0), .uv = graph.Vec2f.new(1, 0) },
                         });
                         const exposure: f32 = 1;
-                        const gamma: f32 = 2.2;
-                        var sun_color = graph.Hsva.fromInt(0xef8825ff);
+                        const gamma: f32 = 1.8;
+                        //var sun_color = graph.Hsva.fromInt(0xef8825ff);
+                        var sun_color = graph.Hsva.fromInt(0xedda8fff);
                         self.light_batch.pushVertexData();
                         const sh1 = self.shader.sun;
                         c.glUseProgram(sh1);
@@ -268,7 +307,7 @@ const Csm = struct {
     mat_ubo: c_uint = 0,
 
     mats: [CSM_COUNT]Mat4 = undefined,
-    pad: f32 = 15,
+    pad: f32 = 15 * 32,
 
     fn createCsm(resolution: i32, cascade_count: i32, light_shader: c_uint) Csm {
         var fbo: c_uint = 0;
@@ -339,6 +378,7 @@ const Csm = struct {
 
     pub fn draw(csm: *Csm, rend: *const Renderer) void {
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, csm.fbo);
+        c.glDisable(graph.c.GL_SCISSOR_TEST); //BRUH
         c.glViewport(0, 0, csm.res, csm.res);
         c.glClear(c.GL_DEPTH_BUFFER_BIT);
 
@@ -397,13 +437,13 @@ const Csm = struct {
             max_z = @max(max_z, trf.z());
         }
 
-        min_z -= self.pad;
-        max_z += self.pad;
+        //min_z -= self.pad;
+        //max_z += self.pad;
         //min_z -= far / 2;
 
-        //const tw = 20;
-        //min_z = if (min_z < 0) min_z * tw else min_z / tw;
-        //max_z = if (max_z < 0) max_z / tw else max_z * tw;
+        const tw = self.pad;
+        min_z = if (min_z < 0) min_z * tw else min_z / tw;
+        max_z = if (max_z < 0) max_z / tw else max_z * tw;
 
         //const ortho = graph.za.orthographic(-20, 20, -20, 20, 0.1, 300).mul(lview);
         const ortho = graph.za.orthographic(min_x, max_x, min_y, max_y, min_z, max_z).mul(lview);
