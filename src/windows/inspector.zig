@@ -116,10 +116,7 @@ pub const InspectorWindow = struct {
 
         const ds = &self.editor.draw_state;
         {
-            var hy = guis.HorizLayout{
-                .bounds = ly.getArea() orelse return,
-                .count = 4,
-            };
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
             const CB = Wg.Checkbox.build;
             a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "draw tools", .{ .bool_ptr = &ds.tog.tools }, null));
             a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "draw sprite", .{ .bool_ptr = &ds.tog.sprite }, null));

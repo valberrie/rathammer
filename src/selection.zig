@@ -23,6 +23,12 @@ multi: std.ArrayList(Id),
 
 groups: std.AutoHashMap(GroupId, void),
 
+options: struct {
+    brushes: bool = true,
+    props: bool = true,
+    entity: bool = true,
+} = .{},
+
 pub fn init(alloc: std.mem.Allocator) Self {
     return .{
         .multi = std.ArrayList(Id).init(alloc),
@@ -111,7 +117,20 @@ pub fn deinit(self: *Self) void {
     self.groups.deinit();
 }
 
+fn canSelect(self: *Self, id: Id, editor: *edit.Context) bool {
+    if (!self.options.brushes and editor.getComponent(id, .solid) != null) return false;
+    if (!self.options.entity or !self.options.props) {
+        if (editor.getComponent(id, .entity)) |ent| {
+            if (!self.options.entity) return false;
+            if (!self.options.props and std.mem.startsWith(u8, ent.class, "prop")) return false;
+        }
+    }
+
+    return true;
+}
+
 pub fn put(self: *Self, id: Id, editor: *edit.Context) !void {
+    if (!self.canSelect(id, editor)) return;
     var do_normal = true;
     if (!self.ignore_groups) {
         if (try editor.ecs.getOpt(id, .group)) |group| {

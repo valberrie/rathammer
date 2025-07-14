@@ -573,13 +573,6 @@ pub const LightInstanceBatch = struct {
             try ret.vertices.append(.{ .pos = graph.Vec3f.new(v.x, v.y, v.z) });
         }
         try ret.indicies.appendSlice(obj.meshes.items[0].indicies.items);
-        try ret.inst.append(.{
-            .light_pos = graph.Vec3f.new(16, 16, 16),
-            .quadratic = 1,
-            .constant = 0,
-            .linear = 0,
-            .diffuse = graph.Vec3f.new(62, 180, 255).scale(400 / 255),
-        });
         ret.pushVertexData();
         //c.glVertexAttribPointer(
         //    1,

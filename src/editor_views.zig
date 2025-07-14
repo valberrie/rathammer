@@ -140,7 +140,7 @@ pub fn draw3Dview(
                     .quadratic = quad[0],
                     .constant = constant[0],
                     .linear = lin[0],
-                    .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3]),
+                    .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3] * self.draw_state.light_mul),
                 });
             }
         }

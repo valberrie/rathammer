@@ -348,6 +348,17 @@ pub const Translate = struct {
             area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.pitch, 0, 90, .{}));
         if (guis.label(area_vt, gui, win, ly.getArea(), "yaw", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.yaw, 0, 360, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "lightMul", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.light_mul, 0.01, 1, .{}));
+
+        {
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
+            const sl = &self.ed.selection.options;
+            const CB = Wg.Checkbox.build;
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select brush", .{ .bool_ptr = &sl.brushes }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select prop", .{ .bool_ptr = &sl.props }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select ent", .{ .bool_ptr = &sl.entity }, null));
+        }
     }
 
     fn commit_(self: *Editor, dupe: bool, angle_delta: ?Vec3, origin: Vec3, dist: Vec3) !void {
