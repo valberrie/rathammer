@@ -324,40 +324,22 @@ pub const Translate = struct {
                 .commit_vt = &self.cb_vt,
                 .clear_on_commit = true,
             }));
-        const ps = &self.ed.draw_state.planes;
-        const max = 512 * 64;
-        if (guis.label(area_vt, gui, win, ly.getArea(), "p0", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[0], 0.1, max, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "p1", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[1], 0.1, max, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "p2", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[2], 0.1, max, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "p3", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[3], 4096, max, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "far", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.far, 4096, 512 * 64, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "pad", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.pad, 1, 4096, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "index", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.index, 0, 5, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "gamma", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.gamma, 0.1, 3, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "exposure", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.exposure, 0.1, 3, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "pitch", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.pitch, 0, 90, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "yaw", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.yaw, 0, 360, .{}));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "lightMul", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.light_mul, 0.01, 1, .{}));
 
+        const CB = Wg.Checkbox.build;
         {
             var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
             const sl = &self.ed.selection.options;
-            const CB = Wg.Checkbox.build;
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select brush", .{ .bool_ptr = &sl.brushes }, null));
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select prop", .{ .bool_ptr = &sl.props }, null));
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select ent", .{ .bool_ptr = &sl.entity }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select func", .{ .bool_ptr = &sl.func }, null));
+        }
+        {
+            const sl = &self.ed.selection.options;
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select nearby", .{ .bool_ptr = &sl.select_nearby }, null));
+            if (guis.label(area_vt, gui, win, hy.getArea(), "dist threshold", .{})) |ar|
+                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &sl.nearby_distance, 0, 256, .{}));
         }
     }
 

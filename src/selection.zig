@@ -27,6 +27,10 @@ options: struct {
     brushes: bool = true,
     props: bool = true,
     entity: bool = true,
+    func: bool = true,
+
+    select_nearby: bool = false,
+    nearby_distance: f32 = 0.1,
 } = .{},
 
 pub fn init(alloc: std.mem.Allocator) Self {
@@ -119,19 +123,21 @@ pub fn deinit(self: *Self) void {
 
 fn canSelect(self: *Self, id: Id, editor: *edit.Context) bool {
     if (!self.options.brushes and editor.getComponent(id, .solid) != null) return false;
-    if (!self.options.entity or !self.options.props) {
+    const any_ent = self.options.entity and self.options.props and self.options.func;
+    if (!any_ent) {
         if (editor.getComponent(id, .entity)) |ent| {
             if (!self.options.entity) return false;
             if (!self.options.props and std.mem.startsWith(u8, ent.class, "prop")) return false;
+            if (!self.options.func and std.mem.startsWith(u8, ent.class, "func")) return false;
         }
     }
 
     return true;
 }
 
-pub fn put(self: *Self, id: Id, editor: *edit.Context) !void {
-    if (!self.canSelect(id, editor)) return;
-    var do_normal = true;
+/// Returns true if the item was added
+pub fn put(self: *Self, id: Id, editor: *edit.Context) !bool {
+    if (!self.canSelect(id, editor)) return false;
     if (!self.ignore_groups) {
         if (try editor.ecs.getOpt(id, .group)) |group| {
             switch (self.mode) {
@@ -146,27 +152,26 @@ pub fn put(self: *Self, id: Id, editor: *edit.Context) !void {
                     if (to_remove) self.tryRemoveMulti(it.i) else try self.tryAddMulti(it.i);
                 }
             }
-            do_normal = false;
+            return true;
         }
     }
-    if (do_normal) {
-        const group = if (try editor.ecs.getOpt(id, .group)) |g| g.id else 0;
-        switch (self.mode) {
-            .one => {
-                try self.multi.resize(1);
-                self.multi.items[0] = id;
-                self.groups.clearRetainingCapacity();
+    const group = if (try editor.ecs.getOpt(id, .group)) |g| g.id else 0;
+    switch (self.mode) {
+        .one => {
+            try self.multi.resize(1);
+            self.multi.items[0] = id;
+            self.groups.clearRetainingCapacity();
+            try self.groups.put(group, {});
+        },
+        .many => {
+            if (std.mem.indexOfScalar(Id, self.multi.items, id)) |index| {
+                _ = self.multi.orderedRemove(index);
+                _ = self.groups.remove(group);
+            } else {
+                try self.multi.append(id);
                 try self.groups.put(group, {});
-            },
-            .many => {
-                if (std.mem.indexOfScalar(Id, self.multi.items, id)) |index| {
-                    _ = self.multi.orderedRemove(index);
-                    _ = self.groups.remove(group);
-                } else {
-                    try self.multi.append(id);
-                    try self.groups.put(group, {});
-                }
-            },
-        }
+            }
+        },
     }
+    return true;
 }

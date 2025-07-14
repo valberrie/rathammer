@@ -195,8 +195,21 @@ pub fn draw3Dview(
 
     if (self.isBindState(self.config.keys.select.b, .rising)) {
         const pot = self.screenRay(screen_area, view_3d);
+        var starting_point: ?Vec3 = null;
         if (pot.len > 0) {
-            try self.selection.put(pot[0].id, self);
+            for (pot) |p| {
+                if (starting_point) |sp| {
+                    const dist = sp.distance(p.point);
+                    if (dist > self.selection.options.nearby_distance) break;
+                }
+                if (try self.selection.put(p.id, self)) {
+                    if (starting_point == null) starting_point = p.point;
+                    if (self.selection.options.select_nearby) {
+                        continue;
+                    }
+                    break;
+                }
+            }
         }
     }
     if (self.isBindState(self.config.keys.clear_selection.b, .rising))

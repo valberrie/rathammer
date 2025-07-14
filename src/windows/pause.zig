@@ -144,22 +144,52 @@ pub const PauseWindow = struct {
         const inset = GuiHelp.insetAreaForWindowFrame(gui, vt.area.area);
         _ = self.area.addEmpty(gui, vt, graph.Rec(0, 0, 0, 0));
 
-        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{ "main", "keybinds", "visgroup" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
+        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{ "main", "keybinds", "visgroup", "graphics" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
     }
 
     fn buildTabs(win_vt: *iArea, vt: *iArea, tab: []const u8, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", win_vt));
         const eql = std.mem.eql;
+        const max_w = gui.style.config.default_item_h * 30;
+        const w = @min(max_w, vt.area.w);
+        const side_l = (vt.area.w - w) / 2;
         if (eql(u8, tab, "visgroup")) {
             buildVisGroups(self, gui, vt);
 
             //var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
             //vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome to visgroup", null));
         }
+        if (eql(u8, tab, "graphics")) {
+            var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area.replace(side_l, null, w, null) };
+            const ps = &self.editor.draw_state.planes;
+            const ed = self.editor;
+            const max = 512 * 64;
+            if (guis.label(vt, gui, win, ly.getArea(), "p0", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[0], 0.1, max, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "p1", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[1], 0.1, max, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "p2", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[2], 0.1, max, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "p3", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[3], 4096, max, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "far", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.far, 4096, 512 * 64, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "pad", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.pad, 1, 4096, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "index", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.index, 0, 5, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "gamma", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.gamma, 0.1, 3, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "exposure", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.exposure, 0.1, 3, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "pitch", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.pitch, 0, 90, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "yaw", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.yaw, 0, 360, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "lightMul", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.light_mul, 0.01, 1, .{}));
+        }
         if (eql(u8, tab, "main")) {
-            const max_w = gui.style.config.default_item_h * 30;
-            const w = @min(max_w, vt.area.w);
-            const side_l = (vt.area.w - w) / 2;
             var ly = guis.VerticalLayout{
                 .padding = .{},
                 .item_height = gui.style.config.default_item_h,

@@ -117,7 +117,7 @@ pub const CommandCtx = struct {
                     var it = self.ed.ecs.iterator(.entity);
                     while (it.next()) |ent| {
                         if (std.mem.eql(u8, class, ent.class)) {
-                            self.ed.selection.put(it.i, self.ed) catch |err| {
+                            _ = self.ed.selection.put(it.i, self.ed) catch |err| {
                                 try wr.print("Selection failed {!}\n", .{err});
                             };
                         }
@@ -140,7 +140,7 @@ pub const CommandCtx = struct {
                             if (!self.ed.ecs.isEntity(id)) {
                                 try wr.print("\tNot an entity: {d}\n", .{id});
                             } else {
-                                self.ed.selection.put(id, self.ed) catch |err| {
+                                _ = self.ed.selection.put(id, self.ed) catch |err| {
                                     try wr.print("Selection failed {!}\n", .{err});
                                 };
                             }

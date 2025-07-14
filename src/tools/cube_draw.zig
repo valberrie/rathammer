@@ -17,7 +17,7 @@ const ecs = @import("../ecs.zig");
 const undo = @import("../undo.zig");
 const snapV3 = util3d.snapV3;
 const prim_gen = @import("../primitive_gen.zig");
-const BBGizmo = @import("../aabb_gizmo.zig");
+const toolutil = @import("../tool_common.zig");
 const grid = @import("../grid.zig");
 
 pub const CubeDraw = struct {
@@ -71,7 +71,7 @@ pub const CubeDraw = struct {
         switch_to_translate,
     } = .reset,
 
-    bb_gizmo: BBGizmo = .{},
+    bb_gizmo: toolutil.AABBGizmo = .{},
 
     pub fn create(alloc: std.mem.Allocator) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -291,7 +291,7 @@ pub const CubeDraw = struct {
             if (ecs.Solid.initFromPrimitive(ed.alloc, prim.verts.items, sol.items, vpk_id, center, opts.rot)) |newsolid| {
                 const new = try ed.ecs.createEntity();
                 if (opts.select) {
-                    try ed.selection.put(new, ed);
+                    _ = try ed.selection.put(new, ed);
                 }
                 try ed.ecs.attach(new, .solid, newsolid);
                 try ed.ecs.attach(new, .bounding_box, .{});
