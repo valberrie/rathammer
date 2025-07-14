@@ -124,6 +124,29 @@ pub fn draw3Dview(
         //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
     }
 
+    { //TODO Remove
+        self.renderer.light_batch.clear();
+        var itit = self.ecs.iterator(.entity);
+        while (itit.next()) |item| {
+            if (std.mem.eql(u8, "light", item.class)) {
+                const kvs = try self.ecs.getOptPtr(itit.i, .key_values) orelse continue;
+                const color = kvs.getFloats("_light", 4) orelse continue;
+                const constant = kvs.getFloats("_constant_attn", 1) orelse continue;
+                const lin = kvs.getFloats("_linear_attn", 1) orelse continue;
+                const quad = kvs.getFloats("_quadratic_attn", 1) orelse continue;
+
+                try self.renderer.light_batch.inst.append(.{
+                    .light_pos = graph.Vec3f.new(item.origin.x(), item.origin.y(), item.origin.z()),
+                    .quadratic = quad[0],
+                    .constant = constant[0],
+                    .linear = lin[0],
+                    .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3]),
+                });
+            }
+        }
+        self.renderer.light_batch.pushVertexData();
+    }
+
     try self.renderer.draw(self.draw_state.cam3d, screen_area.w, screen_area.h, .{
         .fac = self.draw_state.factor,
         .near = self.draw_state.cam_near_plane,

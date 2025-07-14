@@ -69,14 +69,14 @@ float shadowCalculation(vec3 fp, vec3 norm){
 }
 
 
-float ambient_strength = 100.0 / 255.0;
+float ambient_strength = 255.0 / 255.0;
 //vec3 ambient_color = vec3(135 / 255.0, 172 / 255.0, 180 / 255.0 );
 //190 201 220 100  
 vec3 ambient_color = vec3(190.0 / 255.0, 201.0 / 255.0, 220.0 / 255.0 );
 float specular_strength = 0.5;
 
 vec3 calculateDirLight(vec3 normal, vec3 ldir, vec3 lcolor, vec3 view_dir, float shadow){
-    float diff = max(dot(normal, ldir), 0.0);
+    float diff = max(dot(normal, ldir), 0.8);
     vec3 diffuse1 = diff * lcolor;
 
     vec3 reflect_dir = reflect(-ldir, normal);
@@ -84,7 +84,7 @@ vec3 calculateDirLight(vec3 normal, vec3 ldir, vec3 lcolor, vec3 view_dir, float
     vec3 specular = specular_strength * spec * lcolor;
 
     vec3 ambient = ambient_strength * ambient_color;
-    return ambient + (diffuse1 + specular) * (1.0 - shadow);
+    return  (diffuse1 + specular) * (1.0 - shadow + ambient);
 }
 
 void main(){
@@ -103,10 +103,10 @@ void main(){
 
     float shadow = shadowCalculation(frag_pos, normal);
 
-    //vec3 lights = calculateDirLight(normal, light_dir, light_color, view_dir, shadow);
-    vec3 result = (ambient_color + (1.0 - shadow) * light_color ) * diffuse;
-    FragColor = vec4(result, 1.0);
-    //vec3 result =  lights * diffuse;
+    vec3 lights = calculateDirLight(normal, light_dir, light_color, view_dir, shadow);
+    //vec3 result = (ambient_color + (1.0 - shadow) * light_color ) * diffuse;
+    //FragColor = vec4(result, 1.0);
+    vec3 result =  lights * diffuse;
 
 
     vec3 mapped = vec3(1.0) - exp(-result * exposure);

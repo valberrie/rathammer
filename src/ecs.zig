@@ -551,7 +551,7 @@ pub const Side = struct {
         const offset = mesh.vertices.items.len;
         for (side.index.items, 0..) |v_i, i| {
             const v = solid.verts.items[v_i];
-            const norm = side.normal(solid);
+            const norm = side.normal(solid).scale(-1);
             try mesh.vertices.append(.{
                 .x = v.x(),
                 .y = v.y(),
@@ -1531,6 +1531,12 @@ pub const KeyValues = struct {
     pub fn getString(self: *Self, key: []const u8) ?[]const u8 {
         if (self.map.get(key)) |val|
             return val.slice();
+        return null;
+    }
+
+    pub fn getFloats(self: *Self, key: []const u8, comptime count: usize) ?[count]f32 {
+        if (self.map.get(key)) |val|
+            return val.getFloats(count);
         return null;
     }
 

@@ -6,6 +6,7 @@ const GL = graph.GL;
 const Mat4 = graph.za.Mat4;
 const Vec3 = graph.za.Vec3;
 const DrawCtx = graph.ImmediateDrawingContext;
+const mesh = graph.meshutil;
 
 pub const DrawCall = struct {
     prim: GL.PrimitiveMode,
@@ -15,7 +16,7 @@ pub const DrawCall = struct {
     //view: *const Mat4,
     diffuse: c_uint,
 };
-const LightQuadBatch = graph.NewBatch(packed struct { pos: graph.Vec3f, uv: graph.Vec2f }, .{ .index_buffer = false, .primitive_mode = .triangles });
+const SunQuadBatch = graph.NewBatch(packed struct { pos: graph.Vec3f, uv: graph.Vec2f }, .{ .index_buffer = false, .primitive_mode = .triangles });
 
 pub const Renderer = struct {
     const Self = @This();
@@ -32,7 +33,8 @@ pub const Renderer = struct {
 
     draw_calls: std.ArrayList(DrawCall),
     last_frame_view_mat: Mat4 = undefined,
-    light_batch: LightQuadBatch,
+    sun_batch: SunQuadBatch,
+    light_batch: LightInstanceBatch,
 
     exposure: f32 = 0.92,
     gamma: f32 = 1.03,
@@ -55,7 +57,7 @@ pub const Renderer = struct {
         });
         const light_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
             .{ .path = "light.vert", .t = .vert },
-            .{ .path = "light.frag", .t = .frag },
+            .{ .path = "light_debug.frag", .t = .frag },
         });
         const def_sun_shad = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
             .{ .path = "sun.vert", .t = .vert },
@@ -69,9 +71,10 @@ pub const Renderer = struct {
                 .light = light_shader,
                 .sun = def_sun_shad,
             },
-            .light_batch = LightQuadBatch.init(alloc),
+            .light_batch = try LightInstanceBatch.init(alloc, shader_dir),
+            .sun_batch = SunQuadBatch.init(alloc),
             .draw_calls = std.ArrayList(DrawCall).init(alloc),
-            .csm = Csm.createCsm(2048, Csm.CSM_COUNT, light_shader),
+            .csm = Csm.createCsm(2048, Csm.CSM_COUNT, def_sun_shad),
             .gbuffer = GBuffer.create(100, 100),
         };
     }
@@ -182,18 +185,16 @@ pub const Renderer = struct {
                 }
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
 
+                const scrsz = graph.Vec2i{ .x = @intFromFloat(w), .y = @intFromFloat(h) };
                 if (true) {
                     { //Draw sun
                         c.glDepthMask(c.GL_FALSE);
                         defer c.glDepthMask(c.GL_TRUE);
-                        //c.glEnable(c.GL_BLEND);
-                        //c.glBlendFunc(c.GL_ONE, c.GL_ONE);
-                        //c.glBlendEquation(c.GL_FUNC_ADD);
                         //defer c.glDisable(c.GL_BLEND);
                         c.glClear(c.GL_DEPTH_BUFFER_BIT);
 
-                        try self.light_batch.clear();
-                        try self.light_batch.vertices.appendSlice(&.{
+                        try self.sun_batch.clear();
+                        try self.sun_batch.vertices.appendSlice(&.{
                             .{ .pos = graph.Vec3f.new(-1, 1, 0), .uv = graph.Vec2f.new(0, 1) },
                             .{ .pos = graph.Vec3f.new(-1, -1, 0), .uv = graph.Vec2f.new(0, 0) },
                             .{ .pos = graph.Vec3f.new(1, 1, 0), .uv = graph.Vec2f.new(1, 1) },
@@ -201,10 +202,10 @@ pub const Renderer = struct {
                         });
                         //var sun_color = graph.Hsva.fromInt(0xef8825ff);
                         var sun_color = graph.Hsva.fromInt(0xedda8fff);
-                        self.light_batch.pushVertexData();
+                        self.sun_batch.pushVertexData();
                         const sh1 = self.shader.sun;
                         c.glUseProgram(sh1);
-                        c.glBindVertexArray(self.light_batch.vao);
+                        c.glBindVertexArray(self.sun_batch.vao);
                         c.glBindBufferBase(c.GL_UNIFORM_BUFFER, 0, self.csm.mat_ubo);
                         c.glBindTextureUnit(0, self.gbuffer.pos);
                         c.glBindTextureUnit(1, self.gbuffer.normal);
@@ -214,7 +215,7 @@ pub const Renderer = struct {
                         graph.GL.passUniform(sh1, "exposure", self.exposure);
                         graph.GL.passUniform(sh1, "gamma", self.gamma);
                         graph.GL.passUniform(sh1, "light_dir", light_dir);
-                        graph.GL.passUniform(sh1, "screenSize", graph.Vec2i{ .x = @intFromFloat(w), .y = @intFromFloat(h) });
+                        graph.GL.passUniform(sh1, "screenSize", scrsz);
                         graph.GL.passUniform(sh1, "light_color", sun_color.toFloat());
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[0]", @as(f32, planes[0]));
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[1]", @as(f32, planes[1]));
@@ -222,7 +223,17 @@ pub const Renderer = struct {
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[3]", @as(f32, last_plane));
                         graph.GL.passUniform(sh1, "cam_view", cam.getViewMatrix());
 
-                        c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.light_batch.vertices.items.len)));
+                        c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.sun_batch.vertices.items.len)));
+
+                        //Is needed?
+                        c.glEnable(c.GL_BLEND);
+                        c.glBlendFunc(c.GL_ONE, c.GL_ONE);
+                        defer c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
+                        c.glBlendEquation(c.GL_FUNC_ADD);
+
+                        if (true) {
+                            self.drawLighting(cam, light_dir, scrsz, view);
+                        }
                     }
                     { //copy depth buffer
                         c.glBindFramebuffer(c.GL_READ_FRAMEBUFFER, self.gbuffer.buffer);
@@ -236,8 +247,32 @@ pub const Renderer = struct {
         self.last_frame_view_mat = cam.getViewMatrix();
     }
 
+    fn drawLighting(self: *Self, cam: graph.Camera3D, ld: Vec3, wh: anytype, view: anytype) void {
+        graph.c.glCullFace(graph.c.GL_FRONT);
+        defer graph.c.glCullFace(graph.c.GL_BACK);
+        const sh = self.shader.light;
+        c.glUseProgram(sh);
+        c.glBindVertexArray(self.light_batch.vao);
+        c.glBindTextureUnit(0, self.gbuffer.pos);
+        c.glBindTextureUnit(1, self.gbuffer.normal);
+        c.glBindTextureUnit(2, self.gbuffer.albedo);
+        graph.GL.passUniform(sh, "view_pos", cam.pos);
+        graph.GL.passUniform(sh, "exposure", self.exposure);
+        graph.GL.passUniform(sh, "gamma", self.gamma);
+        graph.GL.passUniform(sh, "light_dir", ld);
+        graph.GL.passUniform(sh, "screenSize", wh);
+        //graph.GL.passUniform(sh, "light_color", sun_color.toFloat());
+        graph.GL.passUniform(sh, "draw_debug", false);
+
+        graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
+        graph.GL.passUniform(sh, "view", view);
+
+        self.light_batch.draw();
+    }
+
     pub fn deinit(self: *Self) void {
         self.draw_calls.deinit();
+        self.sun_batch.deinit();
         self.light_batch.deinit();
     }
 };
@@ -483,5 +518,109 @@ const Csm = struct {
             unreachable;
 
         return corners;
+    }
+};
+
+pub const LightInstanceBatch = struct {
+    pub const Vertex = packed struct {
+        pos: graph.Vec3f,
+    };
+
+    pub const InVertex = packed struct {
+        light_pos: graph.Vec3f,
+        ambient: graph.Vec3f = graph.Vec3f.new(0.1, 0.1, 0.1),
+        diffuse: graph.Vec3f = graph.Vec3f.new(1, 1, 1),
+        specular: graph.Vec3f = graph.Vec3f.new(4, 4, 4),
+
+        constant: f32 = 1,
+        linear: f32 = 0.7,
+        quadratic: f32 = 1.8,
+    };
+
+    vbo: c_uint = 0,
+    vao: c_uint = 0,
+    ebo: c_uint = 0,
+    ivbo: c_uint = 0,
+
+    vertices: std.ArrayList(Vertex),
+    indicies: std.ArrayList(u32),
+    inst: std.ArrayList(InVertex),
+
+    pub fn init(alloc: std.mem.Allocator, asset_dir: std.fs.Dir) !@This() {
+        var ret = @This(){
+            .vertices = std.ArrayList(Vertex).init(alloc),
+            .indicies = std.ArrayList(u32).init(alloc),
+            .inst = std.ArrayList(InVertex).init(alloc),
+        };
+
+        c.glGenVertexArrays(1, &ret.vao);
+        c.glGenBuffers(1, &ret.vbo);
+        c.glGenBuffers(1, &ret.ebo);
+        graph.GL.generateVertexAttributes(ret.vao, ret.vbo, Vertex);
+        c.glBindVertexArray(ret.vao);
+        c.glGenBuffers(1, &ret.ivbo);
+        c.glEnableVertexAttribArray(1);
+        c.glBindBuffer(c.GL_ARRAY_BUFFER, ret.ivbo);
+        graph.GL.generateVertexAttributesEx(ret.vao, ret.ivbo, InVertex, 1);
+        c.glBindVertexArray(ret.vao);
+        for (1..8) |i|
+            c.glVertexAttribDivisor(@intCast(i), 1);
+
+        var obj = try mesh.loadObj(alloc, asset_dir, "icosphere.obj", 1);
+        defer obj.deinit();
+        if (obj.meshes.items.len == 0) return error.invalidIcoSphere;
+        for (obj.meshes.items[0].vertices.items) |v| {
+            try ret.vertices.append(.{ .pos = graph.Vec3f.new(v.x, v.y, v.z) });
+        }
+        try ret.indicies.appendSlice(obj.meshes.items[0].indicies.items);
+        try ret.inst.append(.{
+            .light_pos = graph.Vec3f.new(16, 16, 16),
+            .quadratic = 1,
+            .constant = 0,
+            .linear = 0,
+            .diffuse = graph.Vec3f.new(62, 180, 255).scale(400 / 255),
+        });
+        ret.pushVertexData();
+        //c.glVertexAttribPointer(
+        //    1,
+        //    3,
+        //    c.GL_FLOAT,
+        //    c.GL_FALSE,
+        //    @sizeOf(Vertex),
+        //    null,
+        //);
+        //c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
+
+        return ret;
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.vertices.deinit();
+        self.indicies.deinit();
+        self.inst.deinit();
+    }
+
+    pub fn pushVertexData(self: *@This()) void {
+        c.glBindVertexArray(self.vao);
+        graph.GL.bufferData(c.GL_ARRAY_BUFFER, self.vbo, Vertex, self.vertices.items);
+        graph.GL.bufferData(c.GL_ELEMENT_ARRAY_BUFFER, self.ebo, u32, self.indicies.items);
+        graph.GL.bufferData(c.GL_ARRAY_BUFFER, self.ivbo, InVertex, self.inst.items);
+    }
+
+    pub fn clear(self: *@This()) void {
+        self.inst.clearRetainingCapacity();
+    }
+
+    pub fn draw(self: *@This()) void {
+        //c.glBindVertexArray(self.vao);
+        //c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(self.vertices.items.len), @intCast(self.inst.items.len));
+        c.glDrawElementsInstanced(
+            c.GL_TRIANGLES,
+            @intCast(self.indicies.items.len),
+            c.GL_UNSIGNED_INT,
+            null,
+            @intCast(self.inst.items.len),
+        );
+        c.glBindVertexArray(0);
     }
 };
