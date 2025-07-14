@@ -17,6 +17,7 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const graph = @import("graph");
 const edit = @import("../editor.zig");
 const Editor = edit.Context;
+const toolcom = @import("../tool_common.zig");
 
 pub const DrawCustomCtx = struct {
     verts: []const Vec3,
@@ -41,12 +42,14 @@ pub const Translate = struct {
     gizmo_rotation: gizmo2.Gizmo,
     gizmo_translate: Gizmo,
     mode: enum {
+        marquee,
         translate,
         rotate,
         pub fn next(self: *@This()) void {
             self.* = switch (self.*) {
                 .translate => .rotate,
                 .rotate => .translate,
+                .marquee => .marquee,
             };
         }
     } = .translate,
@@ -59,6 +62,9 @@ pub const Translate = struct {
         last_selected,
     } = .last_selected,
     cb_vt: iArea = undefined,
+
+    cube_draw: toolcom.DrawBoundingVolume = .{},
+    bb_gizmo: toolcom.AABBGizmo = .{},
 
     pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
         var obj = try alloc.create(@This());
@@ -91,12 +97,45 @@ pub const Translate = struct {
 
     pub fn runTool(vt: *i3DTool, td: tools.ToolData, editor: *Editor) tools.ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (td.state == .init)
+        if (td.state == .init or td.state == .reinit) {
             self.gizmo_rotation.reset();
+            self.cube_draw.reset();
+            if (self.mode == .marquee)
+                self.mode = .translate;
+        }
+        if (editor.isBindState(editor.config.keys.marquee.b, .rising)) {
+            self.mode = .marquee;
+            self.cube_draw.reset();
+        }
 
         switch (self.mode) {
             .translate => translate(self, editor, td) catch return error.fatal,
             .rotate => rotate(self, editor, td) catch return error.fatal,
+            .marquee => {
+                //TODO draw the selected still!
+                switch (self.cube_draw.state) {
+                    else => self.cube_draw.run(.{
+                        .z_up = editor.isBindState(editor.config.keys.cube_draw_plane_up.b, .rising),
+                        .z_down = editor.isBindState(editor.config.keys.cube_draw_plane_down.b, .rising),
+                        .z_raycast = editor.isBindState(editor.config.keys.cube_draw_plane_raycast.b, .high),
+                    }, editor, td.screen_area, td.view_3d.*, td.draw),
+                    .finished => {
+                        const rc = editor.camRay(td.screen_area, td.view_3d.*);
+                        const draw_nd = &editor.draw_state.ctx;
+                        const bounds = self.bb_gizmo.aabbGizmo(&self.cube_draw.start, &self.cube_draw.end, rc, editor.edit_state.lmouse, editor.grid, draw_nd);
+                        const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
+                        td.draw.cube(cc[0], cc[1], 0x2222_22dd);
+                        if (editor.edit_state.rmouse == .rising) {
+                            var it = editor.ecs.iterator(.bounding_box);
+                            while (it.next()) |item| {
+                                if (util3d.doesBBOverlapExclusive(bounds[0], bounds[1], item.a, item.b)) {
+                                    _ = editor.selection.put(it.i, editor) catch return;
+                                }
+                            }
+                        }
+                    },
+                }
+            },
         }
     }
 
@@ -150,8 +189,7 @@ pub const Translate = struct {
             const draw_verts = selected.len < MAX_DRAWN_VERTS;
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    if (draw_verts)
-                        solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+                    solid.drawEdgeOutline(draw_nd, 0xff00ff, if (draw_verts) 0xff0000ff else 0, Vec3.zero());
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }
@@ -327,12 +365,15 @@ pub const Translate = struct {
 
         const CB = Wg.Checkbox.build;
         {
-            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
+            //var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
+            ly.pushCount(2);
+            var hy = guis.TableLayout{ .columns = 4, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             const sl = &self.ed.selection.options;
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select brush", .{ .bool_ptr = &sl.brushes }, null));
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select prop", .{ .bool_ptr = &sl.props }, null));
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select ent", .{ .bool_ptr = &sl.entity }, null));
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select func", .{ .bool_ptr = &sl.func }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select disp", .{ .bool_ptr = &sl.disp }, null));
         }
         {
             const sl = &self.ed.selection.options;

@@ -28,6 +28,7 @@ options: struct {
     props: bool = true,
     entity: bool = true,
     func: bool = true,
+    disp: bool = true,
 
     select_nearby: bool = false,
     nearby_distance: f32 = 0.1,
@@ -122,7 +123,20 @@ pub fn deinit(self: *Self) void {
 }
 
 fn canSelect(self: *Self, id: Id, editor: *edit.Context) bool {
-    if (!self.options.brushes and editor.getComponent(id, .solid) != null) return false;
+    //IF objects are part of group, check that too
+    const any_brush = self.options.brushes and self.options.disp;
+    if (!any_brush) {
+        if (editor.getComponent(id, .solid)) |_| {
+            if (!self.options.brushes) return false;
+            if (!self.options.disp and editor.getComponent(id, .displacements) != null) return false;
+            if (editor.getComponent(id, .group)) |group| {
+                if (editor.groups.getOwner(group.id)) |owner| {
+                    //Risk of recursion!
+                    return self.canSelect(owner, editor);
+                }
+            }
+        }
+    }
     const any_ent = self.options.entity and self.options.props and self.options.func;
     if (!any_ent) {
         if (editor.getComponent(id, .entity)) |ent| {

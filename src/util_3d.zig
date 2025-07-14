@@ -352,6 +352,15 @@ pub fn getBasis(norm: Vec3) [2]Vec3 {
     return .{ vs[u], vs[v] };
 }
 
+//Touching does not count
+pub fn doesBBOverlapExclusive(a_min: Vec3, a_max: Vec3, b_min: Vec3, b_max: Vec3) bool {
+    for (0..3) |i| {
+        const d = a_min.data[i] < b_max.data[i] and a_max.data[i] > b_min.data[i];
+        if (!d) return false;
+    }
+    return true;
+}
+
 //Given a point laying on a bounding box, what's the normal of the face?
 pub fn pointBBIntersectionNormal(bb_min: Vec3, bb_max: Vec3, point: Vec3) ?Vec3 {
     var zero = Vec3.zero();

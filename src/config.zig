@@ -41,6 +41,7 @@ pub const Config = struct {
         delete_selected: Keybind = .{ .b = SC(.X, 0) },
         toggle_select_mode: Keybind = .{ .b = SC(.TAB, 0) },
         clear_selection: Keybind = .{ .b = SC(.E, mask(&.{.CTRL})) },
+        marquee: Keybind = .{ .b = SC(.M, 0) },
 
         group_selection: Keybind = .{ .b = SC(.T, mask(&.{.CTRL})) },
 
