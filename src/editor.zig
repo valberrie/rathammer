@@ -44,6 +44,7 @@ const grid_stuff = @import("grid.zig");
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
 const pointfile = @import("pointfile.zig");
+const def_render = @import("def_render.zig");
 
 pub const TMP_DIR = "/tmp/mapcompile";
 pub const MAP_OUT = "dump";
@@ -170,6 +171,7 @@ pub const Context = struct {
     has_loaded_map: bool = false,
 
     draw_state: struct {
+        factor: f32 = 8,
         pointfile: ?pointfile.PointFile = null,
         portalfile: ?pointfile.PortalFile = null,
         tab_index: usize = 0,
@@ -255,6 +257,7 @@ pub const Context = struct {
     },
 
     selection: Selection,
+    renderer: def_render.Renderer,
 
     hacky_extra_vmf: struct {
         //Not freed, use static_string
@@ -353,6 +356,7 @@ pub const Context = struct {
         loadctx: *LoadCtx,
         env: *std.process.EnvMap,
     ) !*Self {
+        const shader_dir = try std.fs.cwd().openDir("ratasset/shader", .{});
         var ret = try alloc.create(Context);
         ret.* = .{
             //These are initilized in editor.postInit
@@ -390,12 +394,13 @@ pub const Context = struct {
             .skybox = try Skybox.init(alloc),
             .tool_res_map = std.AutoHashMap(vpk.VpkResId, void).init(alloc),
             .shell = try shell.CommandCtx.create(alloc, ret),
+            .renderer = try def_render.Renderer.init(alloc, shader_dir),
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
-                .basic_shader = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
-                    .{ .path = "ratasset/shader/basic.vert", .t = .vert },
-                    .{ .path = "ratasset/shader/basic.frag", .t = .frag },
+                .basic_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
+                    .{ .path = "basic.vert", .t = .vert },
+                    .{ .path = "basic.frag", .t = .frag },
                 }),
             },
         };
@@ -492,6 +497,7 @@ pub const Context = struct {
         self.skybox.deinit();
         self.frame_arena.deinit();
         self.groups.deinit();
+        self.renderer.deinit();
         self.shell.destroy(self.alloc);
         var mit = self.models.valueIterator();
         while (mit.next()) |m| {

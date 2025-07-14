@@ -203,10 +203,14 @@ pub const PauseWindow = struct {
 
             if (guis.label(vt, gui, win, ly.getArea(), "Camera move kind", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &ds.cam3d.fwd_back_kind, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "renderer", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.renderer.mode, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "New entity type", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.edit_state.default_group_entity, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "Entity render distance", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
+            if (guis.label(vt, gui, win, ly.getArea(), "factor", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.factor, 0.1, 512, .{ .nudge = 1 }));
             {
                 var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_near_plane, 1, 512, .{ .nudge = 1 }));

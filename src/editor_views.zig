@@ -105,9 +105,10 @@ pub fn draw3Dview(
 
     graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
     defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
-    const mat = graph.za.Mat4.identity();
+    //const mat = graph.za.Mat4.identity();
 
     const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, self.draw_state.cam_near_plane, self.draw_state.cam_far_plane);
+    self.renderer.beginFrame();
 
     var it = self.meshmap.iterator();
     while (it.next()) |mesh| {
@@ -115,8 +116,21 @@ pub fn draw3Dview(
             if (self.tool_res_map.contains(mesh.key_ptr.*))
                 continue;
         }
-        mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
+        try self.renderer.submitDrawCall(.{
+            .prim = .triangles,
+            .num_elements = @intCast(mesh.value_ptr.*.mesh.indicies.items.len),
+            .element_type = graph.c.GL_UNSIGNED_INT,
+            .vao = mesh.value_ptr.*.mesh.vao,
+            .diffuse = mesh.value_ptr.*.mesh.diffuse_texture,
+        });
+        //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
     }
+
+    try self.renderer.draw(self.draw_state.cam3d, screen_area.w, screen_area.h, view_3d, .{
+        .fac = self.draw_state.factor,
+        .near = self.draw_state.cam_near_plane,
+        .far = self.draw_state.cam_far_plane,
+    }, draw_nd);
 
     if (false) { //draw displacment vert
         var d_it = self.ecs.iterator(.displacement);
