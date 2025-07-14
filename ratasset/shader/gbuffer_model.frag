@@ -34,6 +34,7 @@ void main(){
     //g_norm = vec4(texture(normal_texture, in_texcoord).rgb, 1);
     //g_norm = vec4(normalize(in_normal),1);
     g_norm = vec4(bumpNorm(),1);
-    g_albedo.rgb = in_color.rgb * texture(diffuse_texture, in_texcoord).rgb;
-    g_albedo.a = 1;
+    g_albedo = in_color * texture(diffuse_texture, in_texcoord);
+    if(g_albedo.a < 0.1)
+        discard;
 }

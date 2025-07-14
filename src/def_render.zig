@@ -34,10 +34,10 @@ pub const Renderer = struct {
     last_frame_view_mat: Mat4 = undefined,
     light_batch: LightQuadBatch,
 
-    param: struct {
-        exposure: f32 = 1,
-        gamma: f32 = 2.2,
-    } = .{},
+    exposure: f32 = 0.92,
+    gamma: f32 = 1.03,
+    pitch: f32 = 35,
+    yaw: f32 = 165,
 
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
         const shadow_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
@@ -125,7 +125,18 @@ pub const Renderer = struct {
                 const view = if (param.index == 0) view1 else self.csm.mats[(param.index - 1) % self.csm.mats.len];
                 //self.csm.mats[0];
                 self.last_frame_view_mat = cam.getViewMatrix();
-                const light_dir = Vec3.new(1, 1, 1).norm();
+                //-35 165 0
+                var light_dir = Vec3.new(@sin(std.math.degreesToRadians(35)), 0, @sin(std.math.degreesToRadians(165))).norm();
+                {
+                    const sin = std.math.sin;
+                    const rad = std.math.degreesToRadians;
+                    const cos = std.math.cos;
+                    const xf = cos(rad(self.yaw)) * cos(rad(self.pitch));
+                    const zf = sin(rad(self.pitch));
+                    const yf = sin(rad(self.yaw)) * cos(rad(self.pitch));
+                    const a = Vec3.new(yf, xf, zf);
+                    light_dir = a;
+                }
                 //const light_dir = Vec3.new(0, 0, param.fac - 10).norm();
                 //const light_dir = Vec3.new(-20, 50, -20).norm();
                 const far = param.far;
@@ -173,13 +184,13 @@ pub const Renderer = struct {
 
                 if (true) {
                     { //Draw sun
-                        //c.glDepthMask(c.GL_FALSE);
-                        //defer c.glDepthMask(c.GL_TRUE);
+                        c.glDepthMask(c.GL_FALSE);
+                        defer c.glDepthMask(c.GL_TRUE);
                         //c.glEnable(c.GL_BLEND);
                         //c.glBlendFunc(c.GL_ONE, c.GL_ONE);
                         //c.glBlendEquation(c.GL_FUNC_ADD);
                         //defer c.glDisable(c.GL_BLEND);
-                        //c.glClear(c.GL_DEPTH_BUFFER_BIT);
+                        c.glClear(c.GL_DEPTH_BUFFER_BIT);
 
                         try self.light_batch.clear();
                         try self.light_batch.vertices.appendSlice(&.{
@@ -188,8 +199,6 @@ pub const Renderer = struct {
                             .{ .pos = graph.Vec3f.new(1, 1, 0), .uv = graph.Vec2f.new(1, 1) },
                             .{ .pos = graph.Vec3f.new(1, -1, 0), .uv = graph.Vec2f.new(1, 0) },
                         });
-                        const exposure: f32 = 1;
-                        const gamma: f32 = 1.8;
                         //var sun_color = graph.Hsva.fromInt(0xef8825ff);
                         var sun_color = graph.Hsva.fromInt(0xedda8fff);
                         self.light_batch.pushVertexData();
@@ -202,8 +211,8 @@ pub const Renderer = struct {
                         c.glBindTextureUnit(2, self.gbuffer.albedo);
                         c.glBindTextureUnit(3, self.csm.textures);
                         graph.GL.passUniform(sh1, "view_pos", cam.pos);
-                        graph.GL.passUniform(sh1, "exposure", exposure);
-                        graph.GL.passUniform(sh1, "gamma", gamma);
+                        graph.GL.passUniform(sh1, "exposure", self.exposure);
+                        graph.GL.passUniform(sh1, "gamma", self.gamma);
                         graph.GL.passUniform(sh1, "light_dir", light_dir);
                         graph.GL.passUniform(sh1, "screenSize", graph.Vec2i{ .x = @intFromFloat(w), .y = @intFromFloat(h) });
                         graph.GL.passUniform(sh1, "light_color", sun_color.toFloat());
@@ -214,6 +223,12 @@ pub const Renderer = struct {
                         graph.GL.passUniform(sh1, "cam_view", cam.getViewMatrix());
 
                         c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.light_batch.vertices.items.len)));
+                    }
+                    { //copy depth buffer
+                        c.glBindFramebuffer(c.GL_READ_FRAMEBUFFER, self.gbuffer.buffer);
+                        c.glBindFramebuffer(c.GL_DRAW_FRAMEBUFFER, 0);
+                        c.glBlitFramebuffer(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h, 0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h, c.GL_DEPTH_BUFFER_BIT, c.GL_NEAREST);
+                        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
                     }
                 }
             },
@@ -436,10 +451,6 @@ const Csm = struct {
             max_y = @max(max_y, trf.y());
             max_z = @max(max_z, trf.z());
         }
-
-        //min_z -= self.pad;
-        //max_z += self.pad;
-        //min_z -= far / 2;
 
         const tw = self.pad;
         min_z = if (min_z < 0) min_z * tw else min_z / tw;

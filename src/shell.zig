@@ -16,6 +16,7 @@ const Commands = enum {
     count_ents,
     help,
     select_id,
+    select_class,
     fov,
     dump_selected,
     snap_selected,
@@ -110,6 +111,17 @@ pub const CommandCtx = struct {
                     const p = self.ed.draw_state.cam3d.pos;
                     try wr.print("{d} {d} {d}", .{ p.x(), p.y(), p.z() });
                     try wr.print("\n", .{});
+                },
+                .select_class => {
+                    const class = args.next() orelse return error.expectedClassName;
+                    var it = self.ed.ecs.iterator(.entity);
+                    while (it.next()) |ent| {
+                        if (std.mem.eql(u8, class, ent.class)) {
+                            self.ed.selection.put(it.i, self.ed) catch |err| {
+                                try wr.print("Selection failed {!}\n", .{err});
+                            };
+                        }
+                    }
                 },
                 .env => {
                     var it = self.env.iterator();

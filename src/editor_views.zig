@@ -112,10 +112,8 @@ pub fn draw3Dview(
 
     var it = self.meshmap.iterator();
     while (it.next()) |mesh| {
-        if (!self.draw_state.tog.tools) {
-            if (self.tool_res_map.contains(mesh.key_ptr.*))
-                continue;
-        }
+        if (self.tool_res_map.contains(mesh.key_ptr.*))
+            continue;
         try self.renderer.submitDrawCall(.{
             .prim = .triangles,
             .num_elements = @intCast(mesh.value_ptr.*.mesh.indicies.items.len),
@@ -150,6 +148,15 @@ pub fn draw3Dview(
             if (self.ecs.intersects(ent_it.i, vis_mask))
                 continue;
             try ent.drawEnt(self, view_3d, draw, draw_nd, .{});
+        }
+    }
+    if (self.draw_state.tog.tools) { //Draw all the tools after everything as many are transparent
+
+        const mat = graph.za.Mat4.identity();
+        var tool_it = self.tool_res_map.iterator();
+        while (tool_it.next()) |item| {
+            const mesh = self.meshmap.get(item.key_ptr.*) orelse continue;
+            mesh.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
         }
     }
 

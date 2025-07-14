@@ -340,6 +340,14 @@ pub const Translate = struct {
             area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.pad, 1, 4096, .{}));
         if (guis.label(area_vt, gui, win, ly.getArea(), "index", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.draw_state.index, 0, 5, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "gamma", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.gamma, 0.1, 3, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "exposure", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.exposure, 0.1, 3, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "pitch", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.pitch, 0, 90, .{}));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "yaw", .{})) |ar|
+            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.ed.renderer.yaw, 0, 360, .{}));
     }
 
     fn commit_(self: *Editor, dupe: bool, angle_delta: ?Vec3, origin: Vec3, dist: Vec3) !void {
