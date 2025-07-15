@@ -390,8 +390,11 @@ pub const Entity = struct {
     }
 
     pub fn setClass(self: *@This(), editor: *Editor, class: []const u8, self_id: EcsT.Id) !void {
+        const old = self.class;
         self.class = try editor.storeString(class);
         self._multi_bb_index = false;
+
+        try editor.classtrack.change(self.class, old, self_id);
 
         self._sprite = null;
         { //Fgd stuff

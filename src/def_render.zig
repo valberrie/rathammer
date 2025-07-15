@@ -36,10 +36,12 @@ pub const Renderer = struct {
     sun_batch: SunQuadBatch,
     light_batch: LightInstanceBatch,
 
+    ambient: [4]f32 = [4]f32{ 1, 1, 1, 255 },
     exposure: f32 = 0.92,
     gamma: f32 = 1.03,
     pitch: f32 = 35,
     yaw: f32 = 165,
+    sun_color: [4]f32 = [4]f32{ 1, 1, 1, 255 },
 
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
         const shadow_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
@@ -134,11 +136,11 @@ pub const Renderer = struct {
                     const sin = std.math.sin;
                     const rad = std.math.degreesToRadians;
                     const cos = std.math.cos;
-                    const yaw = self.yaw - 60; //Why -60, idk but it makes valves angles correct
+                    const yaw = self.yaw - 0; //Why -60, idk but it makes valves angles correct
                     const xf = cos(rad(yaw)) * cos(rad(self.pitch));
                     const zf = sin(rad(self.pitch));
                     const yf = sin(rad(yaw)) * cos(rad(self.pitch));
-                    const a = Vec3.new(yf, xf, zf);
+                    const a = Vec3.new(-yf, -xf, -zf);
                     light_dir = a;
                 }
                 //const light_dir = Vec3.new(0, 0, param.fac - 10).norm();
@@ -201,8 +203,6 @@ pub const Renderer = struct {
                             .{ .pos = graph.Vec3f.new(1, 1, 0), .uv = graph.Vec2f.new(1, 1) },
                             .{ .pos = graph.Vec3f.new(1, -1, 0), .uv = graph.Vec2f.new(1, 0) },
                         });
-                        //var sun_color = graph.Hsva.fromInt(0xef8825ff);
-                        var sun_color = graph.Hsva.fromInt(0xedda8fff);
                         self.sun_batch.pushVertexData();
                         const sh1 = self.shader.sun;
                         c.glUseProgram(sh1);
@@ -217,7 +217,8 @@ pub const Renderer = struct {
                         graph.GL.passUniform(sh1, "gamma", self.gamma);
                         graph.GL.passUniform(sh1, "light_dir", light_dir);
                         graph.GL.passUniform(sh1, "screenSize", scrsz);
-                        graph.GL.passUniform(sh1, "light_color", sun_color.toFloat());
+                        graph.GL.passUniform(sh1, "ambient_color", self.ambient);
+                        graph.GL.passUniform(sh1, "light_color", self.sun_color);
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[0]", @as(f32, planes[0]));
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[1]", @as(f32, planes[1]));
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[2]", @as(f32, planes[2]));

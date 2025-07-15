@@ -40,6 +40,7 @@ const eviews = @import("editor_views.zig");
 const path_guess = @import("path_guess.zig");
 const shell = @import("shell.zig");
 const grid_stuff = @import("grid.zig");
+const class_tracker = @import("class_track.zig");
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
@@ -164,6 +165,8 @@ pub const Context = struct {
     shell: *shell.CommandCtx,
 
     loadctx: *LoadCtx,
+
+    classtrack: class_tracker.Tracker,
 
     tools: tool_def.ToolRegistry,
     panes: eviews.PaneReg,
@@ -372,6 +375,7 @@ pub const Context = struct {
             .asset = undefined,
             .asset_atlas = undefined,
 
+            .classtrack = class_tracker.Tracker.init(alloc),
             .loadctx = loadctx,
             .win = win_ptr,
             .notifier = NotifyCtx.init(alloc, 4000),
@@ -485,6 +489,7 @@ pub const Context = struct {
     pub fn deinit(self: *Self) void {
         self.asset.deinit();
 
+        self.classtrack.deinit();
         self.visgroups.deinit();
         self.tools.deinit();
         self.panes.deinit();

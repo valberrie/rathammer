@@ -124,25 +124,44 @@ pub fn draw3Dview(
         //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
     }
 
-    { //TODO Remove
-        self.renderer.light_batch.clear();
-        var itit = self.ecs.iterator(.entity);
-        while (itit.next()) |item| {
-            if (std.mem.eql(u8, "light", item.class)) {
-                const kvs = try self.ecs.getOptPtr(itit.i, .key_values) orelse continue;
-                const color = kvs.getFloats("_light", 4) orelse continue;
-                const constant = kvs.getFloats("_constant_attn", 1) orelse 0;
-                const lin = kvs.getFloats("_linear_attn", 1) orelse 1;
-                const quad = kvs.getFloats("_quadratic_attn", 1) orelse 0;
-
-                try self.renderer.light_batch.inst.append(.{
-                    .light_pos = graph.Vec3f.new(item.origin.x(), item.origin.y(), item.origin.z()),
-                    .quadratic = quad,
-                    .constant = constant + self.draw_state.const_add,
-                    .linear = lin,
-                    .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3] * self.draw_state.light_mul),
-                });
+    if (self.renderer.mode == .def) { //TODO Remove
+        if (self.classtrack.getFirst("light_environment")) |env_id| {
+            if (self.getComponent(env_id, .key_values)) |kvs| {
+                const pitch = kvs.getFloats("pitch", 1) orelse 0;
+                const color = kvs.getFloats("_light", 4) orelse [4]f32{ 255, 255, 255, 255 };
+                const ambient = kvs.getFloats("_ambient", 4) orelse [4]f32{ 255, 255, 255, 255 };
+                const yaws = kvs.getFloats("angles", 3) orelse [3]f32{ 0, 0, 0 };
+                self.renderer.pitch = pitch;
+                self.renderer.sun_color = color;
+                self.renderer.ambient = ambient;
+                for (&self.renderer.sun_color) |*cc| //Normalize it
+                    cc.* /= 255;
+                for (&self.renderer.ambient) |*cc| //Normalize it
+                    cc.* /= 255;
+                self.renderer.yaw = yaws[1];
             }
+        }
+
+        self.renderer.light_batch.clear();
+        //var itit = self.ecs.iterator(.entity);
+        //while (itit.next()) |item| {
+        for (self.classtrack.get("light")) |item| {
+            //if (std.mem.eql(u8, "light", item.class)) {
+            const kvs = try self.ecs.getOptPtr(item, .key_values) orelse continue;
+            const ent = try self.ecs.getOptPtr(item, .entity) orelse continue;
+            const color = kvs.getFloats("_light", 4) orelse continue;
+            const constant = kvs.getFloats("_constant_attn", 1) orelse 0;
+            const lin = kvs.getFloats("_linear_attn", 1) orelse 1;
+            const quad = kvs.getFloats("_quadratic_attn", 1) orelse 0;
+
+            try self.renderer.light_batch.inst.append(.{
+                .light_pos = graph.Vec3f.new(ent.origin.x(), ent.origin.y(), ent.origin.z()),
+                .quadratic = quad,
+                .constant = constant + self.draw_state.const_add,
+                .linear = lin,
+                .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3] * self.draw_state.light_mul),
+            });
+            //}
         }
         self.renderer.light_batch.pushVertexData();
     }

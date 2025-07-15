@@ -54,9 +54,7 @@ pub const Ctx2dView = struct {
         graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
         defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
 
-        try draw.flush(null, null);
-        draw.rect(screen_area, 0xffff);
-        draw.rect(graph.Rec(0, 0, 10, 10), 0xff_00_00_ff);
+        //draw.rect(screen_area, 0xffff);
         if (win.mouse.middle == .high) {
             self.cam.pan(win.mouse.delta);
         }
@@ -64,18 +62,43 @@ pub const Ctx2dView = struct {
             self.cam.zoom(win.mouse.wheel_delta.y * 0.1, win.mouse.pos, null, null);
         }
 
+        const cb = self.cam.cam_area;
+        draw.rect(cb, 0x1111_11ff);
+        const view_2d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -100000, 1);
+        const view_3d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -4096, 4096).rotate(90, Vec3.new(1, 0, 0));
+        try draw.flushCustomMat(view_2d, view_3d);
         graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
         defer graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_FILL);
 
-        const cb = self.cam.cam_area;
-        const view_2d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -100000, 1);
-        const view_3d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -4096, 4096).rotate(90, Vec3.new(1, 0, 0));
         {
             var ent_it = ed.ecs.iterator(.entity);
             while (ent_it.next()) |ent| {
                 try ent.drawEnt(ed, view_3d, draw, draw, .{});
             }
         }
+        const grid_color = 0x4444_44ff;
+        const max_count = 12;
+        {
+            const gx_start = ed.grid.swiz1(cb.x, "x");
+            const count_pre: usize = @intFromFloat(@ceil(cb.w / ed.grid.s.x()));
+            const count = if (count_pre < max_count) count_pre else max_count;
+            //@floor(cb.w / max_count / ed.grid.s.x());
+            const wi = if (count_pre < max_count) ed.grid.s.x() else @floor(cb.w / max_count / ed.grid.s.x()) * ed.grid.s.x();
+            for (0..count) |ci| {
+                const fi: f32 = @floatFromInt(ci);
+                draw.line(.{ .x = gx_start + fi * wi, .y = cb.y }, .{ .x = gx_start + fi * wi, .y = cb.y + cb.h }, grid_color);
+            }
+        }
+        {
+            const gx_start = ed.grid.swiz1(cb.y, "x");
+            const count: usize = @intFromFloat(@ceil(cb.h / ed.grid.s.x()));
+            const wi = ed.grid.s.x();
+            for (0..count) |ci| {
+                const fi: f32 = @floatFromInt(ci);
+                draw.line(.{ .y = gx_start + fi * wi, .x = cb.x }, .{ .y = gx_start + fi * wi, .x = cb.x + cb.w }, grid_color);
+            }
+        }
+
         var it = ed.meshmap.iterator();
         const c = graph.c;
         const model = graph.za.Mat4.identity();

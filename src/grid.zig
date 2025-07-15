@@ -95,3 +95,5 @@ pub fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usize
     }
     //d.point3D(cpos, 0xff0000ee);
 }
+
+//pub fn drawGrid2D()void{ }
