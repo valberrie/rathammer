@@ -131,15 +131,15 @@ pub fn draw3Dview(
             if (std.mem.eql(u8, "light", item.class)) {
                 const kvs = try self.ecs.getOptPtr(itit.i, .key_values) orelse continue;
                 const color = kvs.getFloats("_light", 4) orelse continue;
-                const constant = kvs.getFloats("_constant_attn", 1) orelse continue;
-                const lin = kvs.getFloats("_linear_attn", 1) orelse continue;
-                const quad = kvs.getFloats("_quadratic_attn", 1) orelse continue;
+                const constant = kvs.getFloats("_constant_attn", 1) orelse 0;
+                const lin = kvs.getFloats("_linear_attn", 1) orelse 1;
+                const quad = kvs.getFloats("_quadratic_attn", 1) orelse 0;
 
                 try self.renderer.light_batch.inst.append(.{
                     .light_pos = graph.Vec3f.new(item.origin.x(), item.origin.y(), item.origin.z()),
-                    .quadratic = quad[0],
-                    .constant = constant[0],
-                    .linear = lin[0],
+                    .quadratic = quad,
+                    .constant = constant + self.draw_state.const_add,
+                    .linear = lin,
                     .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3] * self.draw_state.light_mul),
                 });
             }

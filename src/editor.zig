@@ -172,7 +172,8 @@ pub const Context = struct {
 
     draw_state: struct {
         factor: f32 = 64,
-        light_mul: f32 = 1,
+        light_mul: f32 = 0.11,
+        const_add: f32 = 0, //Added to light constant factor
         far: f32 = 512 * 64,
         pad: f32 = 164,
         index: usize = 0,

@@ -289,8 +289,7 @@ pub const Translate = struct {
             const draw_verts = selected.len < MAX_DRAWN_VERTS;
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    if (draw_verts)
-                        solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+                    solid.drawEdgeOutline(draw_nd, 0xff00ff, if (draw_verts) 0xff0000ff else 0, Vec3.zero());
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }

@@ -1534,9 +1534,13 @@ pub const KeyValues = struct {
         return null;
     }
 
-    pub fn getFloats(self: *Self, key: []const u8, comptime count: usize) ?[count]f32 {
-        if (self.map.get(key)) |val|
-            return val.getFloats(count);
+    pub fn getFloats(self: *Self, key: []const u8, comptime count: usize) ?if (count == 1) f32 else [count]f32 {
+        if (self.map.get(key)) |val| {
+            const flo = val.getFloats(count);
+            if (count == 1)
+                return flo[0];
+            return flo;
+        }
         return null;
     }
 

@@ -134,9 +134,10 @@ pub const Renderer = struct {
                     const sin = std.math.sin;
                     const rad = std.math.degreesToRadians;
                     const cos = std.math.cos;
-                    const xf = cos(rad(self.yaw)) * cos(rad(self.pitch));
+                    const yaw = self.yaw - 60; //Why -60, idk but it makes valves angles correct
+                    const xf = cos(rad(yaw)) * cos(rad(self.pitch));
                     const zf = sin(rad(self.pitch));
-                    const yf = sin(rad(self.yaw)) * cos(rad(self.pitch));
+                    const yf = sin(rad(yaw)) * cos(rad(self.pitch));
                     const a = Vec3.new(yf, xf, zf);
                     light_dir = a;
                 }

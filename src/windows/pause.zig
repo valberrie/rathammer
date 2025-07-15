@@ -188,6 +188,8 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.yaw, 0, 360, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "lightMul", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.light_mul, 0.01, 1, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "const add", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.const_add, -1, 1, .{}));
         }
         if (eql(u8, tab, "main")) {
             var ly = guis.VerticalLayout{
