@@ -12,6 +12,7 @@ const iArea = guis.iArea;
 const undo = @import("../undo.zig");
 const Wg = guis.Widget;
 const Context = @import("../editor.zig").Context;
+const ptext = @import("widget_texture.zig");
 const fgd = @import("../fgd.zig");
 //TODO
 // to get this to work we need to first add a getptr cb to all existing
@@ -822,7 +823,10 @@ pub const InspectorWindow = struct {
         const sp = area.split(.vertical, area.w / 2);
         if (ed.asset_browser.selected_mat_vpk_id) |id| {
             const tex = ed.getTexture(id) catch return;
-            lay.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], tex, tex.rect(), .{}));
+            const tt = ed.vpkctx.entries.get(id) orelse return;
+            lay.addChildOpt(gui, win, ptext.PollingTexture.build(gui, sp[0], tex, tex.rect(), "{s}/{s}", .{
+                tt.path, tt.name,
+            }, .{}));
         }
         {
             const max = 16;
@@ -830,7 +834,7 @@ pub const InspectorWindow = struct {
             const recent_list = ed.asset_browser.recent_mats.list.items;
             for (recent_list[0..@min(max, recent_list.len)], 0..) |rec, id| {
                 const tex = ed.getTexture(rec) catch return;
-                lay.addChildOpt(gui, win, Wg.GLTexture.build(gui, tly.getArea(), tex, tex.rect(), .{
+                lay.addChildOpt(gui, win, ptext.PollingTexture.build(gui, tly.getArea(), tex, tex.rect(), "", .{}, .{
                     .cb_vt = &self.area,
                     .cb_fn = recent_texture_btn_cb,
                     .id = id,

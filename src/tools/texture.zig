@@ -308,7 +308,6 @@ pub const TextureTool = struct {
                 const dupe = editor.isBindState(editor.config.keys.texture_wrap.b, .high);
                 const pick = editor.isBindState(editor.config.keys.texture_eyedrop.b, .high);
 
-                const res_id = (editor.asset_browser.selected_mat_vpk_id) orelse break :blk;
                 const pot = editor.screenRay(td.screen_area, td.view_3d.*);
                 if (pot.len == 0) break :blk;
                 const solid = editor.getComponent(pot[0].id, .solid) orelse break :blk;
@@ -317,6 +316,7 @@ pub const TextureTool = struct {
                 self.state = if (pick) .pick else .apply;
                 switch (self.state) {
                     .apply => {
+                        const currently_selected = (editor.asset_browser.selected_mat_vpk_id) orelse break :blk;
                         const source = src: {
                             if (dupe) {
                                 if (try self.getCurrentlySelected(editor)) |f| {
@@ -360,13 +360,14 @@ pub const TextureTool = struct {
                         };
 
                         const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
-                        const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = res_id, .lightmapscale = side.lightmapscale };
+                        const new = undo.UndoTextureManip.State{ .u = source.u, .v = source.v, .tex_id = currently_selected, .lightmapscale = side.lightmapscale };
 
                         const ustack = try editor.undoctx.pushNewFmt("texture manip", .{});
                         try ustack.append(try undo.UndoTextureManip.create(editor.undoctx.alloc, old, new, pot[0].id, pot[0].side_id.?));
                         undo.applyRedo(ustack.items, editor);
                     },
                     .pick => {
+                        try editor.asset_browser.recent_mats.put(side.tex_id);
                         editor.asset_browser.selected_mat_vpk_id = side.tex_id;
                     },
                 }
