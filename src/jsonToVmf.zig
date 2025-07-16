@@ -77,15 +77,16 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
         });
         var side_id_start: usize = 0;
 
-        const vis_mask = ecs.EcsT.getComponentMask(&.{.deleted});
+        const delete_mask = ecs.EcsT.getComponentMask(&.{.deleted});
         var group_ent_map = std.AutoHashMap(GroupId, std.ArrayList(ecs.EcsT.Id)).init(alloc);
 
         var solids = ecs_p.iterator(.solid);
         while (solids.next()) |solid| {
-            if (ecs_p.intersects(solids.i, vis_mask))
+            if (ecs_p.intersects(solids.i, delete_mask))
                 continue;
             if (try ecs_p.getOpt(solids.i, .group)) |g| {
-                if (g.id != 0) {
+                // Groups without an owner are serialized as is
+                if (g.id != 0 and groups.getOwner(g.id) != null) {
                     const res = try group_ent_map.getOrPut(g.id);
                     if (!res.found_existing) {
                         res.value_ptr.* = std.ArrayList(ecs.EcsT.Id).init(alloc);
@@ -103,7 +104,7 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
 
         var ents = ecs_p.iterator(.entity);
         while (ents.next()) |ent| {
-            if (ecs_p.intersects(ents.i, vis_mask))
+            if (ecs_p.intersects(ents.i, delete_mask))
                 continue;
             try vr.writeKey("entity");
             try vr.beginObject();

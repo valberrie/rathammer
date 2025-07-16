@@ -135,6 +135,9 @@ pub fn loadJson(
                             if (!should_attach)
                                 std.debug.print("omitting invalid solid id: {d}\n", .{id});
                         },
+                        ecs.Groups.Group => {
+                            try groups.ensureUnownedPresent(comp.id);
+                        },
                         else => {},
                     }
                     if (should_attach)

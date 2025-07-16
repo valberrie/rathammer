@@ -154,19 +154,21 @@ pub fn put(self: *Self, id: Id, editor: *edit.Context) !bool {
     if (!self.canSelect(id, editor)) return false;
     if (!self.ignore_groups) {
         if (try editor.ecs.getOpt(id, .group)) |group| {
-            switch (self.mode) {
-                .one => self.clear(),
-                .many => {},
-            }
-            const to_remove = self.multiContains(id);
-            if (to_remove) _ = self.groups.remove(group.id) else try self.groups.put(group.id, {});
-            var it = editor.ecs.iterator(.group);
-            while (it.next()) |ent| {
-                if (ent.id == group.id and ent.id != 0) {
-                    if (to_remove) self.tryRemoveMulti(it.i) else try self.tryAddMulti(it.i);
+            if (group.id != 0) {
+                switch (self.mode) {
+                    .one => self.clear(),
+                    .many => {},
                 }
+                const to_remove = self.multiContains(id);
+                if (to_remove) _ = self.groups.remove(group.id) else try self.groups.put(group.id, {});
+                var it = editor.ecs.iterator(.group);
+                while (it.next()) |ent| {
+                    if (ent.id == group.id and ent.id != 0) {
+                        if (to_remove) self.tryRemoveMulti(it.i) else try self.tryAddMulti(it.i);
+                    }
+                }
+                return true;
             }
-            return true;
         }
     }
     const group = if (try editor.ecs.getOpt(id, .group)) |g| g.id else 0;

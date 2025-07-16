@@ -73,6 +73,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
 pub const Groups = struct {
     const Self = @This();
     pub const GroupId = u16;
+    pub const MAX_GROUP = std.math.maxInt(u16) - 1;
     pub const NO_GROUP = 0;
 
     pub const Group = struct {
@@ -93,9 +94,11 @@ pub const Groups = struct {
         }
     };
 
-    group_counter: u16 = 0,
+    group_counter: u16 = NO_GROUP,
 
+    /// Map owners to groups.
     entity_mapper: std.AutoHashMap(EcsT.Id, GroupId),
+    /// Map Groups to owners, groups need not be owned.
     group_mapper: std.AutoHashMap(GroupId, ?EcsT.Id),
 
     pub fn init(alloc: std.mem.Allocator) Self {
@@ -111,7 +114,7 @@ pub const Groups = struct {
     }
 
     pub fn getOwner(self: *Self, group: GroupId) ?EcsT.Id {
-        if (group == 0) return null;
+        if (group == NO_GROUP) return null;
         return self.group_mapper.get(group) orelse null;
     }
 
@@ -125,9 +128,18 @@ pub const Groups = struct {
         try self.group_mapper.put(group, owner);
     }
 
+    pub fn ensureUnownedPresent(self: *Self, group: GroupId) !void {
+        if (group == NO_GROUP) return;
+        const ret = try self.group_mapper.getOrPut(group);
+        if (!ret.found_existing) {
+            ret.value_ptr.* = null;
+        }
+    }
+
     pub fn newGroup(self: *Self, owner: ?EcsT.Id) !GroupId {
         while (true) {
             self.group_counter += 1;
+            if (self.group_counter >= MAX_GROUP) return error.tooManyGroups;
             if (!self.group_mapper.contains(self.group_counter))
                 break;
         }
