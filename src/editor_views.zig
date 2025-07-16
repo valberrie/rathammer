@@ -215,6 +215,33 @@ pub fn draw3Dview(
     if (self.isBindState(self.config.keys.toggle_select_mode.b, .rising))
         self.selection.toggle();
 
+    if (self.isBindState(self.config.keys.hide_selected.b, .rising)) {
+        const selected = self.selection.getSlice();
+        for (selected) |sel| {
+            if (!(self.ecs.hasComponent(sel, .invisible) catch continue)) {
+                self.edit_state.manual_hidden_count += 1;
+                if (self.getComponent(sel, .solid)) |solid| {
+                    try solid.removeFromMeshMap(sel, self);
+                }
+                self.ecs.attachComponent(sel, .invisible, .{}) catch continue;
+            } else {
+                if (self.edit_state.manual_hidden_count > 0) { //sanity check
+                    self.edit_state.manual_hidden_count -= 1;
+                }
+
+                _ = self.ecs.removeComponent(sel, .invisible) catch continue;
+                if (self.getComponent(sel, .solid)) |solid| {
+                    try solid.rebuild(sel, self);
+                }
+            }
+        }
+    }
+
+    if (self.isBindState(self.config.keys.unhide_all.b, .rising)) {
+        try self.rebuildVisGroups();
+        self.edit_state.manual_hidden_count = 0;
+    }
+
     if (self.isBindState(self.config.keys.select.b, .rising)) {
         const pot = self.screenRay(screen_area, view_3d);
         var starting_point: ?Vec3 = null;
@@ -352,6 +379,7 @@ pub fn draw3Dview(
 
         const SINGLE_COLOR = 0xfcc858ff;
         const MANY_COLOR = 0xfc58d6ff;
+        const HIDDEN_COLOR = 0x20B2AAff;
 
         var mt = graph.MultiLineText.start(draw, screen_area.pos(), font);
         if (self.grid.isOne()) {
@@ -367,6 +395,9 @@ pub fn draw3Dview(
         mt.textFmt("{s}, {any}", .{ @tagName(self.draw_state.grab_pane.owner), self.draw_state.grab_pane.grabbed }, fh, col);
         if (self.selection.mode == .many)
             mt.textFmt("Selected: {d}", .{self.selection.multi.items.len}, fh, col);
+        if (self.edit_state.manual_hidden_count > 0) {
+            mt.textFmt("{d} objects hidden", .{self.edit_state.manual_hidden_count}, fh, HIDDEN_COLOR);
+        }
         {
             //TODO put an actual dt here
             const notify_slice = try self.notifier.getSlice(16);

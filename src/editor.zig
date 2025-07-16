@@ -275,6 +275,7 @@ pub const Context = struct {
     } = .{},
 
     edit_state: struct {
+        manual_hidden_count: usize = 0,
         default_group_entity: enum { none, func_detail } = .func_detail,
         tool_index: usize = 0,
         /// Set when the currently selected tool is selected again
@@ -552,7 +553,9 @@ pub const Context = struct {
     }
 
     pub fn rebuildVisGroups(self: *Self) !void {
-        std.debug.print("Rebild\n", .{});
+        std.debug.print("Rebuilding visgroups\n", .{});
+        self.ecs.clearComponent(.invisible);
+
         var it = self.ecs.iterator(.editor_info);
         while (it.next()) |info| {
             var copy = self.visgroups.disabled;
