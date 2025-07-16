@@ -297,23 +297,6 @@ pub const Entity = struct {
     //CRAP
     _multi_bb_index: bool = false,
 
-    //When we duplicate a brush entity what must happen?
-    //How does selection of brush entities work?
-    //there needs to be a some selection flag, 'ig' mode selects solids normally,
-    //when duplicated, the parent_id is valid, care must be taken to update parent_entity.solids
-    //
-    //other option is groups mode, duping involves duping parent entity, duping all children and updating all state.
-    //
-    //function dupeSelection, checks to see if ig flag is on.
-    //for each selected, if parent_id, remove self from selected, add parent to selected
-    //for each new_selected dupe()
-    //
-    //what happens with ig on and a brush entity selected, normally brush entites can't be selected, only their solids
-    //
-    //duping a brush entity always does full dupe
-    //
-    //instead of micromanaging, set a flag, and on update recalculate all parent state things
-
     pub fn dupe(self: *const @This(), ecs: *EcsT, new_id: EcsT.Id) anyerror!@This() {
         _ = ecs;
         _ = new_id;
@@ -363,13 +346,14 @@ pub const Entity = struct {
         self.angle = angle;
         if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs|
             try kvs.putStringNoNotify("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
-        try self.updateModelbb(editor, self_id);
+        self.updateModelbb(editor, self_id);
     }
 
-    fn updateModelbb(self: *@This(), editor: *Editor, self_id: EcsT.Id) !void {
-        if (editor.models.getPtr(self._model_id orelse return)) |mod| {
+    fn updateModelbb(self: *@This(), editor: *Editor, self_id: EcsT.Id) void {
+        const omod = if (self._model_id) |mid| editor.models.getPtr(mid) else null;
+        if (omod) |mod| {
             const mesh = mod.mesh orelse return;
-            const bb = try editor.ecs.getPtr(self_id, .bounding_box);
+            const bb = editor.getComponent(self_id, .bounding_box) orelse return;
             const quat = util3d.extEulerToQuat(self.angle);
             const rot = quat.toMat3();
             const rbb = util3d.bbRotate(rot, Vec3.zero(), mesh.hull_min, mesh.hull_max);
@@ -377,16 +361,23 @@ pub const Entity = struct {
             bb.a = rbb[0];
             bb.b = rbb[1];
             bb.setFromOrigin(self.origin);
+        } else { //Set it to the default bb
+
+            var def_bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+            def_bb.setFromOrigin(self.origin);
+            const bb = editor.getComponent(self_id, .bounding_box) orelse return;
+            bb.* = def_bb;
         }
     }
 
     pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
-        const idAndName = try editor.vpkctx.resolveId(model) orelse return;
-        self._model_id = idAndName.id;
-        if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
-            try kvs.putStringNoNotify("model", idAndName.name);
+        if (try editor.vpkctx.resolveId(model)) |idAndName| {
+            self._model_id = idAndName.id;
+            if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
+                try kvs.putStringNoNotify("model", idAndName.name);
+            }
         }
-        try self.updateModelbb(editor, self_id);
+        self.updateModelbb(editor, self_id);
     }
 
     pub fn setClass(self: *@This(), editor: *Editor, class: []const u8, self_id: EcsT.Id) !void {
@@ -406,6 +397,18 @@ pub const Entity = struct {
                     const sprite_tex_ = try editor.loadTextureFromVpk(sl);
                     if (sprite_tex_.res_id != 0)
                         self._sprite = sprite_tex_.res_id;
+                }
+                if (!base.fields.contains("model")) {
+                    //We do this before studio_model.
+                    //We don't delete the kv so if we change back to a class with model it is retained.
+                    self._model_id = null;
+                    self.updateModelbb(editor, self_id);
+                } else {
+                    if (editor.getComponent(self_id, .key_values)) |kvs| {
+                        if (kvs.getString("model")) |model_name| {
+                            try self.setModel(editor, self_id, .{ .name = model_name });
+                        }
+                    }
                 }
 
                 if (base.studio_model.len > 0) {
@@ -461,10 +464,12 @@ pub const Entity = struct {
             return;
         //TODO set the model size of entities hitbox thingy
         if (editor.draw_state.tog.sprite) {
-            draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
             if (ent._sprite) |spr| {
                 const isp = try editor.getTexture(spr);
                 draw_nd.billboard(ent.origin, .{ .x = 16, .y = 16 }, isp.rect(), isp, editor.draw_state.cam3d);
+            }
+            if (ent._model_id == null) { //Only draw the frame if it doesn't have a model
+                draw.cubeFrame(ent.origin.sub(Vec3.new(8, 8, 8)), Vec3.new(16, 16, 16), param.frame_color);
             }
         }
     }
