@@ -37,6 +37,7 @@ pub const Renderer = struct {
     light_batch: LightInstanceBatch,
 
     ambient: [4]f32 = [4]f32{ 1, 1, 1, 255 },
+    ambient_scale: f32 = 1,
     exposure: f32 = 0.92,
     gamma: f32 = 1.03,
     pitch: f32 = 35,
@@ -212,12 +213,14 @@ pub const Renderer = struct {
                         c.glBindTextureUnit(1, self.gbuffer.normal);
                         c.glBindTextureUnit(2, self.gbuffer.albedo);
                         c.glBindTextureUnit(3, self.csm.textures);
+                        var ambient_scaled = self.ambient;
+                        ambient_scaled[3] *= self.ambient_scale;
                         graph.GL.passUniform(sh1, "view_pos", cam.pos);
                         graph.GL.passUniform(sh1, "exposure", self.exposure);
                         graph.GL.passUniform(sh1, "gamma", self.gamma);
                         graph.GL.passUniform(sh1, "light_dir", light_dir);
                         graph.GL.passUniform(sh1, "screenSize", scrsz);
-                        graph.GL.passUniform(sh1, "ambient_color", self.ambient);
+                        graph.GL.passUniform(sh1, "ambient_color", ambient_scaled);
                         graph.GL.passUniform(sh1, "light_color", self.sun_color);
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[0]", @as(f32, planes[0]));
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[1]", @as(f32, planes[1]));

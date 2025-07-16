@@ -64,7 +64,17 @@ pub const Tracker = struct {
         return &.{};
     }
 
-    pub fn getFirst(self: *Self, class: []const u8) ?Id {
+    // get the last one, so user can determine order
+    // With multiple light_environment, user sets class of the one they want in the box
+    pub fn getLast(self: *Self, class: []const u8) ?Id {
+        if (self.map.get(class)) |list| {
+            if (list.items.len > 0)
+                return list.items[list.items.len - 1];
+        }
+        return null;
+    }
+
+    pub fn getFirstDeprecate(self: *Self, class: []const u8) ?Id {
         if (self.map.get(class)) |list| {
             if (list.items.len > 0)
                 return list.items[0];

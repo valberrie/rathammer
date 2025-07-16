@@ -125,7 +125,7 @@ pub fn draw3Dview(
     }
 
     if (self.renderer.mode == .def) { //TODO Remove
-        if (self.classtrack.getFirst("light_environment")) |env_id| {
+        if (self.classtrack.getLast("light_environment")) |env_id| {
             if (self.getComponent(env_id, .key_values)) |kvs| {
                 const pitch = kvs.getFloats("pitch", 1) orelse 0;
                 const color = kvs.getFloats("_light", 4) orelse [4]f32{ 255, 255, 255, 255 };
@@ -194,6 +194,9 @@ pub fn draw3Dview(
     }
     if (self.draw_state.tog.tools) { //Draw all the tools after everything as many are transparent
 
+        graph.c.glEnable(graph.c.GL_BLEND);
+        graph.c.glBlendFunc(graph.c.GL_SRC_ALPHA, graph.c.GL_ONE_MINUS_SRC_ALPHA);
+        graph.c.glBlendEquation(graph.c.GL_FUNC_ADD);
         const mat = graph.za.Mat4.identity();
         var tool_it = self.tool_res_map.iterator();
         while (tool_it.next()) |item| {
