@@ -14,6 +14,7 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const VisGroups = @import("visgroup.zig");
 const prim_gen = @import("primitive_gen.zig");
 const csg = @import("csg.zig");
+pub const SparseSet = graph.SparseSet;
 //Global TODO for ecs stuff
 //Many strings in kvs and connections are stored by editor.StringStorage
 //as they act as an enum value specified in the fgd.

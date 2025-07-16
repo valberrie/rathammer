@@ -545,6 +545,37 @@ pub const Context = struct {
         return self.ecs.getPtr(index, comp) catch null;
     }
 
+    pub fn Iterator(comptime comp: EcsT.Components) type {
+        return struct {
+            const childT = EcsT.Fields[@intFromEnum(comp)].ftype;
+            const Ch = ecs.SparseSet(childT, EcsT.Id);
+            //const childT = Fields[@intFromEnum(component_type)].ftype;
+            child_it: Ch.Iterator,
+
+            //Index into sparse, IE current entity id
+            i: EcsT.Id,
+            ecs: *EcsT,
+
+            pub fn next(self: *@This()) ?*childT {
+                while (self.child_it.next()) |item| {
+                    if (!(self.ecs.hasComponent(self.child_it.i, .deleted) catch false)) {
+                        self.i = self.child_it.i;
+                        return item;
+                    }
+                }
+                return null;
+            }
+        };
+    }
+
+    pub fn iterator(self: *Self, comptime comp: EcsT.Components) Iterator(comp) {
+        return .{
+            .child_it = @field(self.ecs.data, @tagName(comp)).denseIterator(),
+            .i = 0,
+            .ecs = &self.ecs,
+        };
+    }
+
     pub fn rebuildMeshesIfDirty(self: *Self) !void {
         var it = self.meshmap.iterator();
         while (it.next()) |mesh| {

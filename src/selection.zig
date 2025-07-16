@@ -161,7 +161,7 @@ pub fn put(self: *Self, id: Id, editor: *edit.Context) !bool {
                 }
                 const to_remove = self.multiContains(id);
                 if (to_remove) _ = self.groups.remove(group.id) else try self.groups.put(group.id, {});
-                var it = editor.ecs.iterator(.group);
+                var it = editor.iterator(.group);
                 while (it.next()) |ent| {
                     if (ent.id == group.id and ent.id != 0) {
                         if (to_remove) self.tryRemoveMulti(it.i) else try self.tryAddMulti(it.i);
