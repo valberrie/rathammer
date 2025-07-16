@@ -42,11 +42,15 @@ pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, p
         return .exit;
     win.pumpEvents(.wait);
     win.grabMouse(false);
-    try draw.begin(0x62d8e5ff, win.screen_dimensions.toF());
+    try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
     try editor.update(win);
 
     {
-        const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
+        const max_w = gui.style.config.default_item_h * 30;
+        const area = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
+        const w = @min(max_w, area.w);
+        const side_l = (area.w - w);
+        const winrect = area.replace(side_l, null, w, null);
         const wins = &.{&pause_win.vt};
         try gui.pre_update(wins);
         try gui.updateWindowSize(&pause_win.vt, winrect);
@@ -70,6 +74,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     //var win = try graph.SDL.Window.createWindow("Rat Hammer - ラットハンマー", .{
     var win = try graph.SDL.Window.createWindow("Rat Hammer", .{
         .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
+        .frame_sync = .adaptive_vsync,
     });
     defer win.destroyWindow();
 
@@ -234,6 +239,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     var last_frame_group_owner: ?edit.EcsT.Id = null;
 
+    var frame_timer = try std.time.Timer.start();
+    var frame_time: u64 = 0;
     win.grabMouse(true);
     main_loop: while (!win.should_exit) {
         if (win.isBindState(config.keys.quit.b, .rising) or pause_win.should_exit)
@@ -256,6 +263,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         //win.grabMouse(editor.draw_state.grab.is);
         win.grabMouse(editor.draw_state.grab_pane.was_grabbed);
         win.pumpEvents(.poll);
+        frame_time = frame_timer.read();
+        frame_timer.reset();
+        const perc_of_60fps: f32 = @as(f32, @floatFromInt(frame_time)) / std.time.ns_per_ms / 16;
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
 
@@ -282,7 +292,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .bwd = win.bindHigh(config.keys.cam_back.b),
             .mouse_delta = if (editor.draw_state.grab_pane.was_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
-            .speed_perc = if (win.bindHigh(config.keys.cam_slow.b)) 0.1 else 1,
+            .speed_perc = @as(f32, if (win.bindHigh(config.keys.cam_slow.b)) 0.1 else 1) * perc_of_60fps,
         };
 
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);

@@ -150,9 +150,6 @@ pub const PauseWindow = struct {
     fn buildTabs(win_vt: *iArea, vt: *iArea, tab: []const u8, gui: *Gui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", win_vt));
         const eql = std.mem.eql;
-        const max_w = gui.style.config.default_item_h * 30;
-        const w = @min(max_w, vt.area.w);
-        const side_l = (vt.area.w - w) / 2;
         if (eql(u8, tab, "visgroup")) {
             buildVisGroups(self, gui, vt);
 
@@ -160,7 +157,7 @@ pub const PauseWindow = struct {
             //vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome to visgroup", null));
         }
         if (eql(u8, tab, "graphics")) {
-            var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area.replace(side_l, null, w, null) };
+            var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area };
             const ps = &self.editor.draw_state.planes;
             const ed = self.editor;
             const max = 512 * 64;
@@ -197,7 +194,7 @@ pub const PauseWindow = struct {
             var ly = guis.VerticalLayout{
                 .padding = .{},
                 .item_height = gui.style.config.default_item_h,
-                .bounds = vt.area.replace(side_l, null, w, null),
+                .bounds = vt.area,
             };
             ly.padding.left = 10;
             ly.padding.right = 10;
@@ -239,12 +236,10 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &ds.cam3d.fwd_back_kind, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "renderer", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.renderer.mode, .{}));
-            if (guis.label(vt, gui, win, ly.getArea(), "New entity type", .{})) |ar|
+            if (guis.label(vt, gui, win, ly.getArea(), "New group type", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.edit_state.default_group_entity, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "Entity render distance", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
-            if (guis.label(vt, gui, win, ly.getArea(), "factor", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.factor, 0.1, 512, .{ .nudge = 1 }));
             {
                 var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_near_plane, 1, 512, .{ .nudge = 1 }));
