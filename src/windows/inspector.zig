@@ -822,9 +822,8 @@ pub const InspectorWindow = struct {
         const ed = self.editor;
         const sp = area.split(.vertical, area.w / 2);
         if (ed.asset_browser.selected_mat_vpk_id) |id| {
-            const tex = ed.getTexture(id) catch return;
             const tt = ed.vpkctx.entries.get(id) orelse return;
-            lay.addChildOpt(gui, win, ptext.PollingTexture.build(gui, sp[0], tex, tex.rect(), "{s}/{s}", .{
+            lay.addChildOpt(gui, win, ptext.PollingTexture.build(gui, sp[0], ed, id, "{s}/{s}", .{
                 tt.path, tt.name,
             }, .{}));
         }
@@ -833,8 +832,7 @@ pub const InspectorWindow = struct {
             var tly = guis.TableLayout{ .columns = 4, .item_height = sp[1].h / 4, .bounds = sp[1] };
             const recent_list = ed.asset_browser.recent_mats.list.items;
             for (recent_list[0..@min(max, recent_list.len)], 0..) |rec, id| {
-                const tex = ed.getTexture(rec) catch return;
-                lay.addChildOpt(gui, win, ptext.PollingTexture.build(gui, tly.getArea(), tex, tex.rect(), "", .{}, .{
+                lay.addChildOpt(gui, win, ptext.PollingTexture.build(gui, tly.getArea(), ed, rec, "", .{}, .{
                     .cb_vt = &self.area,
                     .cb_fn = recent_texture_btn_cb,
                     .id = id,
