@@ -417,6 +417,8 @@ pub const FastFaceManip = struct {
     right: bool = false,
     main_id: ?ecs.EcsT.Id = null,
 
+    draw_grid: bool = true,
+
     selected: std.ArrayList(Selected),
 
     fn reset(self: *@This()) void {
@@ -542,17 +544,17 @@ pub const FastFaceManip = struct {
                                 _, const pos = inter_;
                                 const dist = editor.grid.snapV3(pos);
 
-                                const draw_grid = true;
-                                if (draw_grid) {
-                                    if (editor.grid.isOne()) {
-                                        gridutil.drawGridAxis(
-                                            self.start,
-                                            editor.grid.countV3(dist),
-                                            td.draw,
-                                            editor.grid,
-                                            Vec3.set(editor.grid.s.x() * 10),
-                                        );
-                                    }
+                                if (self.draw_grid) {
+                                    const counts = editor.grid.countV3(dist);
+                                    const absd = Vec3{ .data = @abs(dist.data) };
+                                    const width = @max(10, util3d.maxComp(absd));
+                                    gridutil.drawGridAxis(
+                                        self.start,
+                                        counts,
+                                        td.draw,
+                                        editor.grid,
+                                        Vec3.set(width),
+                                    );
                                 }
                                 //if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
                                 //const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
@@ -602,7 +604,6 @@ pub const FastFaceManip = struct {
 
     pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
         const doc =
             \\This is the Fast Face tool.
             \\Select objects with 'E'.
@@ -615,6 +616,8 @@ pub const FastFaceManip = struct {
         area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
             .mode = .split_on_space,
         }));
+        const CB = Wg.Checkbox.build;
+        area_vt.addChildOpt(gui, win, CB(gui, ly.getArea(), "Draw Grid", .{ .bool_ptr = &self.draw_grid }, null));
     }
 
     pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {

@@ -361,6 +361,8 @@ pub const Translate = struct {
                 .commit_vt = &self.cb_vt,
                 .clear_on_commit = true,
             }));
+        const Btn = Wg.Button.build;
+        area_vt.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Reset Grid", .{ .cb_fn = &btnCb, .id = 0, .cb_vt = &self.cb_vt }));
 
         const CB = Wg.Checkbox.build;
         {
@@ -443,6 +445,12 @@ pub const Translate = struct {
             //now iterate the new_ent_list and update the group mapping
         }
         undo.applyRedo(ustack.items, self);
+    }
+
+    fn btnCb(vt: *iArea, _: usize, _: *RGui, _: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+
+        self.ed.grid.setAll(16);
     }
 
     fn textbox_cb(vt: *iArea, _: *RGui, string: []const u8, id: usize) void {

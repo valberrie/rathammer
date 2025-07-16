@@ -390,3 +390,7 @@ pub fn roundNormal(norm: Vec3) Vec3 {
     }
     return norm.mul(vs[n]).norm();
 }
+
+pub fn maxComp(v: Vec3) f32 {
+    return @max(v.x(), v.y(), v.z());
+}
