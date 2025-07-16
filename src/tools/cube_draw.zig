@@ -341,7 +341,7 @@ pub const CubeDraw = struct {
                     if (pot.len > 0) {
                         const inter = pot[0].point;
                         const cc = self.grid.snapV3(inter);
-                        grid.drawGrid(inter, cc.z(), draw, snap, 11);
+                        grid.drawGridZ(inter, cc.z(), draw, snap, 11);
                         if (self.edit_state.lmouse == .rising) {
                             tool.plane_z = cc.z();
                         }
@@ -349,7 +349,7 @@ pub const CubeDraw = struct {
                 } else if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
                     //user has a xy plane
                     //can reposition using keys or doing a raycast into world
-                    grid.drawGrid(inter, tool.plane_z, draw, snap, 11);
+                    grid.drawGridZ(inter, tool.plane_z, draw, snap, 11);
 
                     const cc = if (tool.snap_z) self.grid.snapV3(inter) else self.grid.swiz(inter, "xy");
                     draw.point3D(cc, 0xff0000ee);
@@ -362,7 +362,7 @@ pub const CubeDraw = struct {
             },
             .planar => {
                 if (util3d.doesRayIntersectPlane(ray[0], ray[1], Vec3.new(0, 0, tool.plane_z), Vec3.new(0, 0, 1))) |inter| {
-                    grid.drawGrid(inter, tool.plane_z, draw, snap, 11);
+                    grid.drawGridZ(inter, tool.plane_z, draw, snap, 11);
                     const in = if (tool.snap_z) snap.snapV3(inter) else snap.swiz(inter, "xy");
                     const height = tool.getHeight(self, in);
                     const cc = util3d.cubeFromBounds(tool.start, in.add(Vec3.new(0, 0, height)));

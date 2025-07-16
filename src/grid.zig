@@ -41,6 +41,14 @@ pub const Snap = struct {
         return self.s.x() == self.s.y() and self.s.y() == self.s.z();
     }
 
+    pub fn countV3(self: *const @This(), v: Vec3) Vec3 {
+        return Vec3.new(
+            count1(v.x(), self.s.x()),
+            count1(v.y(), self.s.y()),
+            count1(v.z(), self.s.z()),
+        );
+    }
+
     pub fn swiz1(self: *const @This(), v: f32, comptime comp: []const u8) f32 {
         inline for (comp) |cc| {
             switch (cc) {
@@ -69,9 +77,76 @@ pub const Snap = struct {
         if (snap < 1) return value;
         return @round(value / snap) * snap;
     }
+
+    fn count1(value: f32, snap: f32) f32 {
+        if (snap < 1) return 0;
+        return @round(value / snap);
+    }
 };
 
-pub fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usize) void {
+fn drawGridAxis1(del_x: f32, count: f32, width: f32, start_p: Vec3, comptime axis: usize, comptime plane_axis: usize, draw: *DrawCtx, count_pad: usize) void {
+    if (axis > 2 or plane_axis > 2 or plane_axis == axis) @compileError("that is not right dude");
+    const distx = del_x * @as(f32, if (count > 0) 1 else -1);
+
+    const cc: usize = @intFromFloat(@abs(count));
+    const rc: usize = cc + if (cc > 0) count_pad else 0;
+    for (0..rc) |xi| {
+        const xf: f32 = @floatFromInt(xi);
+        {
+            var start = Vec3.zero();
+            start.data[axis] = xf * distx;
+            start.data[plane_axis] = -width / 2;
+            var end = start;
+            end.data[plane_axis] = width / 2;
+
+            draw.line3D(start.add(start_p), end.add(start_p), 0xffffffff);
+        }
+    }
+}
+
+pub fn drawGridAxis(start_p: Vec3, counts: Vec3, d: *DrawCtx, snap: Snap, widths: Vec3) void {
+    const start_snap = snap.snapV3(start_p);
+
+    drawGridAxis1(snap.s.x(), counts.x(), widths.x(), start_snap, 0, 1, d, 2);
+    drawGridAxis1(snap.s.y(), counts.y(), widths.y(), start_snap, 1, 0, d, 2);
+    drawGridAxis1(snap.s.z(), counts.z(), widths.z(), start_snap, 2, 1, d, 2);
+}
+
+/// Draw a grid with a normal 'up'
+/// Non cardinal 'up, will result in an incorrect grid because we snap on cardinal
+/// TODO make it use correct snap values for each axis
+pub fn drawGrid3d(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usize, up: Vec3) void {
+    //const cpos = inter;
+    const cpos = snap.snapV3(inter);
+    const nline: f32 = @floatFromInt(count);
+
+    const def_up = Vec3.new(0, 0, 1);
+    const quat = graph.za.Quat.fromAxis(def_up.getAngle(up), def_up.cross(up));
+
+    const iline2: f32 = @floatFromInt(count / 2);
+
+    const sx = snap.s.x();
+    const sy = snap.s.y();
+    const othx = @trunc(nline * sx / 2);
+    const othy = @trunc(nline * sy / 2);
+
+    const pos = Vec3.new(cpos.x(), cpos.y(), plane_z);
+    for (0..count) |n| {
+        const fnn: f32 = @floatFromInt(n);
+        {
+            const start = Vec3.new((fnn - iline2) * sx, -othy, 0);
+            const end = start.add(Vec3.new(0, 2 * othy, 0));
+
+            d.line3D(quat.rotateVec(start).add(pos), quat.rotateVec(end).add(pos), 0xffffffff);
+        }
+        const start = Vec3.new(-othx, (fnn - iline2) * sy, 0);
+        const end = start.add(Vec3.new(2 * othx, 0, 0));
+        d.line3D(quat.rotateVec(start).add(pos), quat.rotateVec(end).add(pos), 0xffffffff);
+    }
+    //d.point3D(cpos, 0xff0000ee);
+}
+
+pub fn drawGridZ(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usize) void {
     //const cpos = inter;
     const cpos = snap.snapV3(inter);
     const nline: f32 = @floatFromInt(count);
@@ -82,18 +157,20 @@ pub fn drawGrid(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usize
     const sy = snap.s.y();
     const othx = @trunc(nline * sx / 2);
     const othy = @trunc(nline * sy / 2);
+
+    const pos = Vec3.new(cpos.x(), cpos.y(), plane_z);
     for (0..count) |n| {
         const fnn: f32 = @floatFromInt(n);
         {
-            const start = Vec3.new((fnn - iline2) * sx + cpos.x(), cpos.y() - othy, plane_z);
+            const start = Vec3.new((fnn - iline2) * sx, -othy, 0);
             const end = start.add(Vec3.new(0, 2 * othy, 0));
-            d.line3D(start, end, 0xffffffff);
+
+            d.line3D(start.add(pos), end.add(pos), 0xffffffff);
         }
-        const start = Vec3.new(cpos.x() - othx, (fnn - iline2) * sy + cpos.y(), plane_z);
+        const start = Vec3.new(-othx, (fnn - iline2) * sy, 0);
         const end = start.add(Vec3.new(2 * othx, 0, 0));
-        d.line3D(start, end, 0xffffffff);
+        d.line3D(start.add(pos), end.add(pos), 0xffffffff);
     }
     //d.point3D(cpos, 0xff0000ee);
 }
-
 //pub fn drawGrid2D()void{ }

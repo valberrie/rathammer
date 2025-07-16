@@ -376,3 +376,17 @@ pub fn pointBBIntersectionNormal(bb_min: Vec3, bb_max: Vec3, point: Vec3) ?Vec3 
     }
     return null;
 }
+
+pub fn roundNormal(norm: Vec3) Vec3 {
+    var n: u8 = 0;
+    var dist: f32 = 0;
+    const vs = [3]Vec3{ Vec3.new(1, 0, 0), Vec3.new(0, 1, 0), Vec3.new(0, 0, 1) };
+    for (vs, 0..) |v, i| {
+        const d = @abs(norm.dot(v));
+        if (d > dist) {
+            n = @intCast(i);
+            dist = d;
+        }
+    }
+    return norm.mul(vs[n]).norm();
+}

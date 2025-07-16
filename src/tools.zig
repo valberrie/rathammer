@@ -22,6 +22,7 @@ const RGui = guis.Gui;
 const iArea = guis.iArea;
 const iWindow = guis.iWindow;
 const Wg = guis.Widget;
+const gridutil = @import("grid.zig");
 
 pub usingnamespace @import("tools/cube_draw.zig");
 pub usingnamespace @import("tools/texture.zig");
@@ -538,11 +539,24 @@ pub const FastFaceManip = struct {
                             // If cam_norm and side_norm are colinear the projection is near zero, in the future discard vectors below a threshold as they cause explosions
 
                             if (util3d.planeNormalGizmo(self.start, plane_norm, ray)) |inter_| {
+                                _, const pos = inter_;
+                                const dist = editor.grid.snapV3(pos);
+
+                                const draw_grid = true;
+                                if (draw_grid) {
+                                    if (editor.grid.isOne()) {
+                                        gridutil.drawGridAxis(
+                                            self.start,
+                                            editor.grid.countV3(dist),
+                                            td.draw,
+                                            editor.grid,
+                                            Vec3.set(editor.grid.s.x() * 10),
+                                        );
+                                    }
+                                }
                                 //if (util3d.doesRayIntersectPlane(ray[0], ray[1], self.start, v_proj)) |inter| {
                                 //const dist_n = inter.sub(self.start); //How much of our movement lies along the normal
                                 //const acc = dist_n.dot(plane_norm);
-                                _, const pos = inter_;
-                                const dist = editor.grid.snapV3(pos);
 
                                 for (self.selected.items) |sel| {
                                     const solid_o = editor.getComponent(sel.id, .solid) orelse continue;
