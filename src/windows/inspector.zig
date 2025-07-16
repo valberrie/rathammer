@@ -9,6 +9,7 @@ const GuiHelp = guis.GuiHelp;
 const guis = graph.RGui;
 const iWindow = guis.iWindow;
 const iArea = guis.iArea;
+const undo = @import("../undo.zig");
 const Wg = guis.Widget;
 const Context = @import("../editor.zig").Context;
 const fgd = @import("../fgd.zig");
@@ -20,6 +21,10 @@ const fgd = @import("../fgd.zig");
 // or, we have the editor.selection emit an event.
 pub const InspectorWindow = struct {
     const Self = @This();
+    const MiscBtn = enum {
+        ungroup,
+    };
+
     vt: iWindow,
     area: iArea,
 
@@ -123,7 +128,6 @@ pub const InspectorWindow = struct {
             a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "draw models", .{ .bool_ptr = &ds.tog.models }, null));
             a.addChildOpt(gui, vt, CB(gui, hy.getArea(), "ignore groups", .{ .bool_ptr = &self.editor.selection.ignore_groups }, null));
         }
-        //self.buildErr(gui, &ly) catch {};
         ly.pushRemaining();
         a.addChildOpt(gui, vt, Wg.Tabs.build(gui, ly.getArea(), &.{ "props", "io", "tool" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
     }
@@ -138,7 +142,7 @@ pub const InspectorWindow = struct {
                 ly.padding.left = 10;
                 ly.padding.right = 10;
                 ly.padding.top = 10;
-                self.buildErr(gui, &ly, vt) catch {};
+                self.buildProps(gui, &ly, vt) catch {};
             }
 
             {
@@ -216,11 +220,42 @@ pub const InspectorWindow = struct {
         }
     }
 
-    fn buildErr(self: *@This(), gui: *Gui, ly: anytype, lay: *iArea) !void {
+    fn misc_btn_cb(vt: *iArea, btn_id: usize, _: *Gui, _: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        self.misc_btn_cbErr(btn_id) catch return;
+    }
+    fn misc_btn_cbErr(self: *@This(), btn_id: usize) !void {
+        switch (@as(MiscBtn, @enumFromInt(btn_id))) {
+            .ungroup => {
+                const selection = self.editor.selection.getSlice();
+                if (selection.len > 0) {
+                    const ustack = try self.editor.undoctx.pushNewFmt("ungrouping of {d} objects", .{selection.len});
+                    for (selection) |id| {
+                        const old = if (try self.editor.ecs.getOpt(id, .group)) |g| g.id else 0;
+                        try ustack.append(
+                            try undo.UndoChangeGroup.create(self.editor.undoctx.alloc, old, 0, id),
+                        );
+                    }
+                    undo.applyRedo(ustack.items, self.editor);
+                    try self.editor.notify("ungrouped {d} objects", .{selection.len}, 0x00ff00ff);
+                }
+            },
+        }
+    }
+
+    fn buildProps(self: *@This(), gui: *Gui, ly: anytype, lay: *iArea) !void {
         const ed = self.editor;
         const a = &self.area;
         const win = &self.vt;
         self.selected_class_id = null;
+        {
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
+            lay.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Ungroup", .{
+                .cb_vt = &self.area,
+                .cb_fn = &misc_btn_cb,
+                .id = @intFromEnum(MiscBtn.ungroup),
+            }));
+        }
         if (ed.selection.getGroupOwnerExclusive(&ed.groups)) |sel_id| {
             if (try ed.ecs.getOptPtr(sel_id, .entity)) |ent| {
                 const aa = ly.getArea() orelse return;

@@ -545,6 +545,7 @@ pub const Context = struct {
         return self.ecs.getPtr(index, comp) catch null;
     }
 
+    /// Wrapper around iterator that omits anything with deleted
     pub fn Iterator(comptime comp: EcsT.Components) type {
         return struct {
             const childT = EcsT.Fields[@intFromEnum(comp)].ftype;
