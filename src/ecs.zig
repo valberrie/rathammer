@@ -973,7 +973,12 @@ pub const Solid = struct {
         editor.draw_state.meshes_dirty = true;
     }
 
-    pub fn drawEdgeOutline(self: *Self, draw: *DrawCtx, edge_color: u32, point_color: u32, vec: Vec3) void {
+    pub fn drawEdgeOutline(self: *Self, draw: *DrawCtx, vec: Vec3, param: struct {
+        edge_size: f32,
+        point_size: f32,
+        edge_color: u32,
+        point_color: u32,
+    }) void {
         const v = self.verts.items;
         for (self.sides.items) |side| {
             if (side.index.items.len < 3) continue;
@@ -982,10 +987,10 @@ pub const Solid = struct {
             var last = v[ind[ind.len - 1]].add(vec);
             for (0..ind.len) |ti| {
                 const p = v[ind[ti]].add(vec);
-                if (edge_color > 0)
-                    draw.line3D(last, p, edge_color, 2);
-                if (point_color > 0)
-                    draw.point3D(p, point_color);
+                if (param.edge_color > 0)
+                    draw.line3D(last, p, param.edge_color, param.edge_size);
+                if (param.point_color > 0)
+                    draw.point3D(p, param.point_color, param.point_size);
                 last = p;
             }
         }

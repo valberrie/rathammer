@@ -69,7 +69,7 @@ pub const Gizmo = struct {
                         if (d < min_dist) {
                             caught_one = true;
                             min_dist = d;
-                            draw.point3D(inter, 0x7f_ff_ff_ff);
+                            draw.point3D(inter, 0x7f_ff_ff_ff, 4);
                             self.selected_index = ci;
                             //Now that we intersect, e
                             self.start = util3d.doesRayIntersectPlane(

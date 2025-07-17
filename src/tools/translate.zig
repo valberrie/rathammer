@@ -66,12 +66,15 @@ pub const Translate = struct {
     cube_draw: toolcom.DrawBoundingVolume = .{},
     bb_gizmo: toolcom.AABBGizmo = .{},
 
+    _delta: Vec3 = Vec3.zero(),
+
     pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vt = .{
                 .deinit_fn = &@This().deinit,
                 .runTool_fn = &@This().runTool,
+                .runTool_2d_fn = &runTool2D,
                 .tool_icon_fn = &@This().drawIcon,
                 .gui_build_cb = &buildGui,
             },
@@ -93,6 +96,26 @@ pub const Translate = struct {
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         alloc.destroy(self);
+    }
+
+    pub fn runTool2D(vt: *i3DTool, td: tools.ToolData, editor: *Editor) tools.ToolError!void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.runTool2DErr(td, editor) catch return error.fatal;
+    }
+
+    fn runTool2DErr(self: *@This(), td: tools.ToolData, ed: *Editor) !void {
+        const selected = ed.selection.getSlice();
+        const draw = td.draw;
+        for (selected) |id| {
+            if (ed.getComponent(id, .solid)) |solid| {
+                solid.drawEdgeOutline(draw, self._delta, .{
+                    .point_color = 0x0,
+                    .edge_color = 0xff00ff,
+                    .edge_size = 2,
+                    .point_size = ed.config.dot_size,
+                });
+            }
+        }
     }
 
     pub fn runTool(vt: *i3DTool, td: tools.ToolData, editor: *Editor) tools.ToolError!void {
@@ -189,7 +212,12 @@ pub const Translate = struct {
             const draw_verts = selected.len < MAX_DRAWN_VERTS;
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    solid.drawEdgeOutline(draw_nd, 0xff00ff, if (draw_verts) 0xff0000ff else 0, Vec3.zero());
+                    solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                        .point_color = if (draw_verts) 0xff0000ff else 0,
+                        .edge_color = 0xff00ff,
+                        .edge_size = 2,
+                        .point_size = self.config.dot_size,
+                    });
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }
@@ -287,9 +315,19 @@ pub const Translate = struct {
             const selected = self.selection.getSlice();
             const MAX_DRAWN_VERTS = 500;
             const draw_verts = selected.len < MAX_DRAWN_VERTS;
+            switch (giz_active) {
+                .low, .rising => {},
+                .high => tool._delta = dist,
+                .falling => tool._delta = Vec3.zero(),
+            }
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    solid.drawEdgeOutline(draw_nd, 0xff00ff, if (draw_verts) 0xff0000ff else 0, Vec3.zero());
+                    solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                        .point_color = if (draw_verts) 0xff0000ff else 0,
+                        .edge_color = 0xff00ff,
+                        .edge_size = 2,
+                        .point_size = self.config.dot_size,
+                    });
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }
@@ -305,7 +343,12 @@ pub const Translate = struct {
                             try solid.drawImmediate(draw, self, Vec3.zero(), null);
                         }
                         if (draw_verts)
-                            solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
+                            solid.drawEdgeOutline(draw_nd, dist, .{
+                                .point_color = 0xff0000ff,
+                                .edge_color = color,
+                                .edge_size = 2,
+                                .point_size = self.config.dot_size,
+                            });
                     }
                 }
                 if (self.getComponent(id, .entity)) |ent| {

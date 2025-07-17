@@ -352,7 +352,7 @@ pub const CubeDraw = struct {
                     grid.drawGridZ(inter, tool.plane_z, draw, snap, 11);
 
                     const cc = if (tool.snap_z) self.grid.snapV3(inter) else self.grid.swiz(inter, "xy");
-                    draw.point3D(cc, 0xff0000ee);
+                    draw.point3D(cc, 0xff0000ee, self.config.dot_size);
 
                     if (self.edit_state.lmouse == .rising) {
                         tool.start = cc;

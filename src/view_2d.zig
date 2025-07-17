@@ -1,6 +1,7 @@
 const std = @import("std");
 const Editor = @import("editor.zig");
 const Context = Editor.Context;
+const tools = @import("tools.zig");
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const views = @import("editor_views.zig");
@@ -56,7 +57,7 @@ pub const Ctx2dView = struct {
         defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
 
         //draw.rect(screen_area, 0xffff);
-        if (win.mouse.middle == .high) {
+        if (win.mouse.middle == .high or ed.isBindState(ed.config.keys.cam_pan.b, .high)) {
             self.cam.pan(win.mouse.delta);
         }
         if (win.mouse.wheel_delta.y != 0) {
@@ -100,6 +101,19 @@ pub const Ctx2dView = struct {
             graph.c.glDrawElements(c.GL_LINES, @as(c_int, @intCast(mesh.value_ptr.*.lines_index.items.len)), graph.c.GL_UNSIGNED_INT, null);
             //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, ed.draw_state.basic_shader);
         }
+
+        const td = tools.ToolData{
+            .screen_area = screen_area,
+            .view_3d = &view_3d,
+            .draw = draw,
+            .state = if (ed.edit_state.last_frame_tool_index != ed.edit_state.tool_index) .init else if (ed.edit_state.tool_reinit) .reinit else .normal,
+        };
+        if (ed.edit_state.tool_index < ed.tools.vtables.items.len) {
+            const vt = ed.tools.vtables.items[ed.edit_state.tool_index];
+            if (vt.runTool_2d_fn) |run2d|
+                try run2d(vt, td, ed);
+        }
+
         try draw.flushCustomMat(view_2d, view_3d);
     }
 };

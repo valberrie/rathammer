@@ -118,7 +118,7 @@ pub const DrawBoundingVolume = struct {
                     grid.drawGridZ(inter, tool.plane_z, draw, ed.grid, 11);
 
                     const cc = if (tool.snap_z) ed.grid.snapV3(inter) else ed.grid.swiz(inter, "xy");
-                    draw.point3D(cc, 0xff0000ee);
+                    draw.point3D(cc, 0xff0000ee, 4);
 
                     if (ed.edit_state.lmouse == .rising) {
                         tool.start = cc;

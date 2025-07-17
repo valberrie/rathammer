@@ -15,6 +15,7 @@ pub const Config = struct {
         interval_min: u64 = 5,
         max: u32 = 5,
     } = .{},
+    dot_size: f32 = 16,
     keys: struct {
         const SC = graph.SDL.NewBind.Scancode;
         const KC = graph.SDL.NewBind.Keycode;
@@ -24,6 +25,7 @@ pub const Config = struct {
         cam_strafe_r: Keybind = .{ .b = SC(.D, 0) },
         cam_down: Keybind = .{ .b = SC(.C, 0) },
         cam_up: Keybind = .{ .b = SC(.SPACE, 0) },
+        cam_pan: Keybind = .{ .b = SC(.SPACE, 0) },
 
         cam_slow: Keybind = .{ .b = SC(.LCTRL, 0) },
 

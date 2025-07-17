@@ -47,6 +47,8 @@ pub const i3DTool = struct {
     gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
     guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
 
+    runTool_2d_fn: ?*const fn (*@This(), ToolData, *Editor) ToolError!void = null,
+
     gui_build_cb: ?*const fn (*@This(), *Inspector, *iArea, *RGui, *iWindow) void = null,
 };
 
@@ -178,6 +180,7 @@ pub const VertexTranslate = struct {
                 .deinit_fn = &deinit,
                 .tool_icon_fn = &drawIcon,
                 .runTool_fn = &runTool,
+                .runTool_2d_fn = &runTool2d,
                 .gui_build_cb = &buildGui,
             },
             .selected = std.AutoHashMap(ecs.EcsT.Id, Sel).init(alloc),
@@ -215,6 +218,17 @@ pub const VertexTranslate = struct {
         self.runVertex(td, ed) catch return error.fatal;
     }
 
+    pub fn runTool2d(vt: *i3DTool, td: ToolData, ed: *Editor) ToolError!void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.tool2d(td, ed) catch return error.fatal;
+    }
+
+    fn tool2d(self: *Self, td: ToolData, ed: *Editor) !void {
+        if (td.state == .init or td.state == .reinit)
+            self.reset();
+        _ = ed;
+    }
+
     fn addOrRemoveVert(self: *Self, id: ecs.EcsT.Id, vert_index: u16, vert: Vec3) !void {
         const res = try self.selected.getOrPut(id);
         if (!res.found_existing) {
@@ -247,8 +261,9 @@ pub const VertexTranslate = struct {
         self.gizmo_position = self.gizmo_position.scale(1 / @as(f32, @floatFromInt(count)));
     }
 
+    //TODO make the gizmo have priority over adding/removing vertex
     pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
-        if (td.state == .init)
+        if (td.state == .init or td.state == .reinit)
             self.reset();
         const draw_nd = &ed.draw_state.ctx;
         const selected_slice = ed.selection.getSlice();
@@ -263,7 +278,12 @@ pub const VertexTranslate = struct {
         solid_loop: for (selected_slice) |sel| {
             if (ed.getComponent(sel, .solid)) |solid| {
                 try id_mapper.put(sel, {});
-                solid.drawEdgeOutline(draw_nd, 0x00ff00ff, 0x0, Vec3.zero());
+                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                    .point_color = 0,
+                    .edge_color = 0x00ff00ff,
+                    .edge_size = 2,
+                    .point_size = ed.config.dot_size,
+                });
 
                 if (this_frame_had_selection and self.selection_mode == .one)
                     continue :solid_loop;
@@ -272,7 +292,7 @@ pub const VertexTranslate = struct {
                     const proj = util3d.projectPointOntoRay(r[0], r[1], vert);
                     const distance = proj.distance(vert);
                     if (distance < self.ray_vertex_distance_max) {
-                        draw_nd.point3D(vert, POT_VERT_COLOR);
+                        draw_nd.point3D(vert, POT_VERT_COLOR, ed.config.dot_size);
                         if (lm == .rising) {
                             this_frame_had_selection = true;
                             try self.addOrRemoveVert(sel, @intCast(v_i), vert);
@@ -299,7 +319,7 @@ pub const VertexTranslate = struct {
                 }
                 const verts = item.value_ptr.items(.vert);
                 for (verts) |v|
-                    draw_nd.point3D(v, SEL_VERT_COLOR);
+                    draw_nd.point3D(v, SEL_VERT_COLOR, ed.config.dot_size);
             }
             for (to_remove.items) |rem| {
                 _ = self.selected.remove(rem);
@@ -468,7 +488,12 @@ pub const FastFaceManip = struct {
         const selected_slice = editor.selection.getSlice();
         for (selected_slice) |sel| {
             if (editor.getComponent(sel, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
+                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                    .point_color = 0xff0000ff,
+                    .edge_color = 0xf7a94a8f,
+                    .edge_size = 2,
+                    .point_size = editor.config.dot_size,
+                });
             }
         }
 
@@ -853,10 +878,15 @@ const Proportional = struct {
         if (selected.len == 0) return;
         for (selected) |id| {
             if (ed.getComponent(id, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                    .point_color = 0xff0000ff,
+                    .edge_color = 0xff00ff,
+                    .edge_size = 2,
+                    .point_size = ed.config.dot_size,
+                });
             }
         }
-        draw_nd.point3D(self.start, 0xffff_00ff);
+        draw_nd.point3D(self.start, 0xffff_00ff, ed.config.dot_size);
         const lm = ed.edit_state.lmouse;
         const rm = ed.edit_state.rmouse;
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
@@ -980,7 +1010,12 @@ pub const TranslateFace = struct {
         const draw_nd = &self.draw_state.ctx;
         if (self.getComponent(id, .solid)) |solid| {
             var gizmo_is_active = false;
-            solid.drawEdgeOutline(draw_nd, 0xf7a94a8f, 0xff0000ff, Vec3.zero());
+            solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                .point_color = 0xff0000ff,
+                .edge_color = 0xf7a94a8f,
+                .edge_size = 2,
+                .point_size = self.config.dot_size,
+            });
             for (solid.sides.items, 0..) |side, s_i| {
                 if (tool.face_id == s_i) {
                     draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});
@@ -1130,7 +1165,12 @@ pub const Clipping = struct {
 
         for (selected) |id| {
             if (ed.getComponent(id, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
+                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                    .point_color = 0xff0000ff,
+                    .edge_color = 0xff00ff,
+                    .edge_size = 2,
+                    .point_size = ed.config.dot_size,
+                });
             }
         }
 
@@ -1149,7 +1189,7 @@ pub const Clipping = struct {
                     const inter = pot[0];
                     const solid = try ed.ecs.getPtr(inter.id, .solid);
                     const snapped = ed.grid.snapV3(inter.point);
-                    draw_nd.point3D(snapped, 0xff_0000_ff);
+                    draw_nd.point3D(snapped, 0xff_0000_ff, ed.config.dot_size);
                     if (lm != .rising) return;
                     const side_id = inter.side_id orelse return;
                     if (side_id >= solid.sides.items.len) return;
@@ -1169,10 +1209,10 @@ pub const Clipping = struct {
                 const side_o = solid.getSidePtr(sel_side.side_id) orelse return;
                 draw_nd.convexPolyIndexed(side_o.index.items, solid.verts.items, 0xffff_88, .{});
                 if (self.state == .point1)
-                    draw_nd.point3D(self.points[0], 0xff_0000_ff);
+                    draw_nd.point3D(self.points[0], 0xff_0000_ff, ed.config.dot_size);
                 if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter| {
                     const snapped = ed.grid.snapV3(inter);
-                    draw_nd.point3D(snapped, 0xff_0000_ff);
+                    draw_nd.point3D(snapped, 0xff_0000_ff, ed.config.dot_size);
                     if (lm != .rising) return;
                     self.points[if (self.state == .point0) 0 else 1] = snapped;
                     self.state = switch (self.state) {
@@ -1209,12 +1249,12 @@ pub const Clipping = struct {
                     const proj = util3d.projectPointOntoRay(rc[0], rc[1], p);
                     const distance = proj.distance(p);
                     if (self.grabbed == null and distance < self.ray_vertex_distance_max) {
-                        draw_nd.point3D(p, 0xff_ff);
+                        draw_nd.point3D(p, 0xff_ff, ed.config.dot_size);
                         if (lm == .rising) {
                             self.grabbed = .{ .ptr = &self.points[i], .init = p };
                         }
                     } else {
-                        draw_nd.point3D(p, 0xff0000_ff);
+                        draw_nd.point3D(p, 0xff0000_ff, ed.config.dot_size);
                     }
                 }
 
