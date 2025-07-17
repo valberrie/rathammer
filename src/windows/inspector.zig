@@ -515,19 +515,40 @@ pub const InspectorWindow = struct {
         if (self.getNameFromId(id)) |field_name| {
             const ent_id = self.getSelId() orelse return;
             const kvs = self.getKvsPtr() orelse return;
+
             if (kvs.map.getPtr(field_name)) |ptr| {
                 var floats = ptr.getFloats(4);
                 floats[3] = std.fmt.parseFloat(f32, value) catch return;
-                ptr.printFloats(self.editor, ent_id, 4, floats) catch return;
+                const ustack = self.editor.undoctx.pushNewFmt("Set brightness {s}: {d}", .{ field_name, floats[3] }) catch return;
+                const old = kvs.getString(field_name) orelse "";
+                ustack.append(undo.UndoSetKeyValue.createFloats(
+                    self.editor.undoctx.alloc,
+                    ent_id,
+                    field_name,
+                    old,
+                    4,
+                    floats,
+                ) catch return) catch return;
+                undo.applyRedo(ustack.items, self.editor);
             }
         }
     }
 
-    fn setKvStr(self: *Self, id: usize, value: []const u8) void {
-        if (self.getNameFromId(id)) |field_name| {
-            const kvs = self.getKvsPtr() orelse return;
+    fn setKvStr(self: *Self, field_id: usize, value: []const u8) void {
+        if (self.getNameFromId(field_id)) |field_name| {
+            const ustack = self.editor.undoctx.pushNewFmt("Set kv {s}:{s}", .{ field_name, value }) catch return;
+
             const ent_id = self.getSelId() orelse return;
-            kvs.putString(self.editor, ent_id, field_name, value) catch return;
+            const kvs = self.getKvsPtr() orelse return;
+            const old = kvs.getString(field_name) orelse "";
+            ustack.append(undo.UndoSetKeyValue.create(
+                self.editor.undoctx.alloc,
+                ent_id,
+                field_name,
+                old,
+                value,
+            ) catch return) catch return;
+            undo.applyRedo(ustack.items, self.editor);
         }
     }
 
@@ -551,14 +572,32 @@ pub const InspectorWindow = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("area", this_w));
         const charc = graph.ptypes.intToColor(val);
         if (self.getNameFromId(id)) |field_name| {
-            const kvs = self.getKvsPtr() orelse return;
-            var value = kvs.map.getPtr(field_name) orelse return;
-            var old = value.getFloats(4);
-            old[0] = @floatFromInt(charc.r);
-            old[1] = @floatFromInt(charc.g);
-            old[2] = @floatFromInt(charc.b);
             const ent_id = self.getSelId() orelse return;
-            value.printFloats(self.editor, ent_id, 4, old) catch return;
+            const kvs = self.getKvsPtr() orelse return;
+
+            if (kvs.map.getPtr(field_name)) |ptr| {
+                var floats = ptr.getFloats(4);
+                floats[0] = @floatFromInt(charc.r);
+                floats[1] = @floatFromInt(charc.g);
+                floats[2] = @floatFromInt(charc.b);
+
+                const ustack = self.editor.undoctx.pushNewFmt("Set {s} {d} {d} {d}", .{
+                    field_name,
+                    floats[0],
+                    floats[1],
+                    floats[2],
+                }) catch return;
+                const old = kvs.getString(field_name) orelse "";
+                ustack.append(undo.UndoSetKeyValue.createFloats(
+                    self.editor.undoctx.alloc,
+                    ent_id,
+                    field_name,
+                    old,
+                    4,
+                    floats,
+                ) catch return) catch return;
+                undo.applyRedo(ustack.items, self.editor);
+            }
         }
     }
 
@@ -609,10 +648,7 @@ pub const InspectorWindow = struct {
                 const f = fields[lam.fgd_class_index];
                 const fie = f.field_data.items[lam.fgd_field_index];
 
-                const sel_id = lself.getSelId() orelse return;
-                if (lself.getKvsPtr()) |kvs| {
-                    kvs.putString(lself.editor, sel_id, fie.name, fie.type.choices.items[id][0]) catch return;
-                }
+                lself.setKvStr(lam.fgd_field_index, fie.type.choices.items[id][0]);
             }
 
             fn name(vtt: *iArea, id: usize, _: *Gui, lam: @This()) []const u8 {

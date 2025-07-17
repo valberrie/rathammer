@@ -217,46 +217,6 @@ pub const UndoTranslate = struct {
     }
 };
 
-pub const UndoDupeDeprecated = struct {
-    vt: iUndo,
-
-    parent_id: Id,
-    own_id: Id,
-
-    pub fn create(alloc: std.mem.Allocator, parent_id: Id, own_id: Id) !*iUndo {
-        var obj = try alloc.create(@This());
-        obj.* = .{
-            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
-            .parent_id = parent_id,
-            .own_id = own_id,
-        };
-        return &obj.vt;
-    }
-
-    pub fn undo(vt: *iUndo, editor: *Editor) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        editor.ecs.destroyEntity(self.own_id) catch return;
-    }
-    pub fn redo(vt: *iUndo, editor: *Editor) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        inline for (ecs.EcsT.Fields, 0..) |field, i| {
-            if (editor.ecs.getOptPtr(self.parent_id, @enumFromInt(i)) catch return) |comp| {
-                if (@hasDecl(field.ftype, "dupe")) {
-                    const duped = comp.dupe(&editor.ecs, self.own_id) catch return;
-                    editor.ecs.attachComponentAndCreate(self.own_id, @enumFromInt(i), duped) catch return;
-                } else {
-                    @compileError("must declare a dupe(self) function ! " ++ field.name);
-                }
-            }
-        }
-    }
-
-    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        alloc.destroy(self);
-    }
-};
-
 pub const UndoVertexTranslate = struct {
     vt: iUndo,
 
@@ -496,6 +456,58 @@ pub const UndoChangeGroup = struct {
 
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
+
+pub const UndoSetKeyValue = struct {
+    vt: iUndo,
+
+    key: []const u8, //Not allocated
+
+    old_value: []const u8, //Both allocated
+    new_value: []const u8,
+
+    ent_id: Id,
+
+    pub fn create(alloc: std.mem.Allocator, id: Id, key: []const u8, old_value: []const u8, new_value: []const u8) !*iUndo {
+        var obj = try alloc.create(@This());
+        obj.* = .{
+            .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .key = key,
+            .ent_id = id,
+            .old_value = try alloc.dupe(u8, old_value),
+            .new_value = try alloc.dupe(u8, new_value),
+        };
+        return &obj.vt;
+    }
+
+    pub fn createFloats(alloc: std.mem.Allocator, id: Id, key: []const u8, old_value: []const u8, comptime count: usize, floats: [count]f32) !*iUndo {
+        var printer = std.ArrayList(u8).init(alloc);
+        defer printer.deinit();
+        for (floats, 0..) |f, i| {
+            printer.writer().print("{s}{d}", .{ if (i == 0) "" else " ", f }) catch {};
+        }
+        return create(alloc, id, key, old_value, printer.items);
+    }
+
+    pub fn undo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.ent_id, .key_values) catch null) |kvs| {
+            kvs.putString(editor, self.ent_id, self.key, self.old_value) catch return;
+        }
+    }
+    pub fn redo(vt: *iUndo, editor: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        if (editor.ecs.getOptPtr(self.ent_id, .key_values) catch null) |kvs| {
+            kvs.putString(editor, self.ent_id, self.key, self.new_value) catch return;
+        }
+    }
+
+    pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.free(self.old_value);
+        alloc.free(self.new_value);
         alloc.destroy(self);
     }
 };
