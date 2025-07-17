@@ -174,6 +174,8 @@ pub const Context = struct {
     has_loaded_map: bool = false,
 
     draw_state: struct {
+        init_asset_count: usize = 0, //Used to indicate we are loading things
+
         factor: f32 = 64,
         light_mul: f32 = 0.11,
         const_add: f32 = 0, //Added to light constant factor
@@ -739,11 +741,6 @@ pub const Context = struct {
         {
             var it = self.ecs.iterator(.entity);
             while (it.next()) |ent| {
-                if (try self.ecs.getOptPtr(it.i, .key_values)) |kvs| {
-                    if (kvs.getString("model")) |model| {
-                        ent._model_id = self.modelIdFromName(model) catch null;
-                    }
-                }
                 try ent.setClass(self, ent.class, it.i);
                 // Clear before we iterate solids as they will insert themselves into here
                 //ent.solids.clearRetainingCapacity();
@@ -1225,6 +1222,7 @@ pub const Context = struct {
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
+        self.draw_state.init_asset_count = 0;
         var tcount: usize = 0;
         {
             self.async_asset_load.notifyCompletedGeneric(self);
@@ -1245,6 +1243,7 @@ pub const Context = struct {
                 if (elapsed > MAX_UPDATE_TIME)
                     break;
             }
+            self.draw_state.init_asset_count += num_rm_tex;
             for (0..num_rm_tex) |_|
                 _ = self.async_asset_load.completed.orderedRemove(0);
 
@@ -1269,6 +1268,7 @@ pub const Context = struct {
                 if (elapsed > MAX_UPDATE_TIME)
                     break;
             }
+            self.draw_state.init_asset_count += num_removed;
             for (0..num_removed) |_|
                 _ = self.async_asset_load.completed_models.orderedRemove(0);
 

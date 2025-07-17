@@ -190,7 +190,14 @@ pub const Context = struct {
     }
 
     pub fn loadModelWorkFunc(self: *@This(), res_id: vpk.VpkResId, model_name: []const u8, vpkctx: *vpk.Context) void {
-        const mesh = vvd.loadModelCrappy(self, res_id, model_name, vpkctx) catch return;
+        const mesh = vvd.loadModelCrappy(self, res_id, model_name, vpkctx) catch |err| {
+            const LOG_FAILED_MDL = true;
+            if (LOG_FAILED_MDL) {
+                std.debug.print("Failed to load model: {s} with error: {!}\n", .{ model_name, err });
+                //log.warn("Failed to load model: {s} with error: {!}", .{ model_name, err });
+            }
+            return;
+        };
         self.completed_mutex.lock();
         defer self.completed_mutex.unlock();
         self.completed_models.append(mesh) catch return;

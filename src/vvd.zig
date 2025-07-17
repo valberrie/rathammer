@@ -102,6 +102,7 @@ const Vtx = struct {
 
     pub const StripHeader = struct {
         pub const Flags = enum(u8) {
+            none = 0x0,
             trilist = 0x1,
             tristrip = 0x2,
         };
@@ -184,7 +185,6 @@ pub fn loadModelCrappy(
             scratch.clearRetainingCapacity();
             try scratch.writer().print("{s}{s}", .{ tpath, tname });
             const tex_res_id = try vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{scratch.items}) orelse continue :inner;
-            //const tex = editor.loadTextureFromVpk(scratch.items) catch continue :inner;
             try pool_state.loadTexture(tex_res_id, vpkctx);
             try texts.append(tex_res_id);
             continue :outer;
@@ -196,10 +196,7 @@ pub fn loadModelCrappy(
     mmesh.* = MultiMesh.init(alloc);
     mmesh.hull_min = info.hull_min;
     mmesh.hull_max = info.hull_max;
-    //var mesh = graph.meshutil.Mesh.init(alloc, 0);
-    //const outf = try std.fs.cwd().createFile("out.obj", .{});
     const w = std.io.null_writer;
-    //const w = outf.writer();
     {
         const slice_vvd = try vpkctx.getFileTempFmtBuf(
             "vvd",
@@ -268,6 +265,7 @@ pub fn loadModelCrappy(
         }
     }
     {
+
         //Load vtx
         const slice = try vpkctx.getFileTempFmtBuf(
             "vtx",
@@ -357,11 +355,15 @@ pub fn loadModelCrappy(
                                 const vttt = vtt;
                                 //const vttt = vtt[hh.vert_offset .. hh.vert_offset + hh.num_verts];
                                 strip_vert_count += @intCast(hh.num_verts);
-                                const fl: Vtx.StripHeader.Flags = @enumFromInt(
+                                const fl: Vtx.StripHeader.Flags = std.meta.intToEnum(
+                                    Vtx.StripHeader.Flags,
                                     hh.flags,
-                                );
+                                ) catch {
+                                    std.debug.print("Invalid vtx flags: {x} \n", .{hh.flags});
+                                    return error.invalidFlags;
+                                };
                                 switch (fl) {
-                                    .trilist => {
+                                    .trilist, .none => {
                                         for (0..@divFloor(sl.len, 3)) |i| {
                                             const j = i * 3;
                                             try newm.indicies.appendSlice(&.{
@@ -379,7 +381,7 @@ pub fn loadModelCrappy(
                                             });
                                         }
                                     },
-                                    else => return error.broken,
+                                    else => return error.unsupportedVertexStrip,
                                 }
                                 //fbs.pos = start + hh.index_offset;
                             }

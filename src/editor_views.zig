@@ -382,6 +382,9 @@ pub fn draw3Dview(
         const HIDDEN_COLOR = 0x20B2AAff;
 
         var mt = graph.MultiLineText.start(draw, screen_area.pos(), font);
+        if (self.draw_state.init_asset_count > 0) {
+            mt.textFmt("Loading assets: {d}", .{self.draw_state.init_asset_count}, fh, col);
+        }
         if (self.grid.isOne()) {
             mt.textFmt("grid: {d:.2}", .{self.grid.s.x()}, fh, col);
         } else {

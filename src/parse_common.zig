@@ -3,8 +3,9 @@ pub fn parseStruct(comptime T: type, endian: std.builtin.Endian, r: anytype) !T 
     const info = @typeInfo(T);
     switch (info) {
         .@"enum" => |e| {
-            const int = try parseStruct(e.tag_type, endian, r);
-            return @enumFromInt(int);
+            //const int = try parseStruct(e.tag_type, endian, r);
+            const int = try r.readInt(e.tag_type, endian);
+            return std.meta.intToEnum(T, int);
         },
         .@"struct" => |s| {
             var ret: T = undefined;

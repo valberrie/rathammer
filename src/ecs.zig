@@ -384,10 +384,11 @@ pub const Entity = struct {
     }
 
     pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
-        if (try editor.vpkctx.resolveId(model)) |idAndName| {
+        if (editor.vpkctx.resolveId(model) catch null) |idAndName| {
             self._model_id = idAndName.id;
             if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
-                try kvs.putStringNoNotify("model", idAndName.name);
+                const stored_model = try editor.storeString(idAndName.name);
+                try kvs.putStringNoNotify("model", stored_model);
             }
         }
         self.updateModelbb(editor, self_id);
