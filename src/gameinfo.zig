@@ -39,36 +39,52 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
     //vdf.printObj(fs.obj.*, 0);
     const startsWith = std.mem.startsWith;
     for (fs.obj.list.items) |entry| {
-        var tk = std.mem.tokenizeScalar(u8, entry.key, '+');
-        while (tk.next()) |t| {
-            if (std.mem.startsWith(u8, t, "game")) {
-                if (entry.val != .literal)
-                    return error.invalidGameInfo;
-                const l = entry.val.literal;
-                var path = l;
-                const dir = base_dir;
-                if (startsWith(u8, l, "|")) {
-                    const end = std.mem.indexOfScalar(u8, l[1..], '|') orelse return error.invalidGameInfo;
-                    const special = l[1..end];
-                    _ = special; //TODO actually use this?
-                    //std.debug.print("Special {s}\n", .{special});
-                    //          + 2 because end is offset by 1
-                    path = l[end + 2 ..];
-                    //if(std.mem.eql(u8, special, "all_source_engine_paths"))
-                    //dir = game_dir;
-                }
-                //std.debug.print("Path {s}\n", .{path});
-                if (std.mem.endsWith(u8, path, ".vpk")) {
-                    loadctx.printCb("mounting: {s}", .{path});
-                    if ((std.mem.indexOfPos(u8, path, 0, "sound") == null)) {
-                        vpkctx.addDir(dir, path, loadctx) catch |err| {
-                            log.err("Failed to mount vpk {s} with error {}", .{ path, err });
-                        };
-                    }
-                }
+        if (!shouldAdd(entry.key)) continue;
+        if (entry.val != .literal)
+            return error.invalidGameInfo;
+        const l = entry.val.literal;
+        var path = l;
+        const dir = blk: {
+            if (startsWith(u8, l, "|")) {
+                const end = std.mem.indexOfScalar(u8, l[1..], '|') orelse return error.invalidGameInfo;
+                const special = l[1..end];
+                path = l[end + 2 ..];
+                if (std.mem.eql(u8, special, "all_source_engine_paths"))
+                    break :blk base_dir;
+                if (std.mem.eql(u8, special, "gameinfo_path"))
+                    break :blk game_dir;
             }
+            break :blk base_dir;
+        };
+
+        if (std.mem.endsWith(u8, path, ".vpk")) {
+            loadctx.printCb("mounting: {s}", .{path});
+            if ((std.mem.indexOfPos(u8, path, 0, "sound") == null)) {
+                vpkctx.addDir(dir, path, loadctx) catch |err| {
+                    log.err("Failed to mount vpk {s} with error {}", .{ path, err });
+                };
+            }
+        } else {
+            if (std.mem.endsWith(u8, path, "/*")) {
+                std.debug.print("Wildcard not supported yet! oops\n", .{});
+                continue;
+            }
+            log.info("Mounting loose dir: {s}", .{path});
+            try vpkctx.addLooseDir(dir, path);
         }
     }
     //TODO this is temp
-    try vpkctx.addLooseDir(game_dir, ".");
+    try vpkctx.slowIndexOfLooseDirSubPath("materials");
+}
+
+fn shouldAdd(gameinfo_key: []const u8) bool {
+    const supported = [_][]const u8{ "game", "platform", "mod", "root_mod" };
+    var tk = std.mem.tokenizeScalar(u8, gameinfo_key, '+');
+    while (tk.next()) |t| {
+        for (supported) |sup| {
+            if (std.mem.eql(u8, sup, t))
+                return true;
+        }
+    }
+    return false;
 }

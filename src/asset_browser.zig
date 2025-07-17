@@ -153,24 +153,30 @@ pub const AssetBrowserGui = struct {
     ) !void {
         vpkctx.mutex.lock();
         defer vpkctx.mutex.unlock();
-        const vmt = vpkctx.extension_map.get("vmt") orelse return;
-        const mdl = vpkctx.extension_map.get("mdl") orelse return;
+        const vmt = try vpkctx.extension_map.getPut("vmt");
+        const mdl = try vpkctx.extension_map.getPut("mdl");
+        const png = try vpkctx.extension_map.getPut("png");
         var it = vpkctx.entries.iterator();
         var excluded: usize = 0;
         outer: while (it.next()) |item| {
             const id = item.key_ptr.* >> 48;
             if (id == vmt) {
                 if (std.mem.startsWith(u8, item.value_ptr.path, exclude_prefix)) {
-                    for (material_exclude_list) |ex| {
-                        if (std.mem.startsWith(u8, item.value_ptr.path[exclude_prefix.len..], ex)) {
-                            excluded += 1;
-                            continue :outer;
+                    const substr = item.value_ptr.path[exclude_prefix.len..];
+                    if (substr.len > 0) {
+                        for (material_exclude_list) |ex| {
+                            if (std.mem.startsWith(u8, substr, ex)) {
+                                excluded += 1;
+                                continue :outer;
+                            }
                         }
                     }
                 }
                 try self.mat_list.append(item.key_ptr.*);
             } else if (id == mdl) {
                 try self.model_list.append(item.key_ptr.*);
+            } else if (id == png) {
+                try self.mat_list.append(item.key_ptr.*);
             }
         }
         log.info("excluded {d} materials", .{excluded});

@@ -229,20 +229,28 @@ pub fn loadTexture(buf: []const u8, alloc: std.mem.Allocator) !graph.Texture {
 }
 
 pub const VtfBuf = struct {
-    header: VtfHeader01,
+    width: u32,
+    height: u32,
+    pixel_format: graph.c.GLenum,
+    compressed: bool,
+    pixel_type: graph.c.GLenum,
+
+    //header: VtfHeader01,
     buffer: []const u8, //Caller must free
 
     pub fn deinitToTexture(self: *@This(), alloc: std.mem.Allocator) !graph.Texture {
         defer alloc.free(self.buffer);
-        if (self.buffer.len == 0 or self.header.width > 0x1000 or self.header.height > 0x1000) {
+        if (self.buffer.len == 0 or self.width > 0x1000 or self.height > 0x1000) {
             std.debug.print("broken texture\n", .{});
             return error.brokentexture;
         }
-        const tex = graph.Texture.initFromBuffer(self.buffer, @intCast(self.header.width), @intCast(self.header.height), .{
-            .pixel_format = try self.header.highres_fmt.toOpenGLFormat(),
-            //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-            .is_compressed = self.header.highres_fmt.isCompressed(),
-            .pixel_type = try self.header.highres_fmt.toOpenGLType(),
+        const tex = graph.Texture.initFromBuffer(self.buffer, @intCast(self.width), @intCast(self.height), .{
+            .pixel_format = self.pixel_format,
+            .is_compressed = self.compressed,
+            .pixel_type = self.pixel_type,
+            // .pixel_format = try self.header.highres_fmt.toOpenGLFormat(),
+            // .is_compressed = self.header.highres_fmt.isCompressed(),
+            // .pixel_type = try self.header.highres_fmt.toOpenGLType(),
         });
         return tex;
     }
@@ -325,8 +333,12 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
                 try r.readNoEof(imgdata);
                 //GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
                 return .{
+                    .width = h1.width,
+                    .height = h1.height,
                     .buffer = imgdata,
-                    .header = h1,
+                    .pixel_format = try h1.highres_fmt.toOpenGLFormat(),
+                    .compressed = h1.highres_fmt.isCompressed(),
+                    .pixel_type = try h1.highres_fmt.toOpenGLType(),
                 };
                 //return graph.Texture.initFromBuffer(imgdata, @intCast(mw), @intCast(mh), .{
                 //    .pixel_format = try h1.highres_fmt.toOpenGLFormat(),

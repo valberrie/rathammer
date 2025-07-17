@@ -312,7 +312,6 @@ pub fn loadModelCrappy(
 
             const bp = try parseStruct(Vtx.BodyPart_h1, .little, r1);
             print("{}\n", .{bp});
-            std.debug.print("BP {d} {}\n", .{ bpi, bp });
             try setFbs(&fbs, st + bp.model_offset);
             st = fbs.pos;
             {

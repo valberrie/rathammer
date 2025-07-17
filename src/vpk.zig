@@ -126,10 +126,6 @@ pub const Context = struct {
     };
     const IdEntryMap = std.AutoHashMap(VpkResId, Entry);
 
-    const ExtensionMap = std.StringHashMap(PathMap);
-    const PathMap = std.StringHashMap(EntryMap);
-    const EntryMap = std.StringHashMap(Entry);
-
     const Dir = struct {
         prefix: []const u8,
 
@@ -153,14 +149,25 @@ pub const Context = struct {
     };
 
     const Entry = struct {
+        path: []const u8,
+        name: []const u8,
+        res_id: VpkResId,
+
+        location: union(enum) {
+            vpk: VpkEntry,
+            loose: LooseEntry,
+        },
+    };
+
+    const LooseEntry = struct {
+        dir_index: u16,
+    };
+
+    const VpkEntry = struct {
         dir_index: u16,
         archive_index: u16,
         offset: u32,
         length: u32,
-        res_id: VpkResId,
-
-        path: []const u8,
-        name: []const u8,
     };
 
     /// These map the strings found in vpk to a numeric id.
@@ -299,6 +306,55 @@ pub const Context = struct {
         try self.loose_dirs.append(try root.openDir(path, .{}));
     }
 
+    pub fn slowIndexOfLooseDirSubPath(self: *Self, subpath: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        var strbuf = std.ArrayList(u8).init(self.alloc);
+        defer strbuf.deinit();
+        try strbuf.appendSlice(subpath);
+        //TODO Check for the damn backslash too
+        if (!std.mem.endsWith(u8, subpath, "/")) {
+            try strbuf.append('/');
+        }
+        const prefix_len = strbuf.items.len;
+        for (self.loose_dirs.items, 0..) |loose_dir, dir_index| {
+            if (loose_dir.openDir(subpath, .{ .iterate = true })) |sub_dir| {
+                var walker = try sub_dir.walk(self.alloc);
+                defer walker.deinit();
+                while (try walker.next()) |file| {
+                    switch (file.kind) {
+                        .file => {
+                            try strbuf.resize(prefix_len);
+                            try strbuf.appendSlice(file.path);
+                            sanatizeVpkString(strbuf.items);
+                            const split = splitPath(strbuf.items);
+
+                            const ext_stored = try self.string_storage.store(split.ext);
+                            const ext_id = try self.extension_map.getPut(ext_stored);
+                            const path_stored = try self.string_storage.store(split.path);
+                            const path_id = try self.path_map.getPut(path_stored);
+
+                            const fname_stored = try self.string_storage.store(split.name);
+                            const fname_id = try self.res_map.getPut(fname_stored);
+                            const res_id = encodeResourceId(ext_id, path_id, fname_id);
+                            const entry = try self.entries.getOrPut(res_id);
+                            std.debug.print("adding loose {s}:{s}:{s}\n", .{ path_stored, fname_stored, ext_stored });
+                            if (!entry.found_existing) {
+                                entry.value_ptr.* = Entry{
+                                    .res_id = res_id,
+                                    .path = path_stored,
+                                    .name = fname_stored,
+                                    .location = .{ .loose = .{ .dir_index = @intCast(dir_index) } },
+                                };
+                            } else {}
+                        },
+                        else => {},
+                    }
+                }
+            } else |_| {} //Not having the subpath is fine too.
+        }
+    }
+
     /// the vpk_set: hl2_pak.vpk -> hl2_pak_dir.vpk . This matches the way gameinfo.txt does it
     /// The passed in root dir must remain alive.
     pub fn addDir(self: *Self, root: std.fs.Dir, vpk_set: []const u8, loadctx: anytype) !void {
@@ -364,8 +420,6 @@ pub const Context = struct {
 
                 if (other_md5_sec_size != 48) return error.invalidMd5Size;
 
-                //std.debug.print("{d} {d} {d} {d}\n", .{ tree_size, filedata_section_size, archive_md5_sec_size, sig_sec_size });
-
                 loadctx.addExpected(10);
                 while (true) {
                     loadctx.printCb("Dir mounted {d:.2}%", .{@as(f32, @floatFromInt(fbs.pos)) / @as(f32, @floatFromInt(self.filebuf.items.len + 1)) * 100});
@@ -412,13 +466,15 @@ pub const Context = struct {
                             const entry = try self.entries.getOrPut(res_id);
                             if (!entry.found_existing) {
                                 entry.value_ptr.* = Entry{
-                                    .dir_index = @intCast(dir_index),
-                                    .archive_index = arch_index,
-                                    .offset = offset,
-                                    .length = entry_len,
                                     .res_id = res_id,
                                     .path = path_stored,
                                     .name = fname_stored,
+                                    .location = .{ .vpk = .{
+                                        .dir_index = @intCast(dir_index),
+                                        .archive_index = arch_index,
+                                        .offset = offset,
+                                        .length = entry_len,
+                                    } },
                                 };
                             } else {
                                 //log.err("Duplicate resource is named: {s}", .{fname});
@@ -519,26 +575,44 @@ pub const Context = struct {
             }
             return null;
         };
-        const dir = self.getDir(entry.dir_index) orelse return null;
-        const res = try dir.fds.getOrPut(entry.archive_index);
-        if (!res.found_existing) {
-            errdefer _ = dir.fds.remove(entry.archive_index); //Prevent closing an unopened file messing with stack trace
-            self.strbuf.clearRetainingCapacity();
-            try self.strbuf.writer().print("{s}_{d:0>3}.vpk", .{ dir.prefix, entry.archive_index });
+        switch (entry.location) {
+            .loose => |lo| {
+                const names = self.namesFromId_(res_id) orelse return null;
+                self.strbuf.clearRetainingCapacity();
+                try self.strbuf.writer().print("{s}/{s}.{s}", .{ names.path, names.name, names.ext });
+                //std.debug.print("Searching loose dir for {s} \n", .{self.strbuf.items});
+                if (lo.dir_index >= self.loose_dirs.items.len) return null;
+                const ldir = self.loose_dirs.items[lo.dir_index];
 
-            res.value_ptr.* = dir.root.openFile(self.strbuf.items, .{}) catch |err| switch (err) {
-                error.FileNotFound => {
-                    log.err("Couldn't open vpk file: {s}", .{self.strbuf.items});
-                    return err;
-                },
-                else => return err,
-            };
+                const infile = ldir.openFile(self.strbuf.items, .{}) catch return null;
+                defer infile.close();
+                buf.clearRetainingCapacity();
+                try infile.reader().readAllArrayList(buf, std.math.maxInt(usize));
+                return buf.items;
+            },
+            .vpk => |v| {
+                const dir = self.getDir(v.dir_index) orelse return null;
+                const res = try dir.fds.getOrPut(v.archive_index);
+                if (!res.found_existing) {
+                    errdefer _ = dir.fds.remove(v.archive_index); //Prevent closing an unopened file messing with stack trace
+                    self.strbuf.clearRetainingCapacity();
+                    try self.strbuf.writer().print("{s}_{d:0>3}.vpk", .{ dir.prefix, v.archive_index });
+
+                    res.value_ptr.* = dir.root.openFile(self.strbuf.items, .{}) catch |err| switch (err) {
+                        error.FileNotFound => {
+                            log.err("Couldn't open vpk file: {s}", .{self.strbuf.items});
+                            return err;
+                        },
+                        else => return err,
+                    };
+                }
+
+                try buf.resize(v.length);
+                try res.value_ptr.seekTo(v.offset);
+                try res.value_ptr.reader().readNoEof(buf.items);
+                return buf.items;
+            },
         }
-
-        try buf.resize(entry.length);
-        try res.value_ptr.seekTo(entry.offset);
-        try res.value_ptr.reader().readNoEof(buf.items);
-        return buf.items;
     }
 
     /// The pointer to Dir may be invalidated if addDir is called
@@ -549,6 +623,17 @@ pub const Context = struct {
         return null;
     }
 };
+
+fn splitPath(sl: []const u8) struct { ext: []const u8, path: []const u8, name: []const u8 } {
+    const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse 0;
+    const dot = std.mem.lastIndexOfScalar(u8, sl, '.') orelse sl.len;
+
+    return .{
+        .path = sl[0..slash],
+        .ext = sl[dot + 1 ..], //Eat the dot
+        .name = sl[slash + 1 .. dot],
+    };
+}
 
 ///Read next string in vpk dir file
 ///Clears str

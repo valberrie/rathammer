@@ -5,6 +5,7 @@ const vpk = @import("vpk.zig");
 const vdf = @import("vdf.zig");
 const vvd = @import("vvd.zig");
 const edit = @import("editor.zig");
+const graph = @import("graph");
 
 pub const ThreadState = struct {
     vtf_file_buffer: std.ArrayList(u8),
@@ -206,53 +207,72 @@ pub const Context = struct {
         const thread_state = try self.getState();
         //const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse break :in error.noSlash;
         if (try vpkctx.getFileFromRes(vpk_res_id, &thread_state.vtf_file_buffer)) |tt| {
-            var obj = try vdf.parse(self.alloc, tt);
-            defer obj.deinit();
-            //All vmt are a single root object with a shader name as key
-            var was_found = false;
-            if (obj.value.list.items.len > 0) {
-                const fallback_keys = [_][]const u8{
-                    "$basetexture", "%tooltexture", "$bumpmap", "$normalmap",
+            const names = vpkctx.namesFromId(vpk_res_id) orelse return error.noNames;
+            if (std.mem.eql(u8, names.ext, "png")) {
+                //TODO is spng thread safe?
+
+                var bmp = graph.Bitmap.initFromPngBuffer(self.alloc, tt) catch |err| {
+                    std.debug.print("the png had an aerro {!}\n", .{err});
+                    return err;
                 };
-                const ob = obj.value.list.items[0].val;
-                switch (ob) {
-                    .obj => |o| {
-                        for (fallback_keys) |fbkey| {
-                            if (o.getFirst(fbkey)) |base| {
-                                if (base == .literal) {
-                                    const buf = try vtf.loadBuffer(
-                                        try vpkctx.getFileTempFmtBuf(
-                                            "vtf",
-                                            "materials/{s}",
-                                            .{base.literal},
-                                            &thread_state.vtf_file_buffer,
-                                        ) orelse {
-                                            std.debug.print("Not found: {s} \n", .{base.literal});
-                                            //std.debug.print("{s}\n", .{tt});
-                                            return error.notfound;
-                                        },
-                                        self.alloc,
-                                    );
-                                    was_found = true;
-                                    try self.insertCompleted(.{
-                                        .data = buf,
-                                        .vpk_res_id = vpk_res_id,
-                                        .kind = if (std.mem.eql(u8, fbkey, "%tooltexture")) .tool else .none,
-                                    });
-                                    break;
+                try self.insertCompleted(.{
+                    .data = .{
+                        .buffer = try bmp.data.toOwnedSlice(),
+                        .width = bmp.w,
+                        .height = bmp.h,
+                        .pixel_format = bmp.format.toGLFormat(),
+                        .pixel_type = bmp.format.toGLType(),
+                        .compressed = false,
+                    },
+                    .vpk_res_id = vpk_res_id,
+                    .kind = .none,
+                });
+            } else if (std.mem.eql(u8, names.ext, "vmt")) {
+                var obj = try vdf.parse(self.alloc, tt);
+                defer obj.deinit();
+                //All vmt are a single root object with a shader name as key
+                var was_found = false;
+                if (obj.value.list.items.len > 0) {
+                    const fallback_keys = [_][]const u8{
+                        "$basetexture", "%tooltexture", "$bumpmap", "$normalmap",
+                    };
+                    const ob = obj.value.list.items[0].val;
+                    switch (ob) {
+                        .obj => |o| {
+                            for (fallback_keys) |fbkey| {
+                                if (o.getFirst(fbkey)) |base| {
+                                    if (base == .literal) {
+                                        const buf = try vtf.loadBuffer(
+                                            try vpkctx.getFileTempFmtBuf(
+                                                "vtf",
+                                                "materials/{s}",
+                                                .{base.literal},
+                                                &thread_state.vtf_file_buffer,
+                                            ) orelse {
+                                                std.debug.print("Not found: {s} \n", .{base.literal});
+                                                //std.debug.print("{s}\n", .{tt});
+                                                return error.notfound;
+                                            },
+                                            self.alloc,
+                                        );
+                                        was_found = true;
+                                        try self.insertCompleted(.{
+                                            .data = buf,
+                                            .vpk_res_id = vpk_res_id,
+                                            .kind = if (std.mem.eql(u8, fbkey, "%tooltexture")) .tool else .none,
+                                        });
+                                        break;
+                                    }
                                 }
                             }
-                        }
-                    },
-                    else => {},
-                }
-                if (!was_found) {
-                    const names = vpkctx.namesFromId(vpk_res_id);
-                    std.debug.print("A texture was not found\n", .{});
-                    if (names) |n| {
-                        std.debug.print("{s}/{s}\n", .{ n.path, n.name });
+                        },
+                        else => {},
                     }
-                    //std.debug.print("{s}\n", .{tt});
+                    if (!was_found) {
+                        std.debug.print("A texture was not found\n", .{});
+                        std.debug.print("{s}/{s}\n", .{ names.path, names.name });
+                        //std.debug.print("{s}\n", .{tt});
+                    }
                 }
             }
         } else {
