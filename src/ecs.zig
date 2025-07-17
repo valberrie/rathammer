@@ -307,7 +307,8 @@ pub const Entity = struct {
     _model_id: ?vpk.VpkResId = null,
     _sprite: ?vpk.VpkResId = null,
 
-    //CRAP
+    //CRAP FOr the FUCKING LADDERS. THE ONLY FUCKING THING THAT REQUIRES TWO HULLS AND ONLY fucking HALF LIFE 2
+    //has the fucking FUNC_USABLE LADDERS GODDAMMIT.
     _multi_bb_index: bool = false,
 
     pub fn dupe(self: *const @This(), ecs: *EcsT, new_id: EcsT.Id) anyerror!@This() {

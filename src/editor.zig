@@ -41,6 +41,7 @@ const path_guess = @import("path_guess.zig");
 const shell = @import("shell.zig");
 const grid_stuff = @import("grid.zig");
 const class_tracker = @import("class_track.zig");
+const version = @import("version.zig").version;
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
@@ -49,40 +50,6 @@ const def_render = @import("def_render.zig");
 
 pub const TMP_DIR = "/tmp/mapcompile";
 pub const MAP_OUT = "dump";
-
-pub const ResourceId = struct {
-    vpk_id: vpk.VpkResId,
-};
-
-const JsonCamera = struct {
-    yaw: f32,
-    pitch: f32,
-    move_speed: f32,
-    fov: f32,
-    pos: Vec3,
-
-    pub fn fromCam(cam: graph.Camera3D) @This() {
-        return .{
-            .yaw = cam.yaw,
-            .pitch = cam.pitch,
-            .move_speed = cam.move_speed,
-            .fov = cam.fov,
-            .pos = cam.pos,
-        };
-    }
-
-    pub fn setCam(self: @This(), cam: *graph.Camera3D) void {
-        const info = @typeInfo(@This());
-        inline for (info.Struct.fields) |f| {
-            @field(cam, f.name) = @field(self, f.name);
-        }
-    }
-};
-
-const JsonEditor = struct {
-    map_json_version: []const u8,
-    cam: JsonCamera,
-};
 
 const Model = struct {
     mesh: ?*vvd.MultiMesh = null,
@@ -625,9 +592,10 @@ pub const Context = struct {
         try jwr.beginObject();
         {
             try jwr.objectField("editor");
-            try jwr.write(JsonEditor{
-                .cam = JsonCamera.fromCam(self.draw_state.cam3d),
+            try jwr.write(json_map.JsonEditor{
+                .cam = json_map.JsonCamera.fromCam(self.draw_state.cam3d),
                 .map_json_version = "0.0.1",
+                .editor_version = version,
             });
 
             try jwr.objectField("visgroup");
@@ -981,6 +949,8 @@ pub const Context = struct {
                     try self.putSolidFromVmf(solid, group_id);
                 {
                     var bb = AABB{ .a = Vec3.new(0, 0, 0), .b = Vec3.new(16, 16, 16), .origin_offset = Vec3.new(8, 8, 8) };
+                    if (group_id != 0) //Group owners have no bounds
+                        bb.b = bb.a;
                     var model_id: ?vpk.VpkResId = null;
                     if (ent.rest_kvs.count() > 0) {
                         var kvs = KeyValues.init(self.alloc);
@@ -1398,7 +1368,8 @@ pub const LoadCtx = struct {
             return;
         if (self.draw_splash) {
             var fbs = std.io.FixedBufferStream([]u8){ .buffer = &self.buffer, .pos = 0 };
-            try fbs.writer().print("v0.0.1 Loaded in {d:.2} ms. {s}.{s}.{s}", .{
+            try fbs.writer().print("v{s} Loaded in {d:.2} ms. {s}.{s}.{s}", .{
+                version,
                 self.time / std.time.ns_per_ms,
                 @tagName(builtin.mode),
                 @tagName(builtin.target.os.tag),

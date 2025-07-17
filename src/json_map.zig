@@ -49,7 +49,7 @@ pub const VisGroup = struct {
     children: []const VisGroup,
 };
 
-const JsonCamera = struct {
+pub const JsonCamera = struct {
     yaw: f32,
     pitch: f32,
     move_speed: f32,
@@ -74,16 +74,19 @@ const JsonCamera = struct {
     }
 };
 
-const JsonEditor = struct {
+pub const JsonEditor = struct {
     map_json_version: []const u8,
+    editor_version: []const u8,
     cam: JsonCamera,
 };
 
-const JsonMap = struct {
+/// This defines the .json map format
+pub const JsonMap = struct {
     editor: JsonEditor,
     sky_name: []const u8,
     objects: []const std.json.Value,
     visgroup: ?VisGroup = null,
+    /// Random crap that might change format and is not vital to parse the map is put in extra
     extra: std.json.Value = .{ .null = {} },
 };
 

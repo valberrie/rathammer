@@ -5,6 +5,8 @@ const vdf_serial = @import("vdf_serial.zig");
 const vmf = @import("vmf.zig");
 const GroupId = ecs.Groups.GroupId;
 
+const version = @import("version.zig");
+
 const StringStorage = @import("string.zig").StringStorage;
 const json_map = @import("json_map.zig");
 
@@ -45,9 +47,9 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
         try vr.writeComment("This vmf was created by RatHammer.\n", .{});
         try vr.writeComment("It may not be compatible with official Valve tools.\n", .{});
         try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
-        try vr.writeComment("rathammer_version  0.0.1\n", .{});
+        try vr.writeComment("rathammer_version  {s}\n", .{version.version});
         try vr.writeKv("versioninfo", vmf.VersionInfo{
-            .editorversion = 400,
+            .editorversion = 400, // These numbers are not real.
             .editorbuild = 2987,
             .mapversion = 1,
             .formatversion = 100,
@@ -96,8 +98,6 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                 }
             }
 
-            //if (solid._parent_entity != null) continue;
-
             try writeSolid(&vr, solids.i, solid, &side_id_start, vpkmapper, ecs_p);
         }
         try vr.endObject(); //world
@@ -108,26 +108,27 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                 continue;
             try vr.writeKey("entity");
             try vr.beginObject();
+            const this_group = (groups.getGroup(ents.i));
             {
                 try vr.writeKv("id", ents.i);
-                try vr.writeKey("origin");
-                try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.origin.x(), ent.origin.y(), ent.origin.z() });
-                //try vr.writeKey("angles");
-                //try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.angle.x(), ent.angle.y(), ent.angle.z() });
+
+                // If this is the owner of a group, don't serailize the origin.
+                // If you have a func_detail and its owner entity has a nonzero origin, the result is not what the user expects
+                // There may be owner entities which need to have a custom origin.
+                if (this_group == null) {
+                    try vr.writeKey("origin");
+                    try vr.printValue("\"{d} {d} {d}\"\n", .{ ent.origin.x(), ent.origin.y(), ent.origin.z() });
+                }
 
                 try vr.writeKv("classname", ent.class);
-                var model_written = false;
-                //var angle_written = false;
 
                 if (try ecs_p.getOptPtr(ents.i, .key_values)) |kvs| {
                     var it = kvs.map.iterator();
                     while (it.next()) |kv| {
-                        if (std.mem.eql(u8, "model", kv.key_ptr.*))
-                            model_written = true;
+                        //We manually omit origin here and serialize manually above
+                        //because some class's don't specify it even though they need it.
                         if (std.mem.eql(u8, "origin", kv.key_ptr.*))
-                            continue; //TODO have a better way to deal with these keys
-                        //if (std.mem.eql(u8, "angles", kv.key_ptr.*))
-                        //angle_written = true;
+                            continue;
                         try vr.writeKv(kv.key_ptr.*, kv.value_ptr.slice());
                     }
                 }
@@ -142,6 +143,7 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                         for (cons.list.items) |con| {
                             // empty kvs cause a segfault in vbsp lol
                             if (con.listen_event.len == 0) continue;
+
                             try vr.writeKey(con.listen_event);
                             try vr.printValue(fmt, .{
                                 con.target.items,
@@ -154,12 +156,10 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                     }
                     try vr.endObject();
                 }
-
-                if (ent._model_id) |mid|
-                    try vr.writeKv("model", vpkmapper.getResource(mid) orelse "");
             }
 
-            if (groups.getGroup(ents.i)) |group| {
+            if (this_group) |group| {
+                //Write out the brush entity
                 if (group_ent_map.get(group)) |list| {
                     for (list.items) |solid_i| {
                         const solid = try ecs_p.getOptPtr(solid_i, .solid) orelse continue;
