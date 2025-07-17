@@ -514,6 +514,14 @@ pub const Context = struct {
         return self.ecs.getPtr(index, comp) catch null;
     }
 
+    pub fn dupeEntity(self: *Self, ent: EcsT.Id) !EcsT.Id {
+        const duped = try self.ecs.dupeEntity(ent);
+        if (self.getComponent(duped, .entity)) |new_ent| {
+            try new_ent.setClass(self, new_ent.class, duped);
+        }
+        return duped;
+    }
+
     /// Wrapper around iterator that omits anything with deleted
     pub fn Iterator(comptime comp: EcsT.Components) type {
         return struct {
@@ -555,7 +563,16 @@ pub const Context = struct {
 
     pub fn rebuildVisGroups(self: *Self) !void {
         std.debug.print("Rebuilding visgroups\n", .{});
-        self.ecs.clearComponent(.invisible);
+        {
+            var it = self.ecs.iterator(.invisible);
+            while (it.next()) |_| {
+                if (try self.ecs.getOptPtr(it.i, .solid)) |solid| {
+                    try solid.rebuild(it.i, self);
+                }
+            }
+            self.ecs.clearComponent(.invisible);
+        }
+        //IF
 
         var it = self.ecs.iterator(.editor_info);
         while (it.next()) |info| {

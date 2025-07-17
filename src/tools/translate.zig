@@ -394,7 +394,7 @@ pub const Translate = struct {
         const ustack = try self.undoctx.pushNewFmt("{s} of {d} entities", .{ if (dupe) "Dupe" else "Translation", selected.len });
         for (selected) |id| {
             if (dupe) {
-                const duped = try self.ecs.dupeEntity(id);
+                const duped = try self.dupeEntity(id);
 
                 try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
                 try ustack.append(try undo.UndoTranslate.create(
@@ -428,7 +428,7 @@ pub const Translate = struct {
             var it = group_mapper.iterator();
             while (it.next()) |item| {
                 if (self.groups.getOwner(item.key_ptr.*)) |owner| {
-                    const duped = try self.ecs.dupeEntity(owner);
+                    const duped = try self.dupeEntity(owner);
 
                     try ustack.append(try undo.UndoCreateDestroy.create(self.undoctx.alloc, duped, .create));
                     try self.groups.setOwner(item.value_ptr.*, duped);

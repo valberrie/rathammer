@@ -11,17 +11,21 @@ pub const Tracker = struct {
     alloc: std.mem.Allocator,
     map: MapT,
 
+    get_buf: std.ArrayList(Id),
+
     // All keys into map are not managed, must live forever
     pub fn init(alloc: std.mem.Allocator) Tracker {
         return .{
             .alloc = alloc,
             .map = MapT.init(alloc),
+            .get_buf = std.ArrayList(Id).init(alloc),
         };
     }
 
     pub fn deinit(self: *Self) void {
         var it = self.map.iterator();
 
+        self.get_buf.deinit();
         while (it.next()) |item| {
             item.value_ptr.deinit(self.alloc);
         }
@@ -57,19 +61,30 @@ pub const Tracker = struct {
     }
 
     /// Becomes invalid if any are added or removed
-    pub fn get(self: *Self, class: []const u8) []const Id {
-        if (self.map.get(class)) |list|
-            return list.items;
+    pub fn get(self: *Self, class: []const u8, ecs_p: *ecs.EcsT) ![]const Id {
+        self.get_buf.clearRetainingCapacity();
+        const vis_mask = ecs.EcsT.getComponentMask(&.{ .invisible, .deleted });
+        if (self.map.get(class)) |list| {
+            for (list.items) |id| {
+                if (!ecs_p.intersects(id, vis_mask))
+                    try self.get_buf.append(id);
+            }
+        }
 
-        return &.{};
+        return self.get_buf.items;
     }
 
     // get the last one, so user can determine order
     // With multiple light_environment, user sets class of the one they want in the box
-    pub fn getLast(self: *Self, class: []const u8) ?Id {
+    pub fn getLast(self: *Self, class: []const u8, ecs_p: *ecs.EcsT) ?Id {
+        const vis_mask = ecs.EcsT.getComponentMask(&.{ .invisible, .deleted });
         if (self.map.get(class)) |list| {
-            if (list.items.len > 0)
-                return list.items[list.items.len - 1];
+            var index = list.items.len;
+            while (index > 0) : (index -= 1) {
+                const id = list.items[index - 1];
+                if (!ecs_p.intersects(id, vis_mask))
+                    return id;
+            }
         }
         return null;
     }

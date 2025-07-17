@@ -125,7 +125,7 @@ pub fn draw3Dview(
     }
 
     if (self.renderer.mode == .def) { //TODO Remove
-        if (self.classtrack.getLast("light_environment")) |env_id| {
+        if (self.classtrack.getLast("light_environment", &self.ecs)) |env_id| {
             if (self.getComponent(env_id, .key_values)) |kvs| {
                 const pitch = kvs.getFloats("pitch", 1) orelse 0;
                 const color = kvs.getFloats("_light", 4) orelse [4]f32{ 255, 255, 255, 255 };
@@ -145,7 +145,7 @@ pub fn draw3Dview(
         self.renderer.light_batch.clear();
         //var itit = self.ecs.iterator(.entity);
         //while (itit.next()) |item| {
-        for (self.classtrack.get("light")) |item| {
+        for (try self.classtrack.get("light", &self.ecs)) |item| {
             //if (std.mem.eql(u8, "light", item.class)) {
             const kvs = try self.ecs.getOptPtr(item, .key_values) orelse continue;
             const ent = try self.ecs.getOptPtr(item, .entity) orelse continue;

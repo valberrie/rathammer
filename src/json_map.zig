@@ -75,8 +75,8 @@ pub const JsonCamera = struct {
 };
 
 pub const JsonEditor = struct {
-    map_json_version: []const u8,
-    editor_version: []const u8,
+    map_json_version: []const u8 = "0.0.0",
+    editor_version: []const u8 = "0.0.0",
     cam: JsonCamera,
 };
 
