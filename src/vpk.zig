@@ -43,6 +43,16 @@ pub fn encodeResourceId(extension_index: u64, path_index: u64, entry_index: u64)
     //Assert all are below accepted values
     return extension_index << 48 | path_index << 32 | entry_index;
 }
+/// All identifiers within the vpk are lowercased and \ -> /
+pub fn sanatizeVpkString(str: []u8) void {
+    for (str) |*ch| {
+        ch.* = switch (ch.*) {
+            '\\' => '/',
+            'A'...'Z' => ch.* | 0b00100000, //Lowercase
+            else => ch.*,
+        };
+    }
+}
 
 pub fn decodeResourceId(id: VpkResId) struct {
     ext: u64,
@@ -220,17 +230,6 @@ pub const Context = struct {
         self.path_map.deinit();
         self.res_map.deinit();
         self.entries.deinit();
-    }
-
-    /// All identifiers within the vpk are lowercased and \ -> /
-    pub fn sanatizeVpkString(str: []u8) void {
-        for (str) |*ch| {
-            ch.* = switch (ch.*) {
-                '\\' => '/',
-                'A'...'Z' => ch.* | 0b00100000, //Lowercase
-                else => ch.*,
-            };
-        }
     }
 
     //Not thread safe

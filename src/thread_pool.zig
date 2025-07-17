@@ -181,7 +181,7 @@ pub const Context = struct {
 
     pub fn workFunc(self: *@This(), vpk_res_id: vpk.VpkResId, vpkctx: *vpk.Context) void {
         workFuncErr(self, vpk_res_id, vpkctx) catch |e| {
-            log.warn("{} for", .{e});
+            log.warn("Texture failed with {} for", .{e});
         };
     }
 
@@ -194,7 +194,6 @@ pub const Context = struct {
             const LOG_FAILED_MDL = true;
             if (LOG_FAILED_MDL) {
                 std.debug.print("Failed to load model: {s} with error: {!}\n", .{ model_name, err });
-                //log.warn("Failed to load model: {s} with error: {!}", .{ model_name, err });
             }
             return;
         };
@@ -213,7 +212,7 @@ pub const Context = struct {
             var was_found = false;
             if (obj.value.list.items.len > 0) {
                 const fallback_keys = [_][]const u8{
-                    "$basetexture", "%tooltexture",
+                    "$basetexture", "%tooltexture", "$bumpmap", "$normalmap",
                 };
                 const ob = obj.value.list.items[0].val;
                 switch (ob) {
@@ -229,6 +228,7 @@ pub const Context = struct {
                                             &thread_state.vtf_file_buffer,
                                         ) orelse {
                                             std.debug.print("Not found: {s} \n", .{base.literal});
+                                            //std.debug.print("{s}\n", .{tt});
                                             return error.notfound;
                                         },
                                         self.alloc,
@@ -252,9 +252,14 @@ pub const Context = struct {
                     if (names) |n| {
                         std.debug.print("{s}/{s}\n", .{ n.path, n.name });
                     }
-                    std.debug.print("{s}\n", .{tt});
+                    //std.debug.print("{s}\n", .{tt});
                 }
             }
+        } else {
+            log.warn("can't find vtf", .{});
+            const names = vpkctx.namesFromId(vpk_res_id);
+            if (names) |n|
+                log.warn("Can't find vtf for {s}/{s}", .{ n.path, n.name });
         }
     }
 };

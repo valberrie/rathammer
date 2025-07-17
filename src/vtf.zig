@@ -92,6 +92,7 @@ const ImageFormat = enum(i32) {
             .IMAGE_FORMAT_DXT3 => graph.c.GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,
             .IMAGE_FORMAT_BGRA8888 => graph.c.GL_BGRA,
             .IMAGE_FORMAT_RGBA8888 => graph.c.GL_RGBA,
+            .IMAGE_FORMAT_ABGR8888 => graph.c.GL_RGBA, //This is wrong but I don't care
             .IMAGE_FORMAT_BGR888 => graph.c.GL_BGR,
             .IMAGE_FORMAT_RGB888 => graph.c.GL_RGB,
             .IMAGE_FORMAT_UV88 => graph.c.GL_RG,

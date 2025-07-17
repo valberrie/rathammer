@@ -183,7 +183,19 @@ pub fn loadModelCrappy(
     outer: for (info.texture_names.items) |tname| {
         inner: for (info.texture_paths.items) |tpath| {
             scratch.clearRetainingCapacity();
-            try scratch.writer().print("{s}{s}", .{ tpath, tname });
+            var real_tpath = tpath;
+            if (std.mem.startsWith(u8, tname, tpath)) {
+                // This is an example from black mesa. WTF??
+                //tpath = models\props_pipes\
+                //tname = models/props_pipes/pipesystem01a_skin1
+                //
+                //Not only do we have to do this dumb workaround, we have to sanitize the strings before passing into vpk
+
+                //std.debug.print("Your model has activated something stupid!\n", .{});
+                real_tpath = "";
+            }
+
+            try scratch.writer().print("{s}{s}", .{ real_tpath, tname });
             const tex_res_id = try vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{scratch.items}) orelse continue :inner;
             try pool_state.loadTexture(tex_res_id, vpkctx);
             try texts.append(tex_res_id);

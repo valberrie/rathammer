@@ -3,6 +3,7 @@ const com = @import("parse_common.zig");
 const parseStruct = com.parseStruct;
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
+const vpk = @import("vpk.zig");
 
 const MdlVector = struct {
     x: f32,
@@ -256,8 +257,10 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
     const o1 = try parseStruct(Studiohdr_01, .little, r);
     if (!std.mem.eql(u8, &o1.id, MDL_MAGIC_STRING))
         return error.notMdl;
-    if (o1.version != 44)
+    const supported = [_]u32{ 44, 48 }; //This is bullshit lol
+    if (std.mem.indexOfScalar(u32, &supported, o1.version) == null) {
         log.warn("Unsupported mdl version {d} , attempting to parse", .{o1.version});
+    }
 
     const h2 = try parseStruct(Studiohdr_02, .little, r);
     print("Name: {s} {d}\n", .{ h2.name, h2.data_length });
@@ -287,7 +290,10 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         const start = fbs.pos;
         const tex = try parseStruct(StudioTexture, .little, r);
         const name: [*c]const u8 = &slice[start + tex.name_offset];
-        try info.texture_names.append(try alloc.dupe(u8, std.mem.span(name)));
+        const duped_name = try alloc.dupe(u8, std.mem.span(name));
+        vpk.sanatizeVpkString(duped_name);
+
+        try info.texture_names.append(duped_name);
         print("{s} {}\n", .{ name, tex });
     }
 
@@ -295,7 +301,9 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
     for (0..h3.texturedir_count) |_| {
         const int = try r.readInt(u32, .little);
         const name: [*c]const u8 = &slice[int];
-        try info.texture_paths.append(try alloc.dupe(u8, std.mem.span(name)));
+        const duped_name = try alloc.dupe(u8, std.mem.span(name));
+        vpk.sanatizeVpkString(duped_name);
+        try info.texture_paths.append(duped_name);
         print("NAME {s}\n", .{name});
     }
 
