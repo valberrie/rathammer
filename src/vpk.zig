@@ -8,19 +8,7 @@ threadlocal var error_msg_buffer: [1024]u8 = undefined;
 
 const config = @import("config");
 const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
-
-//TODO support mounting of loose files aswell.
-//Modify the way getResourceId works so it never returns null
-//if res_id is not found in self.entries, we instead search through self.loose_dirs
-//for each loose_dir:
-//  fs.tryOpen(path)
-//
-//Rather than do a search, at mounting, walk the directories and add all files, if this takes a long time,
-//create a cache file consisting of:
-//  mtimes of all directories, recursive
-//  vpk index data
-//
-//Add a flag to force rebuild
+//TODO currently all loose files must be lowercase to get read
 
 pub const VpkResId = u64;
 

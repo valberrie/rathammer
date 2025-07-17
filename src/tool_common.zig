@@ -39,7 +39,7 @@ pub const AABBGizmo = struct {
                         ret[0] = if (sign > 0) min else min.add(p);
                         ret[1] = if (sign < 0) max else max.add(p);
 
-                        draw.line3D(self.start_point, self.start_point.add(p), 0x00ffffff);
+                        draw.line3D(self.start_point, self.start_point.add(p), 0x00ffffff, 2);
                     }
                     if (btn == .falling) {
                         min_.* = ret[0];

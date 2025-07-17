@@ -894,7 +894,7 @@ const Proportional = struct {
                     const total_len = (self.bb_min.sub(self.bb_max).dot(self.start_n));
 
                     const cc = cubeFromBounds(bmin, bmax);
-                    draw_nd.line3D(self.start, self.start.add(p), 0x00ffffff);
+                    draw_nd.line3D(self.start, self.start.add(p), 0x00ffffff, 2);
                     draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
 
                     const ctx_ = TranslateCtx{
@@ -1204,7 +1204,7 @@ pub const Clipping = struct {
                 const diff = p0.sub(p1);
                 const dist = diff.length();
                 const dir = diff.norm();
-                draw_nd.line3D(p0.add(dir.scale(-dist)), p0.add(dir.scale(dist)), 0xffff_ffff);
+                draw_nd.line3D(p0.add(dir.scale(-dist)), p0.add(dir.scale(dist)), 0xffff_ffff, 2);
                 for (self.points, 0..) |p, i| {
                     const proj = util3d.projectPointOntoRay(rc[0], rc[1], p);
                     const distance = proj.distance(p);

@@ -983,7 +983,7 @@ pub const Solid = struct {
             for (0..ind.len) |ti| {
                 const p = v[ind[ti]].add(vec);
                 if (edge_color > 0)
-                    draw.line3D(last, p, edge_color);
+                    draw.line3D(last, p, edge_color, 2);
                 if (point_color > 0)
                     draw.point3D(p, point_color);
                 last = p;

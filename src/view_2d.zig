@@ -7,6 +7,7 @@ const views = @import("editor_views.zig");
 const PaneReg = views.PaneReg;
 const iPane = views.iPane;
 const DrawCtx = graph.ImmediateDrawingContext;
+const gridutil = @import("grid.zig");
 
 pub const Ctx2dView = struct {
     pub threadlocal var tool_id: PaneReg.TableReg = PaneReg.initTableReg;
@@ -77,27 +78,8 @@ pub const Ctx2dView = struct {
             }
         }
         const grid_color = 0x4444_44ff;
-        const max_count = 12;
-        {
-            const gx_start = ed.grid.swiz1(cb.x, "x");
-            const count_pre: usize = @intFromFloat(@ceil(cb.w / ed.grid.s.x()));
-            const count = if (count_pre < max_count) count_pre else max_count;
-            //@floor(cb.w / max_count / ed.grid.s.x());
-            const wi = if (count_pre < max_count) ed.grid.s.x() else @floor(cb.w / max_count / ed.grid.s.x()) * ed.grid.s.x();
-            for (0..count) |ci| {
-                const fi: f32 = @floatFromInt(ci);
-                draw.line(.{ .x = gx_start + fi * wi, .y = cb.y }, .{ .x = gx_start + fi * wi, .y = cb.y + cb.h }, grid_color);
-            }
-        }
-        {
-            const gx_start = ed.grid.swiz1(cb.y, "x");
-            const count: usize = @intFromFloat(@ceil(cb.h / ed.grid.s.x()));
-            const wi = ed.grid.s.x();
-            for (0..count) |ci| {
-                const fi: f32 = @floatFromInt(ci);
-                draw.line(.{ .y = gx_start + fi * wi, .x = cb.x }, .{ .y = gx_start + fi * wi, .x = cb.x + cb.w }, grid_color);
-            }
-        }
+        gridutil.drawGrid2DAxis('x', cb, 50, ed.grid.s.x(), draw, .{ .color = grid_color });
+        gridutil.drawGrid2DAxis('y', cb, 50, ed.grid.s.y(), draw, .{ .color = grid_color });
 
         var it = ed.meshmap.iterator();
         const c = graph.c;
@@ -111,6 +93,10 @@ pub const Ctx2dView = struct {
             graph.GL.passUniform(ed.draw_state.basic_shader, "view", view_3d);
             graph.GL.passUniform(ed.draw_state.basic_shader, "model", model);
             graph.c.glBindVertexArray(mesh.value_ptr.*.lines_vao);
+            const diffuse_loc = c.glGetUniformLocation(ed.draw_state.basic_shader, "diffuse_texture");
+
+            c.glUniform1i(diffuse_loc, 0);
+            c.glBindTextureUnit(0, mesh.value_ptr.*.mesh.diffuse_texture);
             graph.c.glDrawElements(c.GL_LINES, @as(c_int, @intCast(mesh.value_ptr.*.lines_index.items.len)), graph.c.GL_UNSIGNED_INT, null);
             //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, ed.draw_state.basic_shader);
         }

@@ -382,7 +382,7 @@ pub const TextureTool = struct {
                 var last = v[ind[ind.len - 1]];
                 for (0..ind.len) |ti| {
                     const p = v[ind[ti]];
-                    editor.draw_state.ctx.line3D(last, p, 0xff0000ff);
+                    editor.draw_state.ctx.line3D(last, p, 0xff0000ff, 2);
                     last = p;
                 }
             }

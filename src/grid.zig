@@ -73,7 +73,7 @@ pub const Snap = struct {
         return ret;
     }
 
-    fn snap1(value: f32, snap: f32) f32 {
+    pub fn snap1(value: f32, snap: f32) f32 {
         if (snap < 1) return value;
         return @round(value / snap) * snap;
     }
@@ -99,7 +99,7 @@ fn drawGridAxis1(del_x: f32, count: f32, width: f32, start_p: Vec3, comptime axi
             var end = start;
             end.data[plane_axis] = width / 2;
 
-            draw.line3D(start.add(start_p), end.add(start_p), 0xffffffff);
+            draw.line3D(start.add(start_p), end.add(start_p), 0xffffffff, 2);
         }
     }
 }
@@ -137,14 +137,16 @@ pub fn drawGrid3d(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usi
             const start = Vec3.new((fnn - iline2) * sx, -othy, 0);
             const end = start.add(Vec3.new(0, 2 * othy, 0));
 
-            d.line3D(quat.rotateVec(start).add(pos), quat.rotateVec(end).add(pos), 0xffffffff);
+            d.line3D(quat.rotateVec(start).add(pos), quat.rotateVec(end).add(pos), 0xffffffff, 2);
         }
         const start = Vec3.new(-othx, (fnn - iline2) * sy, 0);
         const end = start.add(Vec3.new(2 * othx, 0, 0));
-        d.line3D(quat.rotateVec(start).add(pos), quat.rotateVec(end).add(pos), 0xffffffff);
+        d.line3D(quat.rotateVec(start).add(pos), quat.rotateVec(end).add(pos), 0xffffffff, 2);
     }
     //d.point3D(cpos, 0xff0000ee);
 }
+
+//pub fn drawGridAxis2D()
 
 pub fn drawGridZ(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usize) void {
     //const cpos = inter;
@@ -165,12 +167,46 @@ pub fn drawGridZ(inter: Vec3, plane_z: f32, d: *DrawCtx, snap: Snap, count: usiz
             const start = Vec3.new((fnn - iline2) * sx, -othy, 0);
             const end = start.add(Vec3.new(0, 2 * othy, 0));
 
-            d.line3D(start.add(pos), end.add(pos), 0xffffffff);
+            d.line3D(start.add(pos), end.add(pos), 0xffffffff, 2);
         }
         const start = Vec3.new(-othx, (fnn - iline2) * sy, 0);
         const end = start.add(Vec3.new(2 * othx, 0, 0));
-        d.line3D(start.add(pos), end.add(pos), 0xffffffff);
+        d.line3D(start.add(pos), end.add(pos), 0xffffffff, 2);
     }
     //d.point3D(cpos, 0xff0000ee);
 }
+
+pub const Grid2DParam = struct {
+    color: u32,
+};
+pub fn drawGrid2DAxis(comptime axis: u8, area_: graph.Rect, max_lines: f32, snap: f32, d: *DrawCtx, param: Grid2DParam) void {
+    if (max_lines <= 0) return;
+    if (axis != 'x' and axis != 'y') @compileError("invalid axis");
+
+    const area = if (axis == 'y') area_.swapAxis() else area_;
+
+    var gx_start = Snap.snap1(area.x, snap);
+    var count = @ceil(area.w / snap);
+    var wi = snap;
+
+    if (count > max_lines) {
+        const log2 = std.math.log2;
+        const snap_exp = @ceil(log2(area.w / (snap * max_lines)));
+        count = max_lines;
+        wi = snap * std.math.pow(f32, 2, snap_exp);
+        gx_start = Snap.snap1(area.x, wi);
+    }
+
+    for (0..@intFromFloat(count)) |ci| {
+        const fi: f32 = @floatFromInt(ci);
+        const start = graph.Vec2f{ .x = gx_start + fi * wi, .y = area.y };
+        const end = graph.Vec2f{ .x = gx_start + fi * wi, .y = area.y + area.h };
+        if (axis == 'y') {
+            d.line(start.swapAxis(), end.swapAxis(), param.color, 1);
+        } else {
+            d.line(start, end, param.color, 1);
+        }
+    }
+}
+
 //pub fn drawGrid2D()void{ }

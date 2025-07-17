@@ -120,7 +120,7 @@ pub const Gizmo = struct {
                     const dtheta = theta / n_segment_f;
                     const n_segment: u32 = @intFromFloat(n_segment_f);
                     var last_vert = x1.scale(rstart.x()).add(y1.scale(rstart.y())).add(orig);
-                    draw.line3D(last_vert, orig, 0x0000ffff);
+                    draw.line3D(last_vert, orig, 0x0000ffff, 2);
                     for (0..n_segment) |n| {
                         const fnn: f32 = @floatFromInt(n + 1);
                         const th = std.math.degreesToRadians(dtheta * fnn);
@@ -128,10 +128,10 @@ pub const Gizmo = struct {
 
                         const vert_3d = x1.scale(vert_2d.x()).add(y1.scale(vert_2d.y()));
                         const vv = vert_3d.add(orig);
-                        draw.line3D(last_vert, vv, 0xffff00ff);
+                        draw.line3D(last_vert, vv, 0xffff00ff, 2);
                         last_vert = vv;
                     }
-                    draw.line3D(last_vert, orig, 0x0000ffff);
+                    draw.line3D(last_vert, orig, 0x0000ffff, 2);
 
                     return .high; //The gizmo is active
                 }
