@@ -144,6 +144,11 @@ pub const MeshDeferred = struct {
     texture_ids: std.ArrayList(vpk.VpkResId),
 };
 
+fn setFbs(fbs: *std.io.FixedBufferStream([]const u8), pos: usize) !void {
+    if (pos >= fbs.buffer.len) return error.outOfBounds;
+    fbs.pos = pos;
+}
+
 //it sucks but it works
 //there is very little version checking.
 pub fn loadModelCrappy(
@@ -293,24 +298,27 @@ pub fn loadModelCrappy(
         if (hv1.version >= 49)
             print("NEW VERSION {d}\n", .{hv1.version});
         print("{}\n", .{hv1});
-        fbs.pos = header_pos + hv1.bodyPartOffset;
+        try setFbs(&fbs, header_pos + hv1.bodyPartOffset);
         //if (hv1.bodyPartOffset != 36) return error.crappyVtxParser;
 
         var max: u32 = 0;
         const bpstart = fbs.pos;
         for (0..hv1.numBodyParts) |bpi| {
             if (bpi > 0)
-                break; //it breaks lol
+                break; //Only do the first, there is some bug with bounds
             const BP_SIZE = 8;
             var st = bpstart + bpi * BP_SIZE;
+            try setFbs(&fbs, st);
+
             const bp = try parseStruct(Vtx.BodyPart_h1, .little, r1);
             print("{}\n", .{bp});
-            fbs.pos = st + bp.model_offset;
+            std.debug.print("BP {d} {}\n", .{ bpi, bp });
+            try setFbs(&fbs, st + bp.model_offset);
             st = fbs.pos;
             {
                 const mh = try parseStruct(Vtx.Model_h1, .little, r1);
                 //We only read the first lod for now
-                fbs.pos = st + mh.lod_offset;
+                try setFbs(&fbs, st + mh.lod_offset);
                 print("{}\n", .{mh});
 
                 st = fbs.pos;
@@ -318,12 +326,12 @@ pub fn loadModelCrappy(
                 {
                     const mlod = try parseStruct(Vtx.ModelLod_h1, .little, r1);
                     print("{}\n", .{mlod});
-                    fbs.pos = st + mlod.mesh_offset;
+                    try setFbs(&fbs, st + mlod.mesh_offset);
                     const mesh_start = fbs.pos;
                     for (0..mlod.num_mesh) |mi| {
                         const MESH_SIZE = 9;
                         st = mesh_start + mi * MESH_SIZE;
-                        fbs.pos = st;
+                        try setFbs(&fbs, st);
                         const mhh = try parseStruct(Vtx.Mesh_h1, .little, r1);
 
                         print("{}\n", .{mhh});
@@ -334,7 +342,7 @@ pub fn loadModelCrappy(
                         for (0..mhh.num_strip_group) |si| {
                             const STRIP_GROUP_SIZE = 25;
                             st = mesh_h_start + si * STRIP_GROUP_SIZE;
-                            fbs.pos = st;
+                            try setFbs(&fbs, st);
                             const SG = try parseStruct(Vtx.StripGroup, .little, r1);
                             print("{}\n", .{SG});
 
@@ -342,7 +350,7 @@ pub fn loadModelCrappy(
 
                             var vert_table = std.ArrayList(u16).init(alloc);
                             defer vert_table.deinit();
-                            fbs.pos = sg_start + SG.vert_offset;
+                            try setFbs(&fbs, sg_start + SG.vert_offset);
                             for (0..SG.num_verts) |_| {
                                 const v = try parseStruct(Vtx.Vertex, .little, r1);
                                 try vert_table.append(mesh_offset + v.orig_mesh_vert_id);
@@ -350,12 +358,12 @@ pub fn loadModelCrappy(
                             var indices = std.ArrayList(u16).init(alloc);
                             try indices.ensureTotalCapacity(SG.num_index);
                             defer indices.deinit();
-                            fbs.pos = sg_start + SG.index_offset;
+                            try setFbs(&fbs, sg_start + SG.index_offset);
                             for (0..SG.num_index) |_| {
                                 try indices.append(try r1.readInt(u16, .little));
                             }
 
-                            fbs.pos = sg_start + SG.strip_offset;
+                            try setFbs(&fbs, sg_start + SG.strip_offset);
                             st = fbs.pos;
                             const vtt = vert_table.items;
                             const newm = try mmesh.newMesh(texts.items[mi]);
@@ -395,8 +403,11 @@ pub fn loadModelCrappy(
                                     },
                                     else => return error.unsupportedVertexStrip,
                                 }
-                                //fbs.pos = start + hh.index_offset;
                             }
+                        }
+                        if (mi >= info.vert_offsets.items.len) {
+                            std.debug.print("too many models\n", .{});
+                            break;
                         }
                         mesh_offset += info.vert_offsets.items[mi];
                     }

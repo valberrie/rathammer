@@ -250,6 +250,12 @@ pub const ModelInfo = struct {
     hull_min: Vec3,
     hull_max: Vec3,
 };
+
+fn setFbs(fbs: *std.io.FixedBufferStream([]const u8), pos: usize) !void {
+    if (pos >= fbs.buffer.len) return error.outOfBounds;
+    fbs.pos = pos;
+}
+
 pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !ModelInfo {
     const log = std.log.scoped(.mdl);
     var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
@@ -285,7 +291,7 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         info.texture_names.deinit();
     }
 
-    fbs.pos = h3.texture_offset;
+    try setFbs(&fbs, h3.texture_offset);
     for (0..h3.texture_count) |_| {
         const start = fbs.pos;
         const tex = try parseStruct(StudioTexture, .little, r);
@@ -297,7 +303,7 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         print("{s} {}\n", .{ name, tex });
     }
 
-    fbs.pos = h3.texturedir_offset;
+    try setFbs(&fbs, h3.texturedir_offset);
     for (0..h3.texturedir_count) |_| {
         const int = try r.readInt(u32, .little);
         const name: [*c]const u8 = &slice[int];
@@ -307,19 +313,19 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         print("NAME {s}\n", .{name});
     }
 
-    fbs.pos = h3.skinreference_index;
+    try setFbs(&fbs, h3.skinreference_index);
     for (0..h3.skinreference_count) |_| {
         print("crass {d}\n", .{try r.readInt(i16, .little)});
     }
 
-    fbs.pos = h3.bodypart_offset;
+    try setFbs(&fbs, h3.bodypart_offset);
     for (0..h3.bodypart_count) |_| {
         const o2 = fbs.pos;
         const bp = try parseStruct(BodyPart, .little, r);
         const st = fbs.pos;
         defer fbs.pos = st;
         print("{}\n", .{bp});
-        fbs.pos = bp.model_index + o2;
+        try setFbs(&fbs, bp.model_index + o2);
         for (0..bp.num_model) |_| {
             const o3 = fbs.pos;
             const mm = try parseStruct(Model, .little, r);
@@ -327,7 +333,7 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
             print("{s}\n", .{@as([*c]const u8, @ptrCast(&mm.name[0]))});
             const stt = fbs.pos;
             defer fbs.pos = stt;
-            fbs.pos = mm.mesh_index + o3;
+            try setFbs(&fbs, mm.mesh_index + o3);
             for (0..mm.num_mesh) |_| {
                 const mesh = try parseStruct(Mesh, .little, r);
                 print("BIG DOG {d}\n", .{mesh.num_vert});

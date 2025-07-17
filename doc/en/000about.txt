@@ -16,8 +16,16 @@ Pressing 'Tab' toggles between multi select and single select.
 Access the tools on the bar below by pressing the number keys.
 Tool controls are manipulated by mouse left and right.
 
+There are different workspaces:
+alt+1 -> main 3d
+alt+2 -> 2d 
+alt+t -> texture selection
+alt+m -> model selection
+
 To uncapture the mouse in the 3d view, hold 'Shift'
 ctrl+s saves the map.
 F9 will attempt to build it using Valves vbsp, vvis, vrad
+
+Temporarily hide selected with 'h'. Unhide all with 'ctrl+h'
 
 To change keybindings or game configuration, you must edit the config.vdf file and restart the editor.
