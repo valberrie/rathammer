@@ -46,6 +46,7 @@ pub const Ctx2dView = struct {
 
     pub fn draw2dView(self: *@This(), ed: *Context, screen_area: graph.Rect, draw: *DrawCtx) !void {
         self.cam.screen_area = screen_area;
+        self.cam.syncAspect();
         //graph.c.glViewport(x, y, w, h);
         //graph.c.glScissor(x, y, w, h);
         draw.setViewport(screen_area);
