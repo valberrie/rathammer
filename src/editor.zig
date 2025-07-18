@@ -181,66 +181,6 @@ pub const Context = struct {
 
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,
-
-        grab_pane: struct {
-            owner: ?pane.PaneId = null,
-            grabbed: bool = false,
-            was_grabbed: bool = false,
-
-            overridden: bool = false,
-
-            /// set before calling pane.draw_fn so we don't need to pass pane_id to every isBindStateCall
-            current_stack_pane: ?pane.PaneId = null,
-
-            //if the mouse is ungrabbed, the pane who contains it gets own
-            //if the mouse is ungrabbed, and a pane contain it, it can grab it
-            //nobody else can own it until the owner calls ungrab
-
-            pub fn tryOwn(self: *@This(), area: graph.Rect, win: *graph.SDL.Window, own: pane.PaneId) bool {
-                if (self.overridden) return false;
-                if (self.was_grabbed) return self.owns(own);
-                if (area.containsPoint(win.mouse.pos)) {
-                    self.owner = own;
-                }
-                return self.owns(own);
-            }
-
-            pub fn override(self: *@This()) void {
-                self.overridden = true;
-            }
-
-            pub fn owns(self: *const @This(), owner: ?pane.PaneId) bool {
-                if (owner == null or self.owner == null) return false;
-                return self.owner.? == owner.?;
-            }
-
-            pub fn endFrame(self: *@This()) void {
-                self.was_grabbed = self.grabbed;
-                self.grabbed = false;
-                self.overridden = false;
-                self.current_stack_pane = null;
-            }
-
-            pub fn trySetGrab(self: *@This(), own: pane.PaneId, should_grab: bool) enum { ungrabbed, grabbed, none } {
-                if (self.overridden) return .none;
-                if (self.was_grabbed) {
-                    if (self.owns(own)) {
-                        self.grabbed = should_grab;
-                        if (!self.grabbed)
-                            return .ungrabbed;
-                    }
-                    return .none;
-                }
-                if (self.owns(own)) {
-                    if (self.grabbed != should_grab) {
-                        self.grabbed = should_grab;
-                        self.was_grabbed = self.grabbed;
-                        return if (should_grab) .grabbed else .ungrabbed;
-                    }
-                }
-                return .none;
-            }
-        } = .{},
     },
 
     selection: Selection,
@@ -605,12 +545,12 @@ pub const Context = struct {
     }
 
     pub fn isBindState(self: *const Self, bind: graph.SDL.NewBind, state: graph.SDL.ButtonState) bool {
-        if (!self.draw_state.grab_pane.owns(self.draw_state.grab_pane.current_stack_pane)) return false;
+        if (!self.panes.stackOwns()) return false;
         return self.win.isBindState(bind, state);
     }
 
     pub fn mouseState(self: *const Self) graph.SDL.MouseState {
-        if (!self.draw_state.grab_pane.owns(self.draw_state.grab_pane.current_stack_pane)) return .{};
+        if (!self.panes.stackOwns()) return .{};
         return self.win.mouse;
     }
 
@@ -865,7 +805,7 @@ pub const Context = struct {
     pub fn screenRay(self: *Self, screen_area: graph.Rect, view_3d: Mat4) []const raycast.RcastItem {
         const rc = util3d.screenSpaceRay(
             screen_area.dim(),
-            if (self.draw_state.grab_pane.was_grabbed) screen_area.center() else self.edit_state.mpos,
+            if (self.panes.grab.was_grabbed) screen_area.center() else self.edit_state.mpos,
             view_3d,
         );
         return self.rayctx.findNearestSolid(&self.ecs, rc[0], rc[1], &self.csgctx, false) catch &.{};
@@ -1124,7 +1064,7 @@ pub const Context = struct {
     pub fn camRay(self: *Self, area: graph.Rect, view: Mat4) [2]Vec3 {
         return util3d.screenSpaceRay(
             area.dim(),
-            if (self.draw_state.grab_pane.was_grabbed) area.center() else self.edit_state.mpos,
+            if (self.panes.grab.was_grabbed) area.center() else self.edit_state.mpos,
             view,
         );
     }

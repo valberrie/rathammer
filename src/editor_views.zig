@@ -31,7 +31,7 @@ pub const Main3DView = struct {
 
     pub fn draw_fn(vt: *panereg.iPane, screen_area: graph.Rect, editor: *Context, d: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        switch (editor.draw_state.grab_pane.trySetGrab(pane_id, !d.win.keyHigh(.LSHIFT))) {
+        switch (editor.panes.grab.trySetGrab(pane_id, !d.win.keyHigh(.LSHIFT))) {
             else => {},
             .ungrabbed => {
                 const center = screen_area.center();
@@ -39,7 +39,7 @@ pub const Main3DView = struct {
             },
         }
 
-        editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab_pane.owns(pane_id)) d.camstate else .{});
+        editor.draw_state.cam3d.updateDebugMove(if (editor.panes.grab.owns(pane_id)) d.camstate else .{});
         draw3Dview(editor, screen_area, d.draw, self.font, self.fh) catch return;
     }
 
@@ -380,7 +380,6 @@ pub fn draw3Dview(
             .one => SINGLE_COLOR,
             .many => MANY_COLOR,
         });
-        //mt.textFmt("{s}, {any}", .{ @tagName(self.draw_state.grab_pane.owner), self.draw_state.grab_pane.grabbed }, fh, col);
         if (self.selection.mode == .many)
             mt.textFmt("Selected: {d}", .{self.selection.multi.items.len}, fh, col);
         if (self.edit_state.manual_hidden_count > 0) {

@@ -68,7 +68,7 @@ pub const OldGuiPane = struct {
                 editor.asset_browser.drawEditWindow(pane_area, self.os9gui, editor, .texture) catch return;
             },
             .model_view => {
-                _ = editor.draw_state.grab_pane.trySetGrab(pane_id, editor.win.mouse.left == .high);
+                _ = editor.panes.grab.trySetGrab(pane_id, editor.win.mouse.left == .high);
                 editor.asset_browser.drawModelPreview(
                     editor.win,
                     pane_area,
@@ -312,7 +312,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             editor.paused = !editor.paused;
         }
         if (console_active)
-            editor.draw_state.grab_pane.override();
+            editor.panes.grab.override();
 
         if (editor.paused) {
             switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
@@ -324,7 +324,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
 
         //win.grabMouse(editor.draw_state.grab.is);
-        win.grabMouse(editor.draw_state.grab_pane.was_grabbed);
+        win.grabMouse(editor.panes.grab.was_grabbed);
         win.pumpEvents(.poll);
         frame_time = frame_timer.read();
         frame_timer.reset();
@@ -345,7 +345,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .right = win.bindHigh(config.keys.cam_strafe_r.b),
             .fwd = win.bindHigh(config.keys.cam_forward.b),
             .bwd = win.bindHigh(config.keys.cam_back.b),
-            .mouse_delta = if (editor.draw_state.grab_pane.was_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
+            .mouse_delta = if (editor.panes.grab.was_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
             .speed_perc = @as(f32, if (win.bindHigh(config.keys.cam_slow.b)) 0.1 else 1) * perc_of_60fps,
         };
@@ -376,8 +376,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             if (editor.panes.get(pane)) |pane_vt| {
-                const owns = editor.draw_state.grab_pane.tryOwn(pane_area, &win, pane);
-                editor.draw_state.grab_pane.current_stack_pane = pane;
+                const owns = editor.panes.grab.tryOwn(pane_area, &win, pane);
+                editor.panes.grab.current_stack_pane = pane;
                 if (owns) {
                     editor.edit_state.lmouse = win.mouse.left;
                     editor.edit_state.rmouse = win.mouse.right;
@@ -395,7 +395,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             try gui.window_collector.append(&console_win.vt);
         }
 
-        editor.draw_state.grab_pane.endFrame();
+        editor.panes.grab.endFrame();
 
         try os9gui.drawGui(&draw);
         const wins = gui.window_collector.items;
