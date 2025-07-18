@@ -191,14 +191,19 @@ pub const Context = struct {
         override_vis_group: ?[]const u8 = null,
     } = .{},
 
+    gui_crap: struct {
+        tool_changed: bool = true,
+    } = .{},
+
     edit_state: struct {
         manual_hidden_count: usize = 0,
         default_group_entity: enum { none, func_detail } = .func_detail,
-        tool_index: usize = 0,
-        /// Set when the currently selected tool is selected again
-        tool_reinit: bool = false,
-        /// used to determine if the tool has changed
-        last_frame_tool_index: usize = 0,
+        __tool_index: usize = 0,
+        //tool_index: usize = 0,
+        ///// Set when the currently selected tool is selected again
+        //tool_reinit: bool = false,
+        ///// used to determine if the tool has changed
+        //last_frame_tool_index: usize = 0,
 
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
@@ -812,9 +817,36 @@ pub const Context = struct {
     }
 
     pub fn getCurrentTool(self: *Self) ?*tool_def.i3DTool {
-        if (self.edit_state.tool_index >= self.tools.vtables.items.len)
+        if (self.edit_state.__tool_index >= self.tools.vtables.items.len)
             return null;
-        return self.tools.vtables.items[self.edit_state.tool_index];
+        return self.tools.vtables.items[self.edit_state.__tool_index];
+    }
+
+    pub fn setTool(self: *Self, new_tool: usize) void {
+        if (new_tool >= self.tools.vtables.items.len) {
+            log.warn("tring to set invalid tool, ignoring", .{});
+            return;
+        }
+        self.gui_crap.tool_changed = true;
+        if (self.edit_state.__tool_index == new_tool) {
+            if (self.getCurrentTool()) |vt| {
+                if (vt.event_fn) |evf|
+                    evf(vt, .reFocus, self);
+            }
+            return;
+        } else {
+            if (self.getCurrentTool()) |old_vt| {
+                if (old_vt.event_fn) |evf| {
+                    evf(old_vt, .unFocus, self);
+                }
+            }
+            self.edit_state.__tool_index = new_tool;
+            if (self.getCurrentTool()) |vt| {
+                if (vt.event_fn) |evf| {
+                    evf(vt, .focus, self);
+                }
+            }
+        }
     }
 
     pub fn initNewMap(self: *Self) !void {
@@ -982,7 +1014,7 @@ pub const Context = struct {
     pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx, font: *graph.FontInterface) void {
         const start = area.pos();
         const w = 100;
-        const tool_index = self.edit_state.tool_index;
+        const tool_index = self.edit_state.__tool_index;
         for (self.tools.vtables.items, 0..) |tool, i| {
             const fi: f32 = @floatFromInt(i);
             const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
@@ -1158,7 +1190,7 @@ pub const Context = struct {
         }
 
         _ = self.frame_arena.reset(.retain_capacity);
-        self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
+        //self.edit_state.last_frame_tool_index = self.edit_state.tool_index;
         const MAX_UPDATE_TIME = std.time.ns_per_ms * 16;
         var timer = try std.time.Timer.start();
         //defer std.debug.print("UPDATE {d} ms\n", .{timer.read() / std.time.ns_per_ms});
@@ -1247,14 +1279,10 @@ pub const Context = struct {
                 ed.grid.half();
             ds.tab_index = @min(ds.tab_index, tabs.len - 1);
 
-            ed.edit_state.tool_reinit = false;
             {
                 for (config.keys.tool.items, 0..) |b, i| {
                     if (ed.isBindState(b.b, .rising)) {
-                        if (ed.edit_state.tool_index == i) {
-                            ed.edit_state.tool_reinit = true;
-                        }
-                        ed.edit_state.tool_index = i;
+                        ed.setTool(i);
                     }
                 }
             }

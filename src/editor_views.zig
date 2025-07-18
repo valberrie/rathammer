@@ -20,7 +20,6 @@ const VisGroup = @import("visgroup.zig");
 const Os9Gui = graph.Os9Gui;
 const Window = graph.SDL.Window;
 
-const VtableReg = @import("vtable_reg.zig").VtableReg;
 const panereg = @import("pane.zig");
 
 pub const Main3DView = struct {
@@ -78,18 +77,12 @@ pub fn draw3Dview(
     // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
     // "draw" still has depth buffer
     const draw_nd = &self.draw_state.ctx;
-    const x: i32 = @intFromFloat(screen_area.x);
-    const y: i32 = @intFromFloat(screen_area.y);
-    const w: i32 = @intFromFloat(screen_area.w);
-    const h: i32 = @intFromFloat(screen_area.h);
-    graph.c.glViewport(x, y, w, h);
-    graph.c.glScissor(x, y, w, h);
+    draw.setViewport(screen_area);
+    //graph.c.glScissor(x, y, w, h);
     const old_screen_dim = draw.screen_dimensions;
     defer draw.screen_dimensions = old_screen_dim;
     draw.screen_dimensions = .{ .x = screen_area.w, .y = screen_area.h };
 
-    graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
-    defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
     //const mat = graph.za.Mat4.identity();
 
     const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, self.draw_state.cam_near_plane, self.draw_state.cam_far_plane);
@@ -306,10 +299,8 @@ pub fn draw3Dview(
         .screen_area = screen_area,
         .view_3d = &view_3d,
         .draw = draw,
-        .state = if (self.edit_state.last_frame_tool_index != self.edit_state.tool_index) .init else if (self.edit_state.tool_reinit) .reinit else .normal,
     };
-    if (self.edit_state.tool_index < self.tools.vtables.items.len) {
-        const vt = self.tools.vtables.items[self.edit_state.tool_index];
+    if (self.getCurrentTool()) |vt| {
         try vt.runTool_fn(vt, td, self);
     }
     { //sky stuff

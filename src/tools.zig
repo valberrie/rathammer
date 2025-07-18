@@ -29,27 +29,33 @@ pub usingnamespace @import("tools/texture.zig");
 pub usingnamespace @import("tools/translate.zig");
 
 pub const Inspector = @import("windows/inspector.zig").InspectorWindow;
-//todo
-//extrude tool
-//clipping tool
-//  click on a face twice
-//  if points lie on same plane, infer clipping normal to be perpendicular to that plane
-
 pub const ToolRegistry = VtableReg(i3DTool);
 pub const ToolReg = ToolRegistry.TableReg;
 pub const initToolReg = ToolRegistry.initTableReg;
-//pub const ToolReg = ?usize;
-//pub const initToolReg = null;
+
+/// Tools are singleton.
+/// When a tool is switched to a focus event is sent to the tool.
+/// Switching to the same tool -> reFocus
+/// switching to a different tool -> unFocus
+///
+/// The runTool and runTool2D functions may get called more than once per frame,
+/// If a tool is active in one view and the user moves to a different view a view_changed event is sent
 pub const i3DTool = struct {
     deinit_fn: *const fn (*@This(), std.mem.Allocator) void,
+
     runTool_fn: *const fn (*@This(), ToolData, *Editor) ToolError!void,
     tool_icon_fn: *const fn (*@This(), *DrawCtx, *Editor, graph.Rect) void,
-    gui_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
-    guiDoc_fn: ?*const fn (*@This(), *Os9Gui, *Editor, *Gui.VerticalLayout) void = null,
 
     runTool_2d_fn: ?*const fn (*@This(), ToolData, *Editor) ToolError!void = null,
-
     gui_build_cb: ?*const fn (*@This(), *Inspector, *iArea, *RGui, *iWindow) void = null,
+    event_fn: ?*const fn (*@This(), ToolEvent, *Editor) void = null,
+};
+
+pub const ToolEvent = enum {
+    focus,
+    reFocus,
+    view_changed,
+    unFocus,
 };
 
 pub const ToolError = error{
@@ -73,7 +79,7 @@ pub const ToolData = struct {
     view_3d: *const graph.za.Mat4,
     screen_area: graph.Rect,
     draw: *DrawCtx,
-    state: enum { init, reinit, normal },
+    //state: enum { init, reinit, normal },
 };
 
 pub const ToolRegistryOld = struct {
@@ -182,6 +188,7 @@ pub const VertexTranslate = struct {
                 .runTool_fn = &runTool,
                 .runTool_2d_fn = &runTool2d,
                 .gui_build_cb = &buildGui,
+                .event_fn = &event,
             },
             .selected = std.AutoHashMap(ecs.EcsT.Id, Sel).init(alloc),
             //.selected_verts = std.ArrayList(SelectedVertex).init(alloc),
@@ -223,9 +230,19 @@ pub const VertexTranslate = struct {
         self.tool2d(td, ed) catch return error.fatal;
     }
 
+    pub fn event(vt: *i3DTool, ev: ToolEvent, _: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (ev) {
+            .focus, .reFocus => {
+                self.reset();
+            },
+            else => {},
+        }
+    }
+
     fn tool2d(self: *Self, td: ToolData, ed: *Editor) !void {
-        if (td.state == .init or td.state == .reinit)
-            self.reset();
+        _ = self;
+        _ = td;
         _ = ed;
     }
 
@@ -263,8 +280,6 @@ pub const VertexTranslate = struct {
 
     //TODO make the gizmo have priority over adding/removing vertex
     pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
-        if (td.state == .init or td.state == .reinit)
-            self.reset();
         const draw_nd = &ed.draw_state.ctx;
         const selected_slice = ed.selection.getSlice();
         const lm = ed.edit_state.lmouse;
@@ -455,7 +470,7 @@ pub const FastFaceManip = struct {
                 .deinit_fn = &@This().deinit,
                 .runTool_fn = &@This().runTool,
                 .tool_icon_fn = &@This().drawIcon,
-                .guiDoc_fn = &@This().guiDoc,
+                .event_fn = &event,
                 .gui_build_cb = &buildGui,
             },
             .selected = std.ArrayList(Selected).init(alloc),
@@ -480,10 +495,17 @@ pub const FastFaceManip = struct {
         self.runToolErr(td, editor) catch return error.fatal;
     }
 
-    pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
-        if (td.state == .init)
-            self.reset();
+    pub fn event(vt: *i3DTool, ev: ToolEvent, _: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (ev) {
+            .focus => {
+                self.reset();
+            },
+            else => {},
+        }
+    }
 
+    pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
         const draw_nd = &editor.draw_state.ctx;
         const selected_slice = editor.selection.getSlice();
         for (selected_slice) |sel| {
@@ -678,7 +700,6 @@ pub const PlaceModel = struct {
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
-            .gui_fn = &@This().doGui,
         } };
         return &obj.vt;
     }
@@ -866,9 +887,6 @@ const Proportional = struct {
     }
 
     pub fn runProp(self: *Self, ed: *Editor, td: ToolData) !void {
-        if (td.state == .init)
-            self.reset();
-
         if (self.needsRebuild(ed))
             try self.rebuildBB(ed);
         const draw_nd = &ed.draw_state.ctx;
@@ -964,7 +982,7 @@ pub const TranslateFace = struct {
                 .deinit_fn = &@This().deinit,
                 .runTool_fn = &@This().runTool,
                 .tool_icon_fn = &@This().drawIcon,
-                .guiDoc_fn = &@This().guiDoc,
+                .event_fn = &event,
             },
             .gizmo = .{},
             .prop = Proportional.init(alloc),
@@ -991,6 +1009,16 @@ pub const TranslateFace = struct {
             faceTranslate(self, editor, id, td) catch return error.fatal;
         } else {
             self.prop.runProp(editor, td) catch return error.fatal;
+        }
+    }
+
+    pub fn event(vt: *i3DTool, ev: ToolEvent, _: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (ev) {
+            .focus => {
+                self.prop.reset();
+            },
+            else => {},
         }
     }
 
@@ -1113,6 +1141,7 @@ pub const Clipping = struct {
                 .deinit_fn = &deinit,
                 .tool_icon_fn = &drawIcon,
                 .runTool_fn = &runTool,
+                .event_fn = &event,
             },
             .points = undefined,
         };
@@ -1128,6 +1157,16 @@ pub const Clipping = struct {
         self.state = .init;
         self.selected_side = null;
         self.grabbed = null;
+    }
+
+    pub fn event(vt: *i3DTool, ev: ToolEvent, _: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (ev) {
+            .focus, .reFocus => {
+                self.reset();
+            },
+            else => {},
+        }
     }
 
     pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
@@ -1157,9 +1196,6 @@ pub const Clipping = struct {
 
     //TODO put gizmos on the points
     pub fn runToolErr(self: *@This(), td: ToolData, ed: *Editor) !void {
-        if (td.state == .init)
-            self.reset();
-
         const draw_nd = &ed.draw_state.ctx;
         const selected = ed.selection.getSlice();
 

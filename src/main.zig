@@ -353,14 +353,14 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
         graph.c.glEnable(graph.c.GL_BLEND);
         try editor.update(&win);
-        editor.handleMisc3DKeys(&tabs);
 
         { //Hacks to update gui
             const new_id = editor.selection.getGroupOwnerExclusive(&editor.groups);
-            const tool_changed = editor.edit_state.last_frame_tool_index != editor.edit_state.tool_index;
+            const tool_changed = editor.gui_crap.tool_changed;
             if (new_id != last_frame_group_owner or tool_changed) {
                 inspector_win.vt.needs_rebuild = true;
             }
+            editor.gui_crap.tool_changed = false;
             last_frame_group_owner = new_id;
         }
         const tab = tabs[editor.draw_state.tab_index];
@@ -376,6 +376,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
             if (editor.panes.get(pane)) |pane_vt| {
+                //TODO put this in the places that should have it 2
+                editor.handleMisc3DKeys(&tabs);
                 const owns = editor.panes.grab.tryOwn(pane_area, &win, pane);
                 editor.panes.grab.current_stack_pane = pane;
                 if (owns) {

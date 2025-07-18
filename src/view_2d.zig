@@ -115,12 +115,10 @@ pub const Ctx2dView = struct {
             .screen_area = screen_area,
             .view_3d = &view_3d,
             .draw = draw,
-            .state = if (ed.edit_state.last_frame_tool_index != ed.edit_state.tool_index) .init else if (ed.edit_state.tool_reinit) .reinit else .normal,
         };
-        if (ed.edit_state.tool_index < ed.tools.vtables.items.len) {
-            const vt = ed.tools.vtables.items[ed.edit_state.tool_index];
-            if (vt.runTool_2d_fn) |run2d|
-                try run2d(vt, td, ed);
+        if (ed.getCurrentTool()) |tool_vt| {
+            if (tool_vt.runTool_2d_fn) |run2d|
+                try run2d(tool_vt, td, ed);
         }
 
         try draw.flushCustomMat(view_2d, view_3d);

@@ -80,6 +80,7 @@ pub const CubeDraw = struct {
             .runTool_fn = &@This().runTool,
             .tool_icon_fn = &@This().drawIcon,
             .gui_build_cb = &buildGui,
+            .event_fn = &event,
         } };
         return &obj.vt;
     }
@@ -304,12 +305,12 @@ pub const CubeDraw = struct {
                     .reset => self.state = .start,
                     .switch_to_fast_face => {
                         const tid = try ed.tools.getId(tools.FastFaceManip);
-                        ed.edit_state.tool_index = tid;
+                        ed.setTool(tid);
                         try ed.selection.setToSingle(new);
                     },
                     .switch_to_translate => {
                         const tid = try ed.tools.getId(tools.Translate);
-                        ed.edit_state.tool_index = tid;
+                        ed.setTool(tid); //Be carefull with this, it will call into self!
                         try ed.selection.setToSingle(new);
                     },
                 }
@@ -319,12 +320,18 @@ pub const CubeDraw = struct {
         }
     }
 
+    pub fn event(vt: *i3DTool, ev: tools.ToolEvent, _: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (ev) {
+            .focus, .reFocus => {
+                self.state = .start;
+            },
+            else => {},
+        }
+    }
+
     pub fn cubeDraw(tool: *@This(), self: *Editor, td: tools.ToolData) !void {
         const draw = td.draw;
-        switch (td.state) {
-            .init, .reinit => tool.state = .start,
-            .normal => {},
-        }
         const snap = self.grid;
         const ray = self.camRay(td.screen_area, td.view_3d.*);
         switch (tool.state) {

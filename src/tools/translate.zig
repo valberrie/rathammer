@@ -77,6 +77,7 @@ pub const Translate = struct {
                 .runTool_2d_fn = &runTool2D,
                 .tool_icon_fn = &@This().drawIcon,
                 .gui_build_cb = &buildGui,
+                .event_fn = &event,
             },
             .ed = ed,
             .gizmo_rotation = .{},
@@ -118,14 +119,21 @@ pub const Translate = struct {
         }
     }
 
+    pub fn event(vt: *i3DTool, ev: tools.ToolEvent, _: *Editor) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (ev) {
+            .focus, .reFocus => {
+                self.gizmo_rotation.reset();
+                self.cube_draw.reset();
+                if (self.mode == .marquee)
+                    self.mode = .translate;
+            },
+            else => {},
+        }
+    }
+
     pub fn runTool(vt: *i3DTool, td: tools.ToolData, editor: *Editor) tools.ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        if (td.state == .init or td.state == .reinit) {
-            self.gizmo_rotation.reset();
-            self.cube_draw.reset();
-            if (self.mode == .marquee)
-                self.mode = .translate;
-        }
         if (editor.isBindState(editor.config.keys.marquee.b, .rising)) {
             self.mode = .marquee;
             self.cube_draw.reset();
