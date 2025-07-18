@@ -11,6 +11,7 @@ const DrawCtx = graph.ImmediateDrawingContext;
 const gridutil = @import("grid.zig");
 
 pub const Ctx2dView = struct {
+    pub const Axis = enum { x, y, z };
     vt: iPane,
 
     cam: graph.Camera2D = .{
@@ -18,19 +19,22 @@ pub const Ctx2dView = struct {
         .screen_area = graph.Rec(0, 0, 0, 0),
     },
 
+    axis: Axis,
+
     pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, d: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
         _ = pane_id;
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.draw2dView(editor, screen_area, d.draw, d.win) catch return;
+        self.draw2dView(editor, screen_area, d.draw) catch return;
     }
 
-    pub fn create(alloc: std.mem.Allocator) !*iPane {
+    pub fn create(alloc: std.mem.Allocator, axis: Axis) !*iPane {
         var ret = try alloc.create(@This());
         ret.* = .{
             .vt = .{
                 .deinit_fn = &@This().deinit,
                 .draw_fn = &@This().draw_fn,
             },
+            .axis = axis,
         };
         return &ret.vt;
     }
@@ -40,33 +44,38 @@ pub const Ctx2dView = struct {
         alloc.destroy(self);
     }
 
-    pub fn draw2dView(self: *@This(), ed: *Context, screen_area: graph.Rect, draw: *DrawCtx, win: *graph.SDL.Window) !void {
+    pub fn draw2dView(self: *@This(), ed: *Context, screen_area: graph.Rect, draw: *DrawCtx) !void {
         self.cam.screen_area = screen_area;
-        const x: i32 = @intFromFloat(screen_area.x);
-        const y: i32 = @intFromFloat(screen_area.y);
-        const w: i32 = @intFromFloat(screen_area.w);
-        const h: i32 = @intFromFloat(screen_area.h);
-        graph.c.glViewport(x, y, w, h);
-        graph.c.glScissor(x, y, w, h);
+        //graph.c.glViewport(x, y, w, h);
+        //graph.c.glScissor(x, y, w, h);
+        draw.setViewport(screen_area);
         const old_screen_dim = draw.screen_dimensions;
         defer draw.screen_dimensions = old_screen_dim;
         draw.screen_dimensions = .{ .x = screen_area.w, .y = screen_area.h };
 
-        graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
-        defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+        //graph.c.glEnable(graph.c.GL_SCISSOR_TEST);
+        //defer graph.c.glDisable(graph.c.GL_SCISSOR_TEST);
+        const mouse = ed.mouseState();
 
         //draw.rect(screen_area, 0xffff);
-        if (win.mouse.middle == .high or ed.isBindState(ed.config.keys.cam_pan.b, .high)) {
-            self.cam.pan(win.mouse.delta);
+        if (mouse.middle == .high or ed.isBindState(ed.config.keys.cam_pan.b, .high)) {
+            self.cam.pan(mouse.delta);
         }
-        if (win.mouse.wheel_delta.y != 0) {
-            self.cam.zoom(win.mouse.wheel_delta.y * 0.1, win.mouse.pos, null, null);
+        if (mouse.wheel_delta.y != 0) {
+            self.cam.zoom(mouse.wheel_delta.y * 0.1, mouse.pos, null, null);
         }
 
         const cb = self.cam.cam_area;
         draw.rect(cb, 0x1111_11ff);
         const view_2d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -100000, 1);
-        const view_3d = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, -4096, 4096).rotate(90, Vec3.new(1, 0, 0));
+        const near = -4096;
+        const far = 4096;
+        const view_pre = graph.za.orthographic(cb.x, cb.x + cb.w, cb.y + cb.h, cb.y, near, far);
+        const view_3d = switch (self.axis) {
+            .y => view_pre.mul(graph.za.lookAt(Vec3.zero(), Vec3.new(0, 1, 0), Vec3.new(0, 0, -1))),
+            .z => view_pre,
+            .x => view_pre.rotate(90, Vec3.new(0, 1, 0)).rotate(90, Vec3.new(1, 0, 0)),
+        };
         try draw.flushCustomMat(view_2d, view_3d);
         graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_LINE);
         defer graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_FILL);

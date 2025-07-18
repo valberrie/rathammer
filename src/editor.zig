@@ -209,10 +209,9 @@ pub const Context = struct {
                 self.overridden = true;
             }
 
-            pub fn owns(self: *const @This(), owner: pane.PaneId) bool {
-                if (self.owner) |own|
-                    return own == owner;
-                return false;
+            pub fn owns(self: *const @This(), owner: ?pane.PaneId) bool {
+                if (owner == null or self.owner == null) return false;
+                return self.owner.? == owner.?;
             }
 
             pub fn endFrame(self: *@This()) void {
@@ -606,8 +605,13 @@ pub const Context = struct {
     }
 
     pub fn isBindState(self: *const Self, bind: graph.SDL.NewBind, state: graph.SDL.ButtonState) bool {
-        if (!self.draw_state.grab_pane.owns(self.draw_state.grab_pane.current_stack_pane orelse return false)) return false;
+        if (!self.draw_state.grab_pane.owns(self.draw_state.grab_pane.current_stack_pane)) return false;
         return self.win.isBindState(bind, state);
+    }
+
+    pub fn mouseState(self: *const Self) graph.SDL.MouseState {
+        if (!self.draw_state.grab_pane.owns(self.draw_state.grab_pane.current_stack_pane)) return .{};
+        return self.win.mouse;
     }
 
     pub fn writeToJson(self: *Self, outfile: std.fs.File) !void {

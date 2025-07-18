@@ -230,7 +230,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     try gui.addWindow(&console_win.vt, Rec(0, 0, 800, 600));
 
     const main_3d_id = try editor.panes.add(try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
-    const main_2d_id = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc));
+    const main_2d_id = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .y));
+    const main_2d_id2 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .x));
+    const main_2d_id3 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .z));
     const inspector_pane = try editor.panes.add(try panereg.GuiPane.create(editor.panes.alloc, &gui, &inspector_win.vt));
     const texture_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .texture, &os9gui));
     const model_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model, &os9gui));
@@ -293,8 +295,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .panes = Tab.newPane(&panes, &PI, &.{ model_pane, model_preview_pane }),
         },
         .{
-            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .left, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ main_3d_id, main_2d_id }),
+            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .top, 0.5 }, .{ .left, 1 } }),
+            .panes = Tab.newPane(&panes, &PI, &.{ main_2d_id3, main_2d_id, main_2d_id2 }),
         },
     };
 
