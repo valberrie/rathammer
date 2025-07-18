@@ -49,34 +49,151 @@ test {
     }
 }
 
-const Area = struct {
-    split: struct { k: enum { vert, horiz } = .vert, perc: f32 = 1 }, //Default split gives left all, right nothing
-    left: ?*const Area = null,
-    right: ?*const Area = null,
+pub const Orientation = enum { vert, horiz };
+pub const Area = union(enum) {
+    pane: ?usize,
+    sub: struct {
+        split: struct { k: Orientation = .vert, perc: f32 = 1 }, //Default split gives left all, right nothing
+        left: *Area,
+        right: *Area,
+    },
+};
+
+pub const ResizeHandle = struct {
+    perc_ptr: *f32,
+    k: Orientation,
+    perc_screenspace: f32,
+    r: R,
 };
 
 const Workspace = struct {};
 
-fn splitR(r: R, op: anytype) [2]R {
+fn splitR(r: R, op: anytype, pad: f32) [3]R {
     switch (op.k) {
-        .vert => return [2]R{
-            .{ .x = r.x, .y = r.y, .w = r.w * op.perc, .h = r.h },
-            .{ .x = r.x + r.w * op.perc, .y = r.y, .w = r.w - (r.w * op.perc), .h = r.h },
+        .vert => return [3]R{
+            .{ .x = r.x, .y = r.y, .w = r.w * op.perc - pad, .h = r.h },
+            .{ .x = r.x + r.w * op.perc + pad, .y = r.y, .w = r.w - (r.w * op.perc) - pad, .h = r.h },
+            .{ .x = r.x + r.w * op.perc - pad, .w = pad * 2, .y = r.y, .h = r.h },
         },
-        .horiz => return [2]R{
-            .{ .x = r.x, .y = r.y, .h = r.h * op.perc, .w = r.w },
-            .{ .y = r.y + r.h * op.perc, .x = r.x, .h = r.h - (r.h * op.perc), .w = r.w },
+        .horiz => return [3]R{
+            .{ .x = r.x, .y = r.y, .h = r.h * op.perc - pad, .w = r.w },
+            .{ .y = r.y + r.h * op.perc + pad, .x = r.x, .h = r.h - (r.h * op.perc) - pad, .w = r.w },
+            .{ .x = r.x, .w = r.w, .y = r.y + r.h * op.perc - pad, .h = pad * 2 },
         },
     }
 }
 
-fn flattenTree(root_area: R, tree: ?*const Area, output_list: *std.ArrayList(R)) !void {
-    if (tree) |t| {
-        const sp = splitR(root_area, t.split);
-        try flattenTree(sp[0], t.left, output_list);
-        try flattenTree(sp[1], t.right, output_list);
-    } else {
-        try output_list.append(root_area);
+pub const Splits = struct {
+    const Self = @This();
+    pub const Output = struct {
+        R,
+        ?usize,
+    };
+
+    arena: std.heap.ArenaAllocator,
+    workspaces: std.ArrayList(*Area),
+    active_ws: usize = 0,
+
+    //index into tab_handles
+    slider_held: ?usize = null,
+
+    area: R = .{ .x = 0, .y = 0, .w = 0, .h = 0 },
+
+    tab_outputs: std.ArrayList(Output),
+
+    tab_handles: std.ArrayList(ResizeHandle),
+
+    pub fn init(alloc: std.mem.Allocator) Self {
+        return .{
+            .arena = std.heap.ArenaAllocator.init(alloc),
+            .workspaces = std.ArrayList(*Area).init(alloc),
+            .tab_handles = std.ArrayList(ResizeHandle).init(alloc),
+            .tab_outputs = std.ArrayList(Output).init(alloc),
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.arena.deinit();
+        self.workspaces.deinit();
+        self.tab_handles.deinit();
+        self.tab_outputs.deinit();
+    }
+
+    pub fn newArea(self: *Self, area: Area) *Area {
+        const area_ptr = self.arena.allocator().create(Area) catch std.process.exit(1);
+        area_ptr.* = area;
+        return area_ptr;
+    }
+
+    pub fn setWorkspaceAndArea(self: *Self, ws: usize, area: R) !void {
+        if (ws >= self.workspaces.items.len) return;
+        if (!area.eql(self.area) or self.active_ws != ws or self.slider_held != null) {
+            self.area = area;
+            self.active_ws = ws;
+            self.tab_outputs.clearRetainingCapacity();
+            self.tab_handles.clearRetainingCapacity();
+            const tab = self.workspaces.items[ws];
+            try flattenTree(self.area, tab, &self.tab_outputs, &self.tab_handles);
+        }
+    }
+
+    pub fn doTheSliders(self: *Self, mp: graph.Vec2f, md: graph.Vec2f, btn: graph.SDL.ButtonState) void {
+        switch (btn) {
+            .low, .falling => self.slider_held = null,
+            .rising => {
+                for (self.tab_handles.items, 0..) |tb, i| {
+                    if (tb.r.containsPoint(mp)) {
+                        self.slider_held = i;
+                        return;
+                    }
+                }
+            },
+            .high => {
+                if (self.slider_held) |sl| {
+                    if (sl < self.tab_handles.items.len) {
+                        const tb = self.tab_handles.items[sl];
+                        const del = switch (tb.k) {
+                            .vert => md.x,
+                            .horiz => md.y,
+                        };
+                        const adding = del / tb.perc_screenspace;
+                        tb.perc_ptr.* += adding;
+                        tb.perc_ptr.* = std.math.clamp(tb.perc_ptr.*, 0.1, 0.9);
+                    }
+                }
+            },
+        }
+    }
+
+    pub fn getTab(self: *Self) []const Output {
+        return self.tab_outputs.items;
+    }
+};
+
+pub fn flattenTree(
+    root_area: R,
+    tree: *Area,
+    output_list: *std.ArrayList(struct { R, ?usize }),
+    output_handles: *std.ArrayList(ResizeHandle),
+) !void {
+    switch (tree.*) {
+        .sub => |t| {
+            const sp = splitR(root_area, t.split, 5);
+            try flattenTree(sp[0], t.left, output_list, output_handles);
+            try flattenTree(sp[1], t.right, output_list, output_handles);
+            try output_handles.append(
+                .{
+                    .perc_ptr = &tree.sub.split.perc,
+                    .k = t.split.k,
+                    .r = sp[2],
+                    .perc_screenspace = switch (t.split.k) {
+                        .vert => root_area.w,
+                        .horiz => root_area.h,
+                    },
+                },
+            );
+        },
+        .pane => |p| try output_list.append(.{ root_area, p }),
     }
 }
 

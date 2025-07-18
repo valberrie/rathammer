@@ -1,0 +1,12 @@
+default_game rat_custom
+paths {
+    steam_dir "."
+}
+games {
+    rat_custom {
+        base_dir "rat_custom"
+        game_dir "rat_custom"
+        fgd_dir  "rat_custom"
+        fgd      "rat.fgd"
+    }
+}

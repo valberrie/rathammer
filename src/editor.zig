@@ -1263,7 +1263,7 @@ pub const Context = struct {
         }
     }
 
-    pub fn handleMisc3DKeys(ed: *Self, tabs: []const eviews.Tab) void {
+    pub fn handleMisc3DKeys(ed: *Self, tabs: anytype) void {
         const config = &ed.config;
         const ds = &ed.draw_state;
 

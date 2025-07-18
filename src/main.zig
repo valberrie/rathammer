@@ -129,9 +129,14 @@ pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, p
     return .cont;
 }
 
+const log = std.log.scoped(.app);
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const load_timer = try std.time.Timer.start();
-    var loaded_config = try Conf.loadConfig(alloc, std.fs.cwd(), "config.vdf");
+    var loaded_config = Conf.loadConfigFromFile(alloc, std.fs.cwd(), "config.vdf") catch |err| {
+        log.err("User config failed to load with error {!}", .{err});
+        log.info("fix your config!", .{});
+        return error.failedConfig;
+    };
     defer loaded_config.deinit();
     const config = loaded_config.config;
     //var win = try graph.SDL.Window.createWindow("Rat Hammer - ラットハンマー", .{
@@ -232,7 +237,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const main_3d_id = try editor.panes.add(try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
     const main_2d_id = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .y));
     const main_2d_id2 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .x));
-    const main_2d_id3 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .z));
+    //const main_2d_id3 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .z));
     const inspector_pane = try editor.panes.add(try panereg.GuiPane.create(editor.panes.alloc, &gui, &inspector_win.vt));
     const texture_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .texture, &os9gui));
     const model_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model, &os9gui));
@@ -240,17 +245,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     loadctx.cb("Loading");
 
-    var my_var: i32 = 0;
-    my_var = my_var + 1;
-
     loadctx.cb("Vpk's mounted");
 
     vpk.timer.log("Vpk dir");
-
-    var model_cam = graph.Camera3D{ .pos = Vec3.new(-100, 0, 0), .front = Vec3.new(1, 0, 0), .up = .z };
-    model_cam.yaw = 0;
-    var name_buf = std.ArrayList(u8).init(alloc);
-    defer name_buf.deinit();
 
     editor.draw_state.cam3d.fov = config.window.cam_fov;
 
@@ -273,32 +270,41 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     graph.c.glEnable(graph.c.GL_CULL_FACE);
     graph.c.glCullFace(graph.c.GL_BACK);
 
-    var areas_buf: [10]graph.Rect = undefined;
+    var ws = Split.Splits.init(alloc);
+    defer ws.deinit();
+    const main_tab = ws.newArea(.{
+        .sub = .{
+            .split = .{ .k = .vert, .perc = 0.5 },
+            .left = ws.newArea(.{ .pane = main_3d_id }),
+            .right = ws.newArea(.{ .pane = inspector_pane }),
+        },
+    });
 
-    //TODO rewrite the tab system to allow for full control over splitting
-    var splits: [256]Split.Op = undefined;
-    var panes: [256]panereg.PaneId = undefined;
-    var SI: usize = 0;
-    var PI: usize = 0;
-    const Tab = editor_view.Tab;
-    const tabs = [_]Tab{
-        .{
-            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ main_3d_id, inspector_pane }),
+    const main_2d_tab = ws.newArea(.{
+        .sub = .{
+            .split = .{ .k = .vert, .perc = 0.5 },
+            .left = ws.newArea(.{ .pane = main_3d_id }),
+            .right = ws.newArea(.{ .sub = .{
+                .split = .{ .k = .horiz, .perc = 0.5 },
+                .left = ws.newArea(.{ .pane = main_2d_id }),
+                .right = ws.newArea(.{ .pane = main_2d_id2 }),
+            } }),
         },
-        .{
-            .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
-            .panes = Tab.newPane(&panes, &PI, &.{texture_pane}),
-        },
-        .{
-            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .left, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ model_pane, model_preview_pane }),
-        },
-        .{
-            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .top, 0.5 }, .{ .left, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ main_2d_id3, main_2d_id, main_2d_id2 }),
-        },
-    };
+    });
+    try ws.workspaces.append(main_tab);
+    try ws.workspaces.append(ws.newArea(.{ .pane = texture_pane }));
+    try ws.workspaces.append(ws.newArea(.{ .sub = .{
+        .split = .{ .k = .vert, .perc = 0.4 },
+        .left = ws.newArea(.{ .pane = model_pane }),
+        .right = ws.newArea(.{ .pane = model_preview_pane }),
+    } }));
+    try ws.workspaces.append(main_2d_tab);
+
+    var tab_outputs = std.ArrayList(struct { graph.Rect, ?usize }).init(alloc);
+    defer tab_outputs.deinit();
+
+    var tab_handles = std.ArrayList(Split.ResizeHandle).init(alloc);
+    defer tab_handles.deinit();
 
     var last_frame_group_owner: ?edit.EcsT.Id = null;
 
@@ -363,8 +369,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             editor.gui_crap.tool_changed = false;
             last_frame_group_owner = new_id;
         }
-        const tab = tabs[editor.draw_state.tab_index];
-        const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
+        //const tab = tabs[editor.draw_state.tab_index];
+        //const areas = Split.fillBuf(tab.split, &areas_buf, winrect);
 
         try gui.pre_update(gui.windows.items);
         if (win.isBindState(config.keys.toggle_console.b, .rising)) {
@@ -373,11 +379,16 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 console_win.area.dirty(&gui);
             }
         }
-        for (tab.panes, 0..) |pane, p_i| {
-            const pane_area = areas[p_i];
+        ws.doTheSliders(win.mouse.pos, win.mouse.delta, win.mouse.left);
+        try ws.setWorkspaceAndArea(editor.draw_state.tab_index, winrect);
+
+        for (ws.getTab()) |out| {
+            const pane_area = out[0];
+            const pane = out[1] orelse continue;
+            //const pane_area = areas[p_i].inset(10);
             if (editor.panes.get(pane)) |pane_vt| {
                 //TODO put this in the places that should have it 2
-                editor.handleMisc3DKeys(&tabs);
+                editor.handleMisc3DKeys(ws.workspaces.items);
                 const owns = editor.panes.grab.tryOwn(pane_area, &win, pane);
                 editor.panes.grab.current_stack_pane = pane;
                 if (owns) {

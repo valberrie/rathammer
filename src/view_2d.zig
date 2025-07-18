@@ -22,9 +22,8 @@ pub const Ctx2dView = struct {
     axis: Axis,
 
     pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, d: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
-        _ = pane_id;
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.draw2dView(editor, screen_area, d.draw) catch return;
+        self.draw2dView(editor, screen_area, d.draw, pane_id) catch return;
     }
 
     pub fn create(alloc: std.mem.Allocator, axis: Axis) !*iPane {
@@ -44,7 +43,7 @@ pub const Ctx2dView = struct {
         alloc.destroy(self);
     }
 
-    pub fn draw2dView(self: *@This(), ed: *Context, screen_area: graph.Rect, draw: *DrawCtx) !void {
+    pub fn draw2dView(self: *@This(), ed: *Context, screen_area: graph.Rect, draw: *DrawCtx, pane_id: panereg.PaneId) !void {
         self.cam.screen_area = screen_area;
         self.cam.syncAspect();
         //graph.c.glViewport(x, y, w, h);
@@ -60,10 +59,12 @@ pub const Ctx2dView = struct {
 
         //draw.rect(screen_area, 0xffff);
         if (mouse.middle == .high or ed.isBindState(ed.config.keys.cam_pan.b, .high)) {
+            _ = ed.panes.grab.trySetGrab(pane_id, true);
             self.cam.pan(mouse.delta);
         }
+        const zoom_bounds = graph.Vec2f{ .x = 16, .y = 1 << 16 };
         if (mouse.wheel_delta.y != 0) {
-            self.cam.zoom(mouse.wheel_delta.y * 0.1, mouse.pos, null, null);
+            self.cam.zoom(mouse.wheel_delta.y * 0.1, mouse.pos, zoom_bounds, zoom_bounds);
         }
 
         const cb = self.cam.cam_area;

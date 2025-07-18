@@ -99,6 +99,7 @@ pub const Config = struct {
         }
     },
 };
+
 pub const GameEntry = struct {
     base_dir: []const u8,
     game_dir: []const u8,
@@ -206,11 +207,15 @@ fn backupKeymod(name: []const u8) graph.SDL.keycodes.Keymod {
     return .NONE;
 }
 
-pub fn loadConfig(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) !ConfigCtx { //Load config
+pub fn loadConfigFromFile(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8) !ConfigCtx { //Load config
     const in = try dir.openFile(path, .{});
+    defer in.close();
     const slice = try in.reader().readAllAlloc(alloc, std.math.maxInt(usize));
     defer alloc.free(slice);
+    return try loadConfig(alloc, slice);
+}
 
+pub fn loadConfig(alloc: std.mem.Allocator, slice: []const u8) !ConfigCtx { //Load config
     var val = try vdf.parse(alloc, slice);
     defer val.deinit();
 
