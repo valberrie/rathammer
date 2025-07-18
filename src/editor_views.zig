@@ -74,14 +74,14 @@ pub fn draw3Dview(
     );
     defer graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_FILL);
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
+    draw.setViewport(screen_area);
+    const old_dim = draw.screen_dimensions;
+    draw.screen_dimensions = screen_area.dim();
+    defer draw.screen_dimensions = old_dim;
     // draw_nd "draw no depth" is for any immediate drawing after the depth buffer has been cleared.
     // "draw" still has depth buffer
     const draw_nd = &self.draw_state.ctx;
-    draw.setViewport(screen_area);
     //graph.c.glScissor(x, y, w, h);
-    const old_screen_dim = draw.screen_dimensions;
-    defer draw.screen_dimensions = old_screen_dim;
-    draw.screen_dimensions = .{ .x = screen_area.w, .y = screen_area.h };
 
     //const mat = graph.za.Mat4.identity();
 
@@ -144,13 +144,13 @@ pub fn draw3Dview(
         self.renderer.light_batch.pushVertexData();
     }
 
-    try self.renderer.draw(self.draw_state.cam3d, screen_area.w, screen_area.h, .{
+    try self.renderer.draw(self.draw_state.cam3d, screen_area, old_dim, .{
         .fac = self.draw_state.factor,
         .near = self.draw_state.cam_near_plane,
         .far = self.draw_state.far,
         .pad = self.draw_state.pad,
         .index = self.draw_state.index,
-    }, draw_nd, self.draw_state.planes);
+    }, draw, self.draw_state.planes);
 
     if (false) { //draw displacment vert
         var d_it = self.ecs.iterator(.displacement);
@@ -303,7 +303,7 @@ pub fn draw3Dview(
     if (self.getCurrentTool()) |vt| {
         try vt.runTool_fn(vt, td, self);
     }
-    { //sky stuff
+    if (self.draw_state.tog.skybox) { //sky stuff
         //const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
         const c = graph.c;
         c.glDepthMask(c.GL_FALSE);

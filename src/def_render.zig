@@ -93,8 +93,8 @@ pub const Renderer = struct {
     pub fn draw(
         self: *Self,
         cam: graph.Camera3D,
-        w: f32,
-        h: f32,
+        screen_area: graph.Rect,
+        screen_dim: graph.Vec2f,
         param: struct {
             far: f32,
             near: f32,
@@ -105,7 +105,7 @@ pub const Renderer = struct {
         dctx: *DrawCtx,
         pl: anytype,
     ) !void {
-        const view1 = cam.getMatrix(w / h, param.near, param.far);
+        const view1 = cam.getMatrix(screen_area.w / screen_area.h, param.near, param.far);
         self.csm.pad = param.pad;
         switch (self.mode) {
             .forward => {
@@ -158,9 +158,9 @@ pub const Renderer = struct {
                 };
                 const last_plane = pl[3];
                 //const last_plane = far * 0.58;
-                self.csm.calcMats(cam.fov, w / h, param.near, far, self.last_frame_view_mat, light_dir, planes);
+                self.csm.calcMats(cam.fov, screen_area.w / screen_area.h, param.near, far, self.last_frame_view_mat, light_dir, planes);
                 self.csm.draw(self);
-                self.gbuffer.updateResolution(@intFromFloat(w), @intFromFloat(h));
+                self.gbuffer.updateResolution(@intFromFloat(screen_area.w), @intFromFloat(screen_area.h));
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.gbuffer.buffer);
                 c.glViewport(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h);
                 c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
@@ -178,18 +178,19 @@ pub const Renderer = struct {
                         c.glBindVertexArray(dc.vao);
                         c.glDrawElements(@intFromEnum(dc.prim), dc.num_elements, dc.element_type, null);
                     }
-
-                    if (false) {
-                        dctx.rectTex(graph.Rec(0, 0, w, h), graph.Rec(0, 0, w, -h), .{
-                            .id = self.gbuffer.albedo,
-                            .w = @intFromFloat(w),
-                            .h = @intFromFloat(h),
-                        });
-                    }
                 }
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+                //c.glViewport(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h);
+                //dctx.setViewport(screen_area);
+                _ = dctx;
+                c.glViewport(
+                    @intFromFloat(screen_area.x),
+                    @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h)),
+                    @intFromFloat(screen_area.w),
+                    @intFromFloat(screen_area.h),
+                );
 
-                const scrsz = graph.Vec2i{ .x = @intFromFloat(w), .y = @intFromFloat(h) };
+                const scrsz = graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
                 if (true) {
                     { //Draw sun
                         c.glDepthMask(c.GL_FALSE);
@@ -240,10 +241,26 @@ pub const Renderer = struct {
                             self.drawLighting(cam, light_dir, scrsz, view);
                         }
                     }
-                    { //copy depth buffer
+                    if (true) { //copy depth buffer
+
+                        const y: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
+                        const x: i32 = @intFromFloat(screen_area.x);
                         c.glBindFramebuffer(c.GL_READ_FRAMEBUFFER, self.gbuffer.buffer);
                         c.glBindFramebuffer(c.GL_DRAW_FRAMEBUFFER, 0);
-                        c.glBlitFramebuffer(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h, 0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h, c.GL_DEPTH_BUFFER_BIT, c.GL_NEAREST);
+                        c.glBlitFramebuffer(
+                            0,
+                            0,
+                            //@intFromFloat(screen_dim.y - (screen_area.y + screen_area.h)),
+                            self.gbuffer.scr_w,
+                            self.gbuffer.scr_h,
+                            x,
+                            y,
+                            //@intFromFloat(screen_dim.y - (screen_area.y + screen_area.h)),
+                            x + self.gbuffer.scr_w,
+                            y + self.gbuffer.scr_h,
+                            c.GL_DEPTH_BUFFER_BIT,
+                            c.GL_NEAREST,
+                        );
                         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
                     }
                 }

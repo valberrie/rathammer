@@ -170,6 +170,7 @@ pub const Context = struct {
             tools: bool = true,
             sprite: bool = true,
             models: bool = true,
+            skybox: bool = true,
 
             model_render_dist: f32 = 512 * 2,
         } = .{},

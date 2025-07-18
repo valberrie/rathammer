@@ -237,7 +237,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const main_3d_id = try editor.panes.add(try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
     const main_2d_id = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .y));
     const main_2d_id2 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .x));
-    //const main_2d_id3 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .z));
+    const main_2d_id3 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .z));
     const inspector_pane = try editor.panes.add(try panereg.GuiPane.create(editor.panes.alloc, &gui, &inspector_win.vt));
     const texture_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .texture, &os9gui));
     const model_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model, &os9gui));
@@ -274,7 +274,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer ws.deinit();
     const main_tab = ws.newArea(.{
         .sub = .{
-            .split = .{ .k = .vert, .perc = 0.5 },
+            .split = .{ .k = .vert, .perc = 0.67 },
             .left = ws.newArea(.{ .pane = main_3d_id }),
             .right = ws.newArea(.{ .pane = inspector_pane }),
         },
@@ -283,11 +283,19 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const main_2d_tab = ws.newArea(.{
         .sub = .{
             .split = .{ .k = .vert, .perc = 0.5 },
-            .left = ws.newArea(.{ .pane = main_3d_id }),
-            .right = ws.newArea(.{ .sub = .{
+            .left = ws.newArea(.{ .sub = .{
                 .split = .{ .k = .horiz, .perc = 0.5 },
-                .left = ws.newArea(.{ .pane = main_2d_id }),
-                .right = ws.newArea(.{ .pane = main_2d_id2 }),
+                .left = ws.newArea(.{ .pane = main_3d_id }),
+                .right = ws.newArea(.{ .pane = main_2d_id3 }),
+            } }),
+            .right = ws.newArea(.{ .sub = .{
+                .split = .{ .k = .vert, .perc = 0.5 },
+                .left = ws.newArea(.{ .sub = .{
+                    .split = .{ .k = .horiz, .perc = 0.5 },
+                    .left = ws.newArea(.{ .pane = main_2d_id }),
+                    .right = ws.newArea(.{ .pane = main_2d_id2 }),
+                } }),
+                .right = ws.newArea(.{ .pane = inspector_pane }),
             } }),
         },
     });

@@ -189,6 +189,7 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.const_add, -1, 1, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "ambient scale", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.ambient_scale, -10, 100, .{}));
+            vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "draw skybox", .{ .bool_ptr = &ed.draw_state.tog.skybox }, null));
         }
         if (eql(u8, tab, "main")) {
             var ly = guis.VerticalLayout{
