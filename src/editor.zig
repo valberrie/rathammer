@@ -42,6 +42,7 @@ const shell = @import("shell.zig");
 const grid_stuff = @import("grid.zig");
 const class_tracker = @import("class_track.zig");
 const version = @import("version.zig").version;
+const pane = @import("pane.zig");
 
 const async_util = @import("async.zig");
 const util3d = @import("util_3d.zig");
@@ -135,8 +136,10 @@ pub const Context = struct {
 
     classtrack: class_tracker.Tracker,
 
+    panes: pane.PaneReg,
+
     tools: tool_def.ToolRegistry,
-    panes: eviews.PaneReg,
+    //panes: eviews.PaneReg,
     paused: bool = true,
     has_loaded_map: bool = false,
 
@@ -180,50 +183,56 @@ pub const Context = struct {
         ctx: graph.ImmediateDrawingContext,
 
         grab_pane: struct {
-            owner: eviews.Pane = .none,
+            owner: ?pane.PaneId = null,
             grabbed: bool = false,
             was_grabbed: bool = false,
 
             overridden: bool = false,
 
+            /// set before calling pane.draw_fn so we don't need to pass pane_id to every isBindStateCall
+            current_stack_pane: ?pane.PaneId = null,
+
             //if the mouse is ungrabbed, the pane who contains it gets own
             //if the mouse is ungrabbed, and a pane contain it, it can grab it
             //nobody else can own it until the owner calls ungrab
 
-            pub fn tryOwn(self: *@This(), area: graph.Rect, win: *graph.SDL.Window, own: eviews.Pane) bool {
+            pub fn tryOwn(self: *@This(), area: graph.Rect, win: *graph.SDL.Window, own: pane.PaneId) bool {
                 if (self.overridden) return false;
-                if (self.was_grabbed) return self.owner == own;
+                if (self.was_grabbed) return self.owns(own);
                 if (area.containsPoint(win.mouse.pos)) {
                     self.owner = own;
                 }
-                return self.owner == own;
+                return self.owns(own);
             }
 
             pub fn override(self: *@This()) void {
                 self.overridden = true;
             }
 
-            pub fn owns(self: *@This(), owner: eviews.Pane) bool {
-                return self.owner == owner;
+            pub fn owns(self: *const @This(), owner: pane.PaneId) bool {
+                if (self.owner) |own|
+                    return own == owner;
+                return false;
             }
 
             pub fn endFrame(self: *@This()) void {
                 self.was_grabbed = self.grabbed;
                 self.grabbed = false;
                 self.overridden = false;
+                self.current_stack_pane = null;
             }
 
-            pub fn trySetGrab(self: *@This(), own: eviews.Pane, should_grab: bool) enum { ungrabbed, grabbed, none } {
+            pub fn trySetGrab(self: *@This(), own: pane.PaneId, should_grab: bool) enum { ungrabbed, grabbed, none } {
                 if (self.overridden) return .none;
                 if (self.was_grabbed) {
-                    if (own == self.owner) {
+                    if (self.owns(own)) {
                         self.grabbed = should_grab;
                         if (!self.grabbed)
                             return .ungrabbed;
                     }
                     return .none;
                 }
-                if (own == self.owner) {
+                if (self.owns(own)) {
                     if (self.grabbed != should_grab) {
                         self.grabbed = should_grab;
                         self.was_grabbed = self.grabbed;
@@ -361,7 +370,7 @@ pub const Context = struct {
             .string_storage = StringStorage.init(alloc),
             .asset_browser = assetbrowse.AssetBrowserGui.init(alloc),
             .tools = tool_def.ToolRegistry.init(alloc),
-            .panes = eviews.PaneReg.init(alloc),
+            .panes = pane.PaneReg.init(alloc),
             .csgctx = try csg.Context.init(alloc),
             .clipctx = clipper.ClipCtx.init(alloc),
             .vpkctx = try vpk.Context.init(alloc),
@@ -597,7 +606,7 @@ pub const Context = struct {
     }
 
     pub fn isBindState(self: *const Self, bind: graph.SDL.NewBind, state: graph.SDL.ButtonState) bool {
-        if (self.draw_state.grab_pane.owner != .main_3d_view) return false;
+        if (!self.draw_state.grab_pane.owns(self.draw_state.grab_pane.current_stack_pane orelse return false)) return false;
         return self.win.isBindState(bind, state);
     }
 

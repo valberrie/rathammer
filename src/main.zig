@@ -20,8 +20,71 @@ const PauseWindow = @import("windows/pause.zig").PauseWindow;
 const ConsoleWindow = @import("windows/console.zig").Console;
 const InspectorWindow = @import("windows/inspector.zig").InspectorWindow;
 const Ctx2dView = @import("view_2d.zig").Ctx2dView;
+const panereg = @import("pane.zig");
 
 const Conf = @import("config.zig");
+
+//Deprecate this please
+//wrapper to make the old gui stuff work with pane reg
+//singleton on kind
+pub const OldGuiPane = struct {
+    const Self = @This();
+    const guis = graph.RGui;
+    const Gui = guis.Gui;
+
+    const Kind = enum {
+        texture,
+        model,
+        model_view,
+    };
+
+    vt: panereg.iPane,
+
+    editor: *Editor,
+    os9gui: *Os9Gui,
+    kind: Kind,
+
+    pub fn create(alloc: std.mem.Allocator, ed: *Editor, kind: Kind, os9gui: *Os9Gui) !*panereg.iPane {
+        var ret = try alloc.create(@This());
+        ret.* = .{
+            .vt = .{
+                .deinit_fn = &deinit,
+                .draw_fn = &draw_fn,
+            },
+            .kind = kind,
+            .os9gui = os9gui,
+            .editor = ed,
+        };
+        return &ret.vt;
+    }
+
+    pub fn draw_fn(vt: *panereg.iPane, pane_area: graph.Rect, editor: *Editor, vd: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        switch (self.kind) {
+            .model => {
+                editor.asset_browser.drawEditWindow(pane_area, self.os9gui, editor, .model) catch return;
+            },
+            .texture => {
+                editor.asset_browser.drawEditWindow(pane_area, self.os9gui, editor, .texture) catch return;
+            },
+            .model_view => {
+                _ = editor.draw_state.grab_pane.trySetGrab(pane_id, editor.win.mouse.left == .high);
+                editor.asset_browser.drawModelPreview(
+                    editor.win,
+                    pane_area,
+                    vd.camstate,
+                    editor,
+                    vd.draw,
+                ) catch return;
+            },
+        }
+    }
+
+    pub fn deinit(vt: *panereg.iPane, alloc: std.mem.Allocator) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.destroy(self);
+    }
+};
 
 pub fn dpiDetect(win: *graph.SDL.Window) !f32 {
     const sc = graph.c.SDL_GetWindowDisplayScale(win.win);
@@ -166,8 +229,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const console_win = try ConsoleWindow.create(&gui, editor, &editor.shell.cb_vt);
     try gui.addWindow(&console_win.vt, Rec(0, 0, 800, 600));
 
-    try editor.panes.registerCustom("main_3d_view", editor_view.Main3DView, try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
-    try editor.panes.registerCustom("main_2d_view", Ctx2dView, try Ctx2dView.create(editor.panes.alloc));
+    const main_3d_id = try editor.panes.add(try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
+    const main_2d_id = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc));
+    const inspector_pane = try editor.panes.add(try panereg.GuiPane.create(editor.panes.alloc, &gui, &inspector_win.vt));
+    const texture_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .texture, &os9gui));
+    const model_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model, &os9gui));
+    const model_preview_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model_view, &os9gui));
 
     loadctx.cb("Loading");
 
@@ -184,8 +251,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     defer name_buf.deinit();
 
     editor.draw_state.cam3d.fov = config.window.cam_fov;
-    var windows_list: [16]*G.iWindow = undefined;
-    var win_count: usize = 0;
 
     if (args.vmf) |mapname| {
         try editor.loadMap(std.fs.cwd(), mapname, &loadctx);
@@ -210,30 +275,26 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     //TODO rewrite the tab system to allow for full control over splitting
     var splits: [256]Split.Op = undefined;
-    var panes: [256]editor_view.Pane = undefined;
+    var panes: [256]panereg.PaneId = undefined;
     var SI: usize = 0;
     var PI: usize = 0;
     const Tab = editor_view.Tab;
     const tabs = [_]Tab{
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.7 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .new_inspector }),
+            .panes = Tab.newPane(&panes, &PI, &.{ main_3d_id, inspector_pane }),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{.{ .left, 1 }}),
-            .panes = Tab.newPane(&panes, &PI, &.{.asset_browser}),
+            .panes = Tab.newPane(&panes, &PI, &.{texture_pane}),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .left, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .model_browser, .model_preview }),
+            .panes = Tab.newPane(&panes, &PI, &.{ model_pane, model_preview_pane }),
         },
         .{
             .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.5 }, .{ .left, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .main_3d_view, .main_2d_view }),
-        },
-        .{
-            .split = Tab.newSplit(&splits, &SI, &.{ .{ .left, 0.6 }, .{ .top, 1 } }),
-            .panes = Tab.newPane(&panes, &PI, &.{ .console, .new_inspector }),
+            .panes = Tab.newPane(&panes, &PI, &.{ main_3d_id, main_2d_id }),
         },
     };
 
@@ -269,18 +330,10 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         //if (win.mouse.pos.x >= draw.screen_dimensions.x - 40)
         //    graph.c.SDL_WarpMouseInWindow(win.win, 10, win.mouse.pos.y);
 
-        const owner_3d = editor.draw_state.grab_pane.owner == .main_3d_view;
         editor.edit_state.mpos = win.mouse.pos;
-        if (owner_3d) {
-            editor.edit_state.lmouse = win.mouse.left;
-            editor.edit_state.rmouse = win.mouse.right;
-        } else {
-            editor.edit_state.lmouse = .low;
-            editor.edit_state.rmouse = .low;
-        }
 
         const is_full: Gui.InputState = .{ .mouse = win.mouse, .key_state = &win.key_state, .keys = win.keys.slice(), .mod_state = win.mod };
-        const is = if (owner_3d) Gui.InputState{} else is_full;
+        const is = is_full;
         try os9gui.resetFrame(is, &win);
 
         const cam_state = graph.ptypes.Camera3D.MoveState{
@@ -318,39 +371,32 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 console_win.area.dirty(&gui);
             }
         }
-        win_count = 0;
         for (tab.panes, 0..) |pane, p_i| {
             const pane_area = areas[p_i];
-            switch (pane) {
-                .new_inspector, .console => {
-                    {
-                        const win_vt = switch (pane) {
-                            .new_inspector => &inspector_win.vt,
-                            .console => &console_win.vt,
-                            else => unreachable,
-                        };
-                        const owns = editor.draw_state.grab_pane.tryOwn(pane_area, &win, pane);
-                        windows_list[win_count] = win_vt;
-                        try gui.updateWindowSize(win_vt, pane_area);
-                        //The reason sometimes the console fails is because it does not own it when it gets switch ed to
-                        if (owns)
-                            try gui.update(&.{win_vt});
-                        win_count += 1;
-                    }
-                },
-                else => try editor_view.drawPane(editor, pane, cam_state, &win, pane_area, &draw, &os9gui),
+            if (editor.panes.get(pane)) |pane_vt| {
+                const owns = editor.draw_state.grab_pane.tryOwn(pane_area, &win, pane);
+                editor.draw_state.grab_pane.current_stack_pane = pane;
+                if (owns) {
+                    editor.edit_state.lmouse = win.mouse.left;
+                    editor.edit_state.rmouse = win.mouse.right;
+                } else {
+                    editor.edit_state.lmouse = .low;
+                    editor.edit_state.rmouse = .low;
+                }
+                if (pane_vt.draw_fn) |drawf| {
+                    drawf(pane_vt, pane_area, editor, .{ .draw = &draw, .win = &win, .camstate = cam_state }, pane);
+                }
             }
         }
         if (console_active) {
             try gui.update(&.{&console_win.vt});
-            windows_list[win_count] = &console_win.vt;
-            win_count += 1;
+            try gui.window_collector.append(&console_win.vt);
         }
 
         editor.draw_state.grab_pane.endFrame();
 
         try os9gui.drawGui(&draw);
-        const wins = windows_list[0..win_count];
+        const wins = gui.window_collector.items;
         try gui.draw(gui_dstate, false, wins);
         gui.drawFbos(&draw, wins);
 

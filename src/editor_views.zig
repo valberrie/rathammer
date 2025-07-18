@@ -21,32 +21,17 @@ const Os9Gui = graph.Os9Gui;
 const Window = graph.SDL.Window;
 
 const VtableReg = @import("vtable_reg.zig").VtableReg;
-
-pub const iPane = struct {
-    /// Called on every frame
-    draw_fn: ?*const fn (*iPane, graph.Rect, *Context, ViewDrawState) void = null,
-    deinit_fn: *const fn (*iPane, std.mem.Allocator) void,
-};
-
-pub const PaneReg = VtableReg(iPane);
-
-pub const ViewDrawState = struct {
-    camstate: graph.ptypes.Camera3D.MoveState,
-    draw: *DrawCtx,
-    win: *graph.SDL.Window,
-};
+const panereg = @import("pane.zig");
 
 pub const Main3DView = struct {
-    pub threadlocal var tool_id: PaneReg.TableReg = PaneReg.initTableReg;
-
-    vt: iPane,
+    vt: panereg.iPane,
 
     font: *graph.FontUtil.PublicFontInterface,
     fh: f32,
 
-    pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, d: ViewDrawState) void {
+    pub fn draw_fn(vt: *panereg.iPane, screen_area: graph.Rect, editor: *Context, d: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        switch (editor.draw_state.grab_pane.trySetGrab(.main_3d_view, !d.win.keyHigh(.LSHIFT))) {
+        switch (editor.draw_state.grab_pane.trySetGrab(pane_id, !d.win.keyHigh(.LSHIFT))) {
             else => {},
             .ungrabbed => {
                 const center = screen_area.center();
@@ -54,11 +39,11 @@ pub const Main3DView = struct {
             },
         }
 
-        editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab_pane.owns(.main_3d_view)) d.camstate else .{});
+        editor.draw_state.cam3d.updateDebugMove(if (editor.draw_state.grab_pane.owns(pane_id)) d.camstate else .{});
         draw3Dview(editor, screen_area, d.draw, self.font, self.fh) catch return;
     }
 
-    pub fn create(alloc: std.mem.Allocator, os9gui: *Os9Gui) !*iPane {
+    pub fn create(alloc: std.mem.Allocator, os9gui: *Os9Gui) !*panereg.iPane {
         var ret = try alloc.create(@This());
         ret.* = .{
             .vt = .{
@@ -71,7 +56,7 @@ pub const Main3DView = struct {
         return &ret.vt;
     }
 
-    pub fn deinit(vt: *iPane, alloc: std.mem.Allocator) void {
+    pub fn deinit(vt: *panereg.iPane, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         alloc.destroy(self);
     }
@@ -395,7 +380,7 @@ pub fn draw3Dview(
             .one => SINGLE_COLOR,
             .many => MANY_COLOR,
         });
-        mt.textFmt("{s}, {any}", .{ @tagName(self.draw_state.grab_pane.owner), self.draw_state.grab_pane.grabbed }, fh, col);
+        //mt.textFmt("{s}, {any}", .{ @tagName(self.draw_state.grab_pane.owner), self.draw_state.grab_pane.grabbed }, fh, col);
         if (self.selection.mode == .many)
             mt.textFmt("Selected: {d}", .{self.selection.multi.items.len}, fh, col);
         if (self.edit_state.manual_hidden_count > 0) {
@@ -420,20 +405,10 @@ pub fn draw3Dview(
     try draw.flush(null, null);
 }
 
-pub const Pane = enum {
-    main_3d_view,
-    main_2d_view,
-    asset_browser,
-    new_inspector,
-    console,
-    model_preview,
-    model_browser,
-    none,
-};
 const Split = @import("splitter.zig");
 pub const Tab = struct {
     split: []Split.Op,
-    panes: []Pane,
+    panes: []panereg.PaneId,
 
     pub fn newSplit(s: []Split.Op, i: *usize, sp: []const Split.Op) []Split.Op {
         @memcpy(s[i.* .. i.* + sp.len], sp);
@@ -441,53 +416,9 @@ pub const Tab = struct {
         return s[i.* .. i.* + sp.len];
     }
 
-    pub fn newPane(p: []Pane, pi: *usize, ps: []const Pane) []Pane {
+    pub fn newPane(p: []panereg.PaneId, pi: *usize, ps: []const panereg.PaneId) []panereg.PaneId {
         @memcpy(p[pi.* .. pi.* + ps.len], ps);
         defer pi.* += ps.len;
         return p[pi.* .. pi.* + ps.len];
     }
 };
-
-const CamState = graph.ptypes.Camera3D.MoveState;
-const Ctx2DView = @import("view_2d.zig").Ctx2dView;
-pub fn drawPane(
-    editor: *Context,
-    pane: Pane,
-    cam_state: CamState,
-    win: *graph.SDL.Window,
-    pane_area: graph.Rect,
-    draw: *graph.ImmediateDrawingContext,
-    os9gui: *graph.Os9Gui,
-) !void {
-    const owns = editor.draw_state.grab_pane.tryOwn(pane_area, win, pane);
-    _ = owns;
-    switch (pane) {
-        .none, .new_inspector, .console => {},
-        .main_2d_view => {
-            const vt = try editor.panes.getVt(Ctx2DView);
-            if (vt.draw_fn) |drawf|
-                drawf(vt, pane_area, editor, .{ .draw = draw, .win = win, .camstate = cam_state });
-        },
-        .main_3d_view => {
-            const vt = try editor.panes.getVt(Main3DView);
-            if (vt.draw_fn) |drawf|
-                drawf(vt, pane_area, editor, .{ .draw = draw, .win = win, .camstate = cam_state });
-        },
-        .model_browser => {
-            try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .model);
-        },
-        .asset_browser => {
-            try editor.asset_browser.drawEditWindow(pane_area, os9gui, editor, .texture);
-        },
-        .model_preview => {
-            _ = editor.draw_state.grab_pane.trySetGrab(pane, win.mouse.left == .high);
-            try editor.asset_browser.drawModelPreview(
-                win,
-                pane_area,
-                cam_state,
-                editor,
-                draw,
-            );
-        },
-    }
-}

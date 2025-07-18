@@ -5,14 +5,12 @@ const tools = @import("tools.zig");
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const views = @import("editor_views.zig");
-const PaneReg = views.PaneReg;
-const iPane = views.iPane;
+const panereg = @import("pane.zig");
+const iPane = panereg.iPane;
 const DrawCtx = graph.ImmediateDrawingContext;
 const gridutil = @import("grid.zig");
 
 pub const Ctx2dView = struct {
-    pub threadlocal var tool_id: PaneReg.TableReg = PaneReg.initTableReg;
-
     vt: iPane,
 
     cam: graph.Camera2D = .{
@@ -20,7 +18,8 @@ pub const Ctx2dView = struct {
         .screen_area = graph.Rec(0, 0, 0, 0),
     },
 
-    pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, d: views.ViewDrawState) void {
+    pub fn draw_fn(vt: *iPane, screen_area: graph.Rect, editor: *Context, d: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
+        _ = pane_id;
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         self.draw2dView(editor, screen_area, d.draw, d.win) catch return;
     }
