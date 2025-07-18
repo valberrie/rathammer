@@ -245,9 +245,17 @@ pub const AssetBrowserGui = struct {
                         self.model_needs_rebuild = false;
                         self.model_list_sub.clearRetainingCapacity();
                         const io = std.mem.indexOf;
+                        const search = self.model_search.arraylist.items;
                         for (self.model_list.items) |item| {
+                            //models
+                            //vehicle
+                            //
+                            //models/vehicle
+                            //
+                            //vehicle_rich
                             const tt = editor.vpkctx.entries.get(item) orelse continue;
-                            if (io(u8, tt.path, self.model_search.arraylist.items) != null or io(u8, tt.name, self.model_search.arraylist.items) != null)
+                            if (io(u8, tt.name, search) != null or io(u8, tt.path, search) != null or
+                                (io(u8, search, tt.name) != null and io(u8, search, tt.path) != null))
                                 try self.model_list_sub.append(item);
                         }
                     }

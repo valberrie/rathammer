@@ -328,6 +328,9 @@ pub const Translate = struct {
                 .high => tool._delta = dist,
                 .falling => tool._delta = Vec3.zero(),
             }
+            // on giz -> rising, dupe selected and use that until giz_active -> low
+            // on event -> unFocus, if we have a selection, put it back
+            //
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
                     solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{

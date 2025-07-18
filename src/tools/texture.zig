@@ -302,9 +302,13 @@ pub const TextureTool = struct {
                 self.id = pot[0].id;
                 self.face_index = pot[0].side_id;
             }
+            if (self.win_ptr) |win|
+                win.needs_rebuild = true;
         }
         blk: {
             if (editor.edit_state.rmouse == .rising) {
+                if (self.win_ptr) |win|
+                    win.needs_rebuild = true;
                 const dupe = editor.isBindState(editor.config.keys.texture_wrap.b, .high);
                 const pick = editor.isBindState(editor.config.keys.texture_eyedrop.b, .high);
 
