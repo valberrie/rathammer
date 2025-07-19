@@ -21,7 +21,7 @@ Wip
 
 ![d1_trainstation_01](doc/photo1.jpg)
 
-### Arch linux
+### Arch linux based distro
 ```
 # install dependencies zig 0.14.1
 sudo pacman -S zig libepoxy freetype2 sdl3 zenity
@@ -29,6 +29,21 @@ sudo pacman -S zig libepoxy freetype2 sdl3 zenity
 # optionally, for map compilation
 sudo pacman -S wine
 ```
+
+### Debian based distro (untested)
+```
+sudo apt-get install libsdl3-dev libepoxy-dev
+# Download the correct zig 0.14.1 tar from https://ziglang.org/download/
+# Follow the instructions below for building
+```
+
+### Windows
+```
+I don't fully remember. Download msys2 and mingw, install a bunch of packages like sdl, freetype, libz etc.
+Download zig from https://ziglang.org/download/
+Keep running zig build and installing missing packages with msys until it builds lol.
+```
+
 
 ## Info for linux
 When installing source engine games on Linux, the version using proton must be used in order to get the 
