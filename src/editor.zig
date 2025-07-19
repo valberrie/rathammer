@@ -402,7 +402,7 @@ pub const Context = struct {
 
         try self.tools.registerCustom("translate", tool_def.Translate, try tool_def.Translate.create(self.alloc, self));
         try self.tools.register("translate_face", tool_def.TranslateFace);
-        try self.tools.register("place_model", tool_def.PlaceModel);
+        try self.tools.register("place_model", tool_def.PlaceEntity);
         try self.tools.register("cube_draw", tool_def.CubeDraw);
         try self.tools.register("fast_face", tool_def.FastFaceManip);
         try self.tools.registerCustom("texture", tool_def.TextureTool, try tool_def.TextureTool.create(self.alloc, self));

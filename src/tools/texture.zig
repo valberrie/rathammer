@@ -105,6 +105,7 @@ pub const TextureTool = struct {
             \\This is the Texture tool.
             \\Right click applies the selected texture
             \\Holding q and right clicking picks the texture
+            \\Hold z and right click to wrap the texture
         ;
         const H = struct {
             fn param(s: *TextureTool, id: GuiTextEnum) Wg.TextboxOptions {

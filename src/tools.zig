@@ -684,7 +684,7 @@ pub const FastFaceManip = struct {
 };
 
 //TODO change this to PlaceEntity
-pub const PlaceModel = struct {
+pub const PlaceEntity = struct {
     pub threadlocal var tool_id: ToolReg = initToolReg;
     vt: i3DTool,
 
@@ -699,6 +699,7 @@ pub const PlaceModel = struct {
         obj.* = .{ .vt = .{
             .deinit_fn = &@This().deinit,
             .runTool_fn = &@This().runTool,
+            .gui_build_cb = &buildGui,
             .tool_icon_fn = &@This().drawIcon,
         } };
         return &obj.vt;
@@ -724,6 +725,20 @@ pub const PlaceModel = struct {
     pub fn runTool(vt: *i3DTool, td: ToolData, editor: *Editor) ToolError!void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         self.modelPlace(editor, td) catch return error.fatal;
+    }
+
+    pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const doc =
+            \\This is the Place Entitytool.
+            \\Click in the world to place an entity. Thats it.
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
+            .mode = .split_on_space,
+        }));
     }
 
     pub fn modelPlace(tool: *@This(), self: *Editor, td: ToolData) !void {
@@ -982,6 +997,7 @@ pub const TranslateFace = struct {
                 .deinit_fn = &@This().deinit,
                 .runTool_fn = &@This().runTool,
                 .tool_icon_fn = &@This().drawIcon,
+                .gui_build_cb = &buildGui,
                 .event_fn = &event,
             },
             .gizmo = .{},
@@ -1022,18 +1038,24 @@ pub const TranslateFace = struct {
         }
     }
 
-    pub fn guiDoc(_: *i3DTool, os9gui: *Os9Gui, editor: *Editor, vl: *Gui.VerticalLayout) void {
-        const hl = os9gui.style.config.text_h;
-        vl.pushHeight(hl * 10);
-        if (os9gui.textView(hl, 0xff)) |tvc| {
-            var tv = tvc;
-            tv.text("This is the face translate tool.", .{});
-            tv.text("Select a solid with {s}", .{editor.config.keys.select.b.name()});
-            tv.text("left click selects the near face.", .{});
-            tv.text("right click selects the far face.", .{});
-            tv.text("Once you drag the gizmo, press right click to commit the change.", .{});
-        }
+    pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        _ = self;
+        const doc =
+            \\This is the face translate tool.
+            \\Select a solid with E
+            \\left click selects the near face
+            \\right click selects the far face
+            \\Once you drag the gizmo, press right click to commit the change
+            \\If you have more than one entity selected, it will do proportional editing instead.
+        ;
+        var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
+        ly.pushHeight(Wg.TextView.heightForN(gui, 4));
+        area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
+            .mode = .split_on_space,
+        }));
     }
+
     pub fn faceTranslate(tool: *@This(), self: *Editor, id: ecs.EcsT.Id, td: ToolData) !void {
         const draw_nd = &self.draw_state.ctx;
         if (self.getComponent(id, .solid)) |solid| {
