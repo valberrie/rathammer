@@ -42,6 +42,7 @@ pub const Clipping = struct {
                 .deinit_fn = &deinit,
                 .tool_icon_fn = &drawIcon,
                 .runTool_fn = &runTool,
+                .runTool_2d_fn = &runTool2d,
                 .event_fn = &event,
             },
             .points = undefined,
@@ -82,6 +83,11 @@ pub const Clipping = struct {
         self.runToolErr(td, ed) catch return error.nonfatal;
     }
 
+    pub fn runTool2d(vt: *tools.i3DTool, td: tools.ToolData, ed: *Editor) tools.ToolError!void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.runTool2dErr(td, ed) catch return error.nonfatal;
+    }
+
     fn commitGrab(self: *@This()) void {
         if (self.grabbed) |*g| {
             g.init = g.ptr.*;
@@ -93,6 +99,12 @@ pub const Clipping = struct {
             g.ptr.* = g.init;
         }
         self.grabbed = null;
+    }
+
+    pub fn runTool2dErr(self: *@This(), td: tools.ToolData, ed: *Editor) !void {
+        _ = td;
+        _ = ed;
+        _ = self;
     }
 
     pub fn runToolErr(self: *@This(), td: tools.ToolData, ed: *Editor) !void {
@@ -184,11 +196,17 @@ pub const Clipping = struct {
                 const dist = diff.length();
                 const dir = diff.norm();
                 draw_nd.line3D(p0.add(dir.scale(-dist)), p0.add(dir.scale(dist)), 0xffff_ffff, 2);
+                const point_color = [self.points.len]u32{
+                    0x00_0000_ff,
+                    0xff_0000_ff,
+                    0x00_00ff_ff,
+                };
+                const hover_point = 0xffff00_ff;
                 for (self.points, 0..) |p, i| {
                     const proj = util3d.projectPointOntoRay(rc[0], rc[1], p);
                     const distance = proj.distance(p);
                     if (self.grabbed == null and distance < self.ray_vertex_distance_max and i != 0) {
-                        draw_nd.point3D(p, 0xff_ff, ed.config.dot_size);
+                        draw_nd.point3D(p, hover_point, ed.config.dot_size);
                         if (lm == .rising) {
                             const norm = switch (i) {
                                 else => self.plane_norm,
@@ -203,13 +221,12 @@ pub const Clipping = struct {
                             };
                         }
                     } else {
-                        draw_nd.point3D(p, 0xff0000_ff, ed.config.dot_size);
+                        draw_nd.point3D(p, point_color[i], ed.config.dot_size);
                     }
                 }
 
                 const pnorm = util3d.trianglePlane(.{ p0, p1, p2 }).norm();
-                //const v1 = p0.add(pnorm);
-                {
+                { //Draw the clip plane
                     const cut_dir = p2.sub(p0).norm();
                     const r0 = p0.add(cut_dir.scale(100));
                     const r1 = p0.add(cut_dir.scale(-100));
@@ -219,35 +236,46 @@ pub const Clipping = struct {
                     td.draw.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
                     draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
                 }
-                if (false) { //Draw the cut plane
-                    const r0 = p0.add(pnorm.scale(100));
-                    const r1 = p0.add(pnorm.scale(-100));
-                    const r2 = p1.add(pnorm.scale(-100));
-                    const r3 = p1.add(pnorm.scale(100));
-                    td.draw.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
-                    draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
+                { //Draw the third point plane
+                    const r0 = p0.add(pnorm.scale(50));
+                    const r1 = p0.add(pnorm.scale(-50));
+                    const r2 = p2.add(pnorm.scale(-50));
+                    const r3 = p2.add(pnorm.scale(50));
+                    td.draw.convexPoly(&.{ r0, r1, r2, r3 }, 0xff88);
+                    draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff44);
                 }
-                if (ed.isBindState(ed.config.keys.clip_commit.b, .rising)) {
-                    self.state = .init;
-                    const sel_side = self.selected_side orelse return;
-                    const solid = try ed.ecs.getPtr(sel_side.id, .solid);
-                    var ret = try ed.clipctx.clipSolid(solid, p0, pnorm, ed.asset_browser.selected_mat_vpk_id);
-
-                    ed.selection.clear();
-                    const ustack = try ed.undoctx.pushNewFmt("Clip", .{});
-                    try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, sel_side.id, .destroy));
-
-                    for (&ret) |*r| {
-                        const new = try ed.ecs.createEntity();
-                        try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
-                        try ed.ecs.attach(new, .solid, r.*);
-                        try ed.ecs.attach(new, .bounding_box, .{});
-                        const solid_ptr = try ed.ecs.getPtr(new, .solid);
-                        try solid_ptr.translate(new, Vec3.zero(), ed, Vec3.zero(), null);
-                    }
-                    undo.applyRedo(ustack.items, ed);
-                }
+                const rm = ed.edit_state.rmouse;
+                if (rm == .rising)
+                    try self.commitClip(ed);
             },
         }
+    }
+
+    fn commitClip(self: *@This(), ed: *Editor) !void {
+        const p0 = self.points[0];
+        const p1 = self.points[1];
+        const p2 = self.points[2];
+        const pnorm = util3d.trianglePlane(.{ p0, p1, p2 }).norm();
+        self.state = .init;
+
+        const selected = ed.selection.getSlice();
+        const ustack = try ed.undoctx.pushNewFmt("Clip", .{});
+        for (selected) |sel_id| {
+            const solid = ed.getComponent(sel_id, .solid) orelse continue;
+            var ret = try ed.clipctx.clipSolid(solid, p0, pnorm, ed.asset_browser.selected_mat_vpk_id);
+
+            ed.selection.clear();
+            try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, sel_id, .destroy));
+
+            for (&ret) |*r| {
+                const new = try ed.ecs.createEntity();
+                try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
+                try ed.ecs.attach(new, .solid, r.*);
+                try ed.ecs.attach(new, .bounding_box, .{});
+                const solid_ptr = try ed.ecs.getPtr(new, .solid);
+                try solid_ptr.translate(new, Vec3.zero(), ed, Vec3.zero(), null);
+            }
+        }
+        undo.applyRedo(ustack.items, ed);
     }
 };

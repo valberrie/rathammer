@@ -614,8 +614,8 @@ pub const FastFaceManip = struct {
                                     draw_nd.convexPolyIndexed(side_o.index.items, solid_o.verts.items, 0xff000088, .{ .offset = dist });
                                 }
 
-                                const commit_btn = if (self.right) lm else rm;
-                                if (commit_btn == .rising) {
+                                const commit_btn = if (self.right) rm else lm;
+                                if (commit_btn == .falling and dist.length() > 0.1) {
                                     const ustack = editor.undoctx.pushNewFmt("translate {d} faces", .{self.selected.items.len}) catch return;
                                     for (self.selected.items) |sel| {
                                         const solid_o = editor.getComponent(sel.id, .solid) orelse continue;

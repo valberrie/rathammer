@@ -213,7 +213,7 @@ pub const Translate = struct {
                 //self.edit_state.mpos,
             );
             tool.modeSwitchCube(self, origin, giz_active == .high, draw_nd, td);
-            const commit = self.edit_state.rmouse == .rising;
+            const commit = self.edit_state.lmouse == .rising;
             const real_commit = giz_active == .high and commit;
             const selected = self.selection.getSlice();
             const MAX_DRAWN_VERTS = 500;
