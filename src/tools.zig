@@ -5,8 +5,6 @@ const Editor = edit.Context;
 const util3d = @import("util_3d.zig");
 const Vec3 = graph.za.Vec3;
 const cubeFromBounds = util3d.cubeFromBounds;
-const ButtonState = graph.SDL.ButtonState;
-const snapV3 = util3d.snapV3;
 const vpk = @import("vpk.zig");
 const raycast = @import("raycast_solid.zig");
 const undo = @import("undo.zig");
@@ -15,7 +13,6 @@ const Gui = graph.Gui;
 const Os9Gui = graph.gui_app.Os9Gui;
 const Gizmo = @import("gizmo.zig").Gizmo;
 const ecs = @import("ecs.zig");
-const Solid = ecs.Solid;
 const VtableReg = @import("vtable_reg.zig").VtableReg;
 const guis = graph.RGui;
 const RGui = guis.Gui;
@@ -27,6 +24,7 @@ const gridutil = @import("grid.zig");
 pub usingnamespace @import("tools/cube_draw.zig");
 pub usingnamespace @import("tools/texture.zig");
 pub usingnamespace @import("tools/translate.zig");
+pub usingnamespace @import("tools/clipping.zig");
 
 pub const Inspector = @import("windows/inspector.zig").InspectorWindow;
 pub const ToolRegistry = VtableReg(i3DTool);
@@ -1126,227 +1124,6 @@ pub const TranslateFace = struct {
                     tool.face_origin = rc[rci].point;
                 }
             }
-        }
-    }
-};
-
-pub const Clipping = struct {
-    pub threadlocal var tool_id: ToolReg = initToolReg;
-    //How will this work.
-    //Clipping works by defining a plane
-    //if the first two points lie on the same face we can infer the desired plane's normal, this is a good default
-    //
-    //I think hammer only allows planes with a normal perpendicular to cardinal axis
-    //In hammer the clip line can start or end outside the solid
-    //Select a plane in world, put lines on that
-
-    vt: i3DTool,
-    plane_norm: Vec3 = Vec3.zero(),
-    plane_p0: Vec3 = Vec3.zero(),
-    selected_side: ?raycast.RcastItem = null,
-    ray_vertex_distance_max: f32 = 5,
-
-    points: [2]Vec3,
-    state: enum {
-        init,
-        point0,
-        point1,
-        done,
-    } = .init,
-
-    grabbed: ?struct { ptr: *Vec3, init: Vec3 } = null,
-
-    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
-        var clip = try alloc.create(@This());
-        clip.* = .{
-            .vt = .{
-                .deinit_fn = &deinit,
-                .tool_icon_fn = &drawIcon,
-                .runTool_fn = &runTool,
-                .event_fn = &event,
-            },
-            .points = undefined,
-        };
-        return &clip.vt;
-    }
-
-    pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        alloc.destroy(self);
-    }
-
-    fn reset(self: *@This()) void {
-        self.state = .init;
-        self.selected_side = null;
-        self.grabbed = null;
-    }
-
-    pub fn event(vt: *i3DTool, ev: ToolEvent, _: *Editor) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        switch (ev) {
-            .focus, .reFocus => {
-                self.reset();
-            },
-            else => {},
-        }
-    }
-
-    pub fn drawIcon(vt: *i3DTool, draw: *DrawCtx, editor: *Editor, r: graph.Rect) void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
-        const rec = editor.asset.getRectFromName("clipping.png") orelse graph.Rec(0, 0, 0, 0);
-        draw.rectTex(r, rec, editor.asset_atlas);
-    }
-
-    pub fn runTool(vt: *i3DTool, td: ToolData, ed: *Editor) ToolError!void {
-        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        self.runToolErr(td, ed) catch return error.nonfatal;
-    }
-
-    fn commitGrab(self: *@This()) void {
-        if (self.grabbed) |*g| {
-            g.init = g.ptr.*;
-        }
-    }
-
-    fn cancelGrab(self: *@This()) void {
-        if (self.grabbed) |g| {
-            g.ptr.* = g.init;
-        }
-        self.grabbed = null;
-    }
-
-    //TODO put gizmos on the points
-    pub fn runToolErr(self: *@This(), td: ToolData, ed: *Editor) !void {
-        const draw_nd = &ed.draw_state.ctx;
-        const selected = ed.selection.getSlice();
-
-        for (selected) |id| {
-            if (ed.getComponent(id, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                    .point_color = 0xff0000ff,
-                    .edge_color = 0xff00ff,
-                    .edge_size = 2,
-                    .point_size = ed.config.dot_size,
-                });
-            }
-        }
-
-        const rc = ed.camRay(td.screen_area, td.view_3d.*);
-        const lm = ed.edit_state.lmouse;
-        switch (self.state) {
-            .init => {
-                const sel = ed.selection.getSlice();
-                ed.rayctx.reset();
-
-                for (sel) |s_id| {
-                    try ed.rayctx.addPotentialSolid(&ed.ecs, rc[0], rc[1], &ed.csgctx, s_id);
-                }
-                const pot = ed.rayctx.sortFine();
-                if (pot.len > 0) {
-                    const inter = pot[0];
-                    const solid = try ed.ecs.getPtr(inter.id, .solid);
-                    const snapped = ed.grid.snapV3(inter.point);
-                    draw_nd.point3D(snapped, 0xff_0000_ff, ed.config.dot_size);
-                    if (lm != .rising) return;
-                    const side_id = inter.side_id orelse return;
-                    if (side_id >= solid.sides.items.len) return;
-                    self.plane_p0 = snapped;
-                    self.plane_norm = solid.sides.items[side_id].normal(solid);
-                    self.selected_side = inter;
-                    self.state = .point1;
-                    self.points[0] = snapped;
-                }
-            },
-            .point0, .point1 => {
-                const sel_side = self.selected_side orelse {
-                    self.reset();
-                    return;
-                };
-                const solid = try ed.ecs.getPtr(sel_side.id, .solid);
-                const side_o = solid.getSidePtr(sel_side.side_id) orelse return;
-                draw_nd.convexPolyIndexed(side_o.index.items, solid.verts.items, 0xffff_88, .{});
-                if (self.state == .point1)
-                    draw_nd.point3D(self.points[0], 0xff_0000_ff, ed.config.dot_size);
-                if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter| {
-                    const snapped = ed.grid.snapV3(inter);
-                    draw_nd.point3D(snapped, 0xff_0000_ff, ed.config.dot_size);
-                    if (lm != .rising) return;
-                    self.points[if (self.state == .point0) 0 else 1] = snapped;
-                    self.state = switch (self.state) {
-                        else => {
-                            self.reset();
-                            return;
-                        },
-                        .point0 => .point1,
-                        .point1 => .done,
-                    };
-                }
-            },
-            .done => {
-                grab_blk: {
-                    const grab = &(self.grabbed orelse break :grab_blk);
-                    if (lm != .high) {
-                        self.cancelGrab();
-                        break :grab_blk;
-                    }
-                    if (util3d.doesRayIntersectPlane(rc[0], rc[1], self.plane_p0, self.plane_norm)) |inter|
-                        grab.ptr.* = ed.grid.snapV3(inter);
-                    const rm = ed.edit_state.rmouse;
-                    if (rm == .rising)
-                        self.commitGrab();
-                }
-
-                const p0 = self.points[0];
-                const p1 = self.points[1];
-                const diff = p0.sub(p1);
-                const dist = diff.length();
-                const dir = diff.norm();
-                draw_nd.line3D(p0.add(dir.scale(-dist)), p0.add(dir.scale(dist)), 0xffff_ffff, 2);
-                for (self.points, 0..) |p, i| {
-                    const proj = util3d.projectPointOntoRay(rc[0], rc[1], p);
-                    const distance = proj.distance(p);
-                    if (self.grabbed == null and distance < self.ray_vertex_distance_max) {
-                        draw_nd.point3D(p, 0xff_ff, ed.config.dot_size);
-                        if (lm == .rising) {
-                            self.grabbed = .{ .ptr = &self.points[i], .init = p };
-                        }
-                    } else {
-                        draw_nd.point3D(p, 0xff0000_ff, ed.config.dot_size);
-                    }
-                }
-
-                const v1 = p0.add(self.plane_norm);
-                const plane_n = util3d.trianglePlane(.{ p0, v1, p1 }).norm();
-                { //Draw the cut plane
-                    const r0 = p0.add(self.plane_norm.scale(100));
-                    const r1 = p0.add(self.plane_norm.scale(-100));
-                    const r2 = p1.add(self.plane_norm.scale(-100));
-                    const r3 = p1.add(self.plane_norm.scale(100));
-                    td.draw.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000088);
-                    draw_nd.convexPoly(&.{ r0, r1, r2, r3 }, 0xff000044);
-                }
-                if (ed.isBindState(ed.config.keys.clip_commit.b, .rising)) {
-                    self.state = .init;
-                    const sel_side = self.selected_side orelse return;
-                    const solid = try ed.ecs.getPtr(sel_side.id, .solid);
-                    var ret = try ed.clipctx.clipSolid(solid, p0, plane_n, ed.asset_browser.selected_mat_vpk_id);
-
-                    ed.selection.clear();
-                    const ustack = try ed.undoctx.pushNewFmt("Clip", .{});
-                    try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, sel_side.id, .destroy));
-
-                    for (&ret) |*r| {
-                        const new = try ed.ecs.createEntity();
-                        try ustack.append(try undo.UndoCreateDestroy.create(ed.undoctx.alloc, new, .create));
-                        try ed.ecs.attach(new, .solid, r.*);
-                        try ed.ecs.attach(new, .bounding_box, .{});
-                        const solid_ptr = try ed.ecs.getPtr(new, .solid);
-                        try solid_ptr.translate(new, Vec3.zero(), ed, Vec3.zero(), null);
-                    }
-                    undo.applyRedo(ustack.items, ed);
-                }
-            },
         }
     }
 };
