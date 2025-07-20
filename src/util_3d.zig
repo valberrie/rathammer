@@ -391,6 +391,22 @@ pub fn roundNormal(norm: Vec3) Vec3 {
     return norm.mul(vs[n]).norm();
 }
 
+pub fn cubeVerts(p0: Vec3, size: Vec3) [8]Vec3 {
+    const a = p0;
+    const at = a.add(Vec3.new(0, 0, size.z()));
+    const sz = size;
+    return [8]Vec3{
+        a,
+        a.add(Vec3.new(sz.x(), 0, 0)),
+        a.add(Vec3.new(sz.x(), sz.y(), 0)),
+        a.add(Vec3.new(0, sz.y(), 0)),
+        at,
+        at.add(Vec3.new(sz.x(), 0, 0)),
+        at.add(Vec3.new(sz.x(), sz.y(), 0)),
+        at.add(Vec3.new(0, sz.y(), 0)),
+    };
+}
+
 pub fn maxComp(v: Vec3) f32 {
     return @max(v.x(), v.y(), v.z());
 }

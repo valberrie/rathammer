@@ -216,16 +216,8 @@ pub const Translate = struct {
             const commit = self.edit_state.lmouse == .rising;
             const real_commit = giz_active == .high and commit;
             const selected = self.selection.getSlice();
-            const MAX_DRAWN_VERTS = 500;
-            const draw_verts = selected.len < MAX_DRAWN_VERTS;
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                        .point_color = if (draw_verts) 0xff0000ff else 0,
-                        .edge_color = 0xff00ff,
-                        .edge_size = 2,
-                        .point_size = self.config.dot_size,
-                    });
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }
@@ -333,12 +325,6 @@ pub const Translate = struct {
             //
             for (selected) |id| {
                 if (self.getComponent(id, .solid)) |solid| {
-                    solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                        .point_color = if (draw_verts) 0xff0000ff else 0,
-                        .edge_color = 0xff00ff,
-                        .edge_size = 2,
-                        .point_size = self.config.dot_size,
-                    });
                     if (giz_active == .rising) {
                         try solid.removeFromMeshMap(id, self);
                     }

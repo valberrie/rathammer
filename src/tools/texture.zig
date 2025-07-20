@@ -65,6 +65,8 @@ pub const TextureTool = struct {
     cb_vt: iArea = undefined,
     win_ptr: ?*iWindow = null,
 
+    line_thickness: f32 = 5,
+
     //Left click to select a face,
     //right click to apply texture to any face
     pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
@@ -75,6 +77,7 @@ pub const TextureTool = struct {
                 .runTool_fn = &@This().runTool,
                 .tool_icon_fn = &@This().drawIcon,
                 .gui_build_cb = &buildGui,
+                .selected_solid_edge_color = 0xff00aa,
             },
             .ed = ed,
         };
@@ -387,7 +390,7 @@ pub const TextureTool = struct {
                 var last = v[ind[ind.len - 1]];
                 for (0..ind.len) |ti| {
                     const p = v[ind[ti]];
-                    editor.draw_state.ctx.line3D(last, p, 0xff0000ff, 2);
+                    editor.draw_state.ctx.line3D(last, p, 0xff0000ff, self.line_thickness);
                     last = p;
                 }
             }

@@ -152,6 +152,32 @@ pub fn draw3Dview(
         .index = self.draw_state.index,
     }, draw, self.draw_state.planes);
 
+    const LADDER_RENDER_DISTANCE = 1024;
+    //In the future, entity specific things like this should be scriptable instead.
+    for (try self.classtrack.get("func_useableladder", &self.ecs)) |ladder| {
+        const kvs = try self.ecs.getOptPtr(ladder, .key_values) orelse continue;
+
+        const p0 = kvs.getFloats("point0", 3) orelse continue;
+        const p1 = kvs.getFloats("point1", 3) orelse continue;
+        const size = Vec3.new(32, 32, 72);
+        const offset = Vec3.new(16, 16, 0);
+        const v0 = Vec3.new(p0[0], p0[1], p0[2]).sub(offset);
+        const v1 = Vec3.new(p1[0], p1[1], p1[2]).sub(offset);
+
+        if (v0.distance(self.draw_state.cam3d.pos) > LADDER_RENDER_DISTANCE and v1.distance(self.draw_state.cam3d.pos) > LADDER_RENDER_DISTANCE)
+            continue;
+
+        draw.cube(v0, size, 0xFF8C00ff);
+        draw.cube(v1, size, 0xFF8C00ff);
+
+        const c0 = util3d.cubeVerts(v0, size);
+        const c1 = util3d.cubeVerts(v1, size);
+        for (c0, 0..) |v, i| {
+            const vv = c1[i];
+            draw.line3D(v, vv, 0xff8c0088, 4);
+        }
+    }
+
     if (false) { //draw displacment vert
         var d_it = self.ecs.iterator(.displacement);
         while (d_it.next()) |disp| {
@@ -301,6 +327,17 @@ pub fn draw3Dview(
         .draw = draw,
     };
     if (self.getCurrentTool()) |vt| {
+        const selected = self.selection.getSlice();
+        for (selected) |sel| {
+            if (self.getComponent(sel, .solid)) |solid| {
+                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                    .point_color = vt.selected_solid_point_color,
+                    .edge_color = vt.selected_solid_edge_color,
+                    .edge_size = 2,
+                    .point_size = self.config.dot_size,
+                });
+            }
+        }
         try vt.runTool_fn(vt, td, self);
     }
     if (self.draw_state.tog.skybox) { //sky stuff

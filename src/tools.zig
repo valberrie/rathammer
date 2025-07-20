@@ -47,6 +47,10 @@ pub const i3DTool = struct {
     runTool_2d_fn: ?*const fn (*@This(), ToolData, *Editor) ToolError!void = null,
     gui_build_cb: ?*const fn (*@This(), *Inspector, *iArea, *RGui, *iWindow) void = null,
     event_fn: ?*const fn (*@This(), ToolEvent, *Editor) void = null,
+
+    selected_solid_edge_color: u32 = 0xff00ff,
+    selected_solid_point_color: u32 = 0,
+    selected_bb_color: u32 = 0xff00ff,
 };
 
 pub const ToolEvent = enum {
@@ -291,12 +295,6 @@ pub const VertexTranslate = struct {
         solid_loop: for (selected_slice) |sel| {
             if (ed.getComponent(sel, .solid)) |solid| {
                 try id_mapper.put(sel, {});
-                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                    .point_color = 0,
-                    .edge_color = 0x00ff00ff,
-                    .edge_size = 2,
-                    .point_size = ed.config.dot_size,
-                });
 
                 if (this_frame_had_selection and self.selection_mode == .one)
                     continue :solid_loop;
@@ -361,7 +359,6 @@ pub const VertexTranslate = struct {
             for (selected_slice) |id| {
                 const manip_verts = self.selected.getPtr(id) orelse continue;
                 const solid = ed.getComponent(id, .solid) orelse continue;
-                //solid.drawEdgeOutline(draw_nd, 0xff00ff, 0xff0000ff, Vec3.zero());
 
                 switch (giz_active) {
                     .low => {},
@@ -377,10 +374,6 @@ pub const VertexTranslate = struct {
 
                     .high => {
                         try solid.drawImmediate(td.draw, ed, dist, manip_verts.items(.index));
-                        //if (dupe) { //Draw original
-                        //    try solid.drawImmediate(draw, self, Vec3.zero(), null);
-                        //}
-                        //solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
                     },
                 }
             }
@@ -421,13 +414,6 @@ pub const VertexTranslate = struct {
             area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.selection_mode, .{}));
     }
 };
-//double computeDistance(vec3 A, vec3 B, vec3 C) {
-//    vec3 d = (C - B) / C.distance(B);
-//    vec3 v = A - B;
-//    double t = v.dot(d);
-//    vec3 P = B + t * d;
-//    return P.distance(A);
-//}
 
 //TODO How do tools register keybindings?
 
@@ -470,6 +456,8 @@ pub const FastFaceManip = struct {
                 .tool_icon_fn = &@This().drawIcon,
                 .event_fn = &event,
                 .gui_build_cb = &buildGui,
+                .selected_solid_edge_color = 0xf7_a94a_af,
+                .selected_solid_point_color = 0xff0000ff,
             },
             .selected = std.ArrayList(Selected).init(alloc),
         };
@@ -506,16 +494,6 @@ pub const FastFaceManip = struct {
     pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
         const draw_nd = &editor.draw_state.ctx;
         const selected_slice = editor.selection.getSlice();
-        for (selected_slice) |sel| {
-            if (editor.getComponent(sel, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                    .point_color = 0xff0000ff,
-                    .edge_color = 0xf7a94a8f,
-                    .edge_size = 2,
-                    .point_size = editor.config.dot_size,
-                });
-            }
-        }
 
         //const id = (editor.selection.single_id) orelse return;
         //const solid = editor.ecs.getOptPtr(id, .solid) catch return orelse return;
@@ -907,16 +885,6 @@ const Proportional = struct {
         //draw.cube(cc[0], cc[1], 0xffffff88);
         const selected = ed.selection.getSlice();
         if (selected.len == 0) return;
-        for (selected) |id| {
-            if (ed.getComponent(id, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                    .point_color = 0xff0000ff,
-                    .edge_color = 0xff00ff,
-                    .edge_size = 2,
-                    .point_size = ed.config.dot_size,
-                });
-            }
-        }
         draw_nd.point3D(self.start, 0xffff_00ff, ed.config.dot_size);
         const lm = ed.edit_state.lmouse;
         const rm = ed.edit_state.rmouse;
@@ -1058,12 +1026,6 @@ pub const TranslateFace = struct {
         const draw_nd = &self.draw_state.ctx;
         if (self.getComponent(id, .solid)) |solid| {
             var gizmo_is_active = false;
-            solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                .point_color = 0xff0000ff,
-                .edge_color = 0xf7a94a8f,
-                .edge_size = 2,
-                .point_size = self.config.dot_size,
-            });
             for (solid.sides.items, 0..) |side, s_i| {
                 if (tool.face_id == s_i) {
                     draw_nd.convexPolyIndexed(side.index.items, solid.verts.items, 0xff000088, .{});

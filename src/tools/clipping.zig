@@ -109,18 +109,6 @@ pub const Clipping = struct {
 
     pub fn runToolErr(self: *@This(), td: tools.ToolData, ed: *Editor) !void {
         const draw_nd = &ed.draw_state.ctx;
-        const selected = ed.selection.getSlice();
-
-        for (selected) |id| {
-            if (ed.getComponent(id, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                    .point_color = 0xff0000ff,
-                    .edge_color = 0xff00ff,
-                    .edge_size = 2,
-                    .point_size = ed.config.dot_size,
-                });
-            }
-        }
 
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
         const lm = ed.edit_state.lmouse;
