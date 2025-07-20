@@ -111,18 +111,33 @@ pub const Ctx2dView = struct {
             graph.c.glDrawElements(c.GL_LINES, @as(c_int, @intCast(mesh.value_ptr.*.lines_index.items.len)), graph.c.GL_UNSIGNED_INT, null);
             //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, ed.draw_state.basic_shader);
         }
+        const draw_nd = &ed.draw_state.ctx;
 
         const td = tools.ToolData{
             .screen_area = screen_area,
             .view_3d = &view_3d,
+            .cam2d = &self.cam,
             .draw = draw,
         };
         if (ed.getCurrentTool()) |tool_vt| {
+            const selected = ed.selection.getSlice();
+            for (selected) |sel| {
+                if (ed.getComponent(sel, .solid)) |solid| {
+                    solid.drawEdgeOutline(draw, Vec3.zero(), .{
+                        .point_color = tool_vt.selected_solid_point_color,
+                        .edge_color = tool_vt.selected_solid_edge_color,
+                        .edge_size = 2,
+                        .point_size = ed.config.dot_size,
+                    });
+                }
+            }
             if (tool_vt.runTool_2d_fn) |run2d|
                 try run2d(tool_vt, td, ed);
         }
 
         try draw.flushCustomMat(view_2d, view_3d);
+        graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
+        try draw_nd.flushCustomMat(view_2d, view_3d);
     }
 };
 

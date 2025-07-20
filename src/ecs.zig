@@ -974,10 +974,10 @@ pub const Solid = struct {
     }
 
     pub fn drawEdgeOutline(self: *Self, draw: *DrawCtx, vec: Vec3, param: struct {
-        edge_size: f32,
-        point_size: f32,
-        edge_color: u32,
-        point_color: u32,
+        edge_size: f32 = 1,
+        point_size: f32 = 1,
+        edge_color: u32 = 0,
+        point_color: u32 = 0,
     }) void {
         const v = self.verts.items;
         for (self.sides.items) |side| {
@@ -1525,6 +1525,8 @@ pub const KeyValues = struct {
     }
 
     pub fn serial(self: @This(), _: *Editor, jw: anytype) !void {
+        //Pruning fields,
+        //we need ent class
         try jw.beginObject();
         {
             var it = self.map.iterator();

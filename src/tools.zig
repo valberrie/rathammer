@@ -79,9 +79,9 @@ const ExampleTool = struct {
 
 pub const ToolData = struct {
     view_3d: *const graph.za.Mat4,
+    cam2d: ?*const graph.Camera2D = null,
     screen_area: graph.Rect,
     draw: *DrawCtx,
-    //state: enum { init, reinit, normal },
 };
 
 pub const ToolRegistryOld = struct {
@@ -243,9 +243,76 @@ pub const VertexTranslate = struct {
     }
 
     fn tool2d(self: *Self, td: ToolData, ed: *Editor) !void {
-        _ = self;
-        _ = td;
-        _ = ed;
+        const cam = td.cam2d orelse return;
+        const new_pos = ed.win.mouse.pos.sub(cam.screen_area.pos());
+        const r = util3d.screenSpaceRay(
+            td.screen_area.dim(),
+            new_pos,
+            td.view_3d.*,
+        );
+        const draw_nd = &ed.draw_state.ctx;
+        try self.updateSelection(td, ed, true, draw_nd, r);
+    }
+
+    fn updateSelection(self: *Self, td: ToolData, ed: *Editor, do_selection: bool, draw_nd: *DrawCtx, ray: [2]Vec3) !void {
+        const ar = ed.frame_arena.allocator();
+        var id_mapper = std.AutoHashMap(ecs.EcsT.Id, void).init(ar);
+        const selected_slice = ed.selection.getSlice();
+
+        const POT_VERT_COLOR = 0x66CDAAff;
+        const lm = ed.edit_state.lmouse;
+        //const r = ed.camRay(td.screen_area, td.view_3d.*);
+        var this_frame_had_selection = false;
+        solid_loop: for (selected_slice) |sel| {
+            if (ed.getComponent(sel, .solid)) |solid| {
+                solid.drawEdgeOutline(td.draw, Vec3.zero(), .{
+                    .point_color = 0xff_0000_77,
+                    .point_size = ed.config.dot_size,
+                });
+                try id_mapper.put(sel, {});
+
+                if (this_frame_had_selection and self.selection_mode == .one)
+                    continue :solid_loop;
+
+                if (!do_selection)
+                    continue; //Gizmo has priority over vert selection
+                for (solid.verts.items, 0..) |vert, v_i| {
+                    const proj = util3d.projectPointOntoRay(ray[0], ray[1], vert);
+                    const distance = proj.distance(vert);
+                    if (distance < self.ray_vertex_distance_max) {
+                        draw_nd.point3D(vert, POT_VERT_COLOR, ed.config.dot_size);
+                        if (lm == .rising) {
+                            this_frame_had_selection = true;
+                            try self.addOrRemoveVert(sel, @intCast(v_i), vert);
+                        }
+                    }
+                }
+            }
+        }
+        if (this_frame_had_selection) {
+            self.setGizmoPositionToMean();
+        }
+        const SEL_VERT_COLOR = 0xBA55D3ff;
+        {
+            var it = self.selected.iterator();
+            var to_remove = std.ArrayList(ecs.EcsT.Id).init(ar);
+            while (it.next()) |item| {
+                //Remove any verts that don't belong to a globally selected solid
+                if (!id_mapper.contains(item.key_ptr.*)) {
+                    try to_remove.append(item.key_ptr.*);
+
+                    //We deinit here so we can quickly remove after loop
+                    item.value_ptr.deinit(self.selected.allocator);
+                    continue; //Don't draw, memory has been freed
+                }
+                const verts = item.value_ptr.items(.vert);
+                for (verts) |v|
+                    draw_nd.point3D(v, SEL_VERT_COLOR, ed.config.dot_size);
+            }
+            for (to_remove.items) |rem| {
+                _ = self.selected.remove(rem);
+            }
+        }
     }
 
     fn addOrRemoveVert(self: *Self, id: ecs.EcsT.Id, vert_index: u16, vert: Vec3) !void {
@@ -284,59 +351,11 @@ pub const VertexTranslate = struct {
     pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
         const draw_nd = &ed.draw_state.ctx;
         const selected_slice = ed.selection.getSlice();
-        const lm = ed.edit_state.lmouse;
-        const r = ed.camRay(td.screen_area, td.view_3d.*);
-        const POT_VERT_COLOR = 0x66CDAAff;
-        var this_frame_had_selection = false;
+        //const lm = ed.edit_state.lmouse;
+        //const r = ed.camRay(td.screen_area, td.view_3d.*);
+        //const POT_VERT_COLOR = 0x66CDAAff;
 
-        const ar = ed.frame_arena.allocator();
-        var id_mapper = std.AutoHashMap(ecs.EcsT.Id, void).init(ar);
-
-        solid_loop: for (selected_slice) |sel| {
-            if (ed.getComponent(sel, .solid)) |solid| {
-                try id_mapper.put(sel, {});
-
-                if (this_frame_had_selection and self.selection_mode == .one)
-                    continue :solid_loop;
-
-                for (solid.verts.items, 0..) |vert, v_i| {
-                    const proj = util3d.projectPointOntoRay(r[0], r[1], vert);
-                    const distance = proj.distance(vert);
-                    if (distance < self.ray_vertex_distance_max) {
-                        draw_nd.point3D(vert, POT_VERT_COLOR, ed.config.dot_size);
-                        if (lm == .rising) {
-                            this_frame_had_selection = true;
-                            try self.addOrRemoveVert(sel, @intCast(v_i), vert);
-                        }
-                    }
-                }
-            }
-        }
-        if (this_frame_had_selection) {
-            self.setGizmoPositionToMean();
-        }
-        const SEL_VERT_COLOR = 0xBA55D3ff;
-        {
-            var it = self.selected.iterator();
-            var to_remove = std.ArrayList(ecs.EcsT.Id).init(ar);
-            while (it.next()) |item| {
-                //Remove any verts that don't belong to a globally selected solid
-                if (!id_mapper.contains(item.key_ptr.*)) {
-                    try to_remove.append(item.key_ptr.*);
-
-                    //We deinit here so we can quickly remove after loop
-                    item.value_ptr.deinit(self.selected.allocator);
-                    continue; //Don't draw, memory has been freed
-                }
-                const verts = item.value_ptr.items(.vert);
-                for (verts) |v|
-                    draw_nd.point3D(v, SEL_VERT_COLOR, ed.config.dot_size);
-            }
-            for (to_remove.items) |rem| {
-                _ = self.selected.remove(rem);
-            }
-        }
-
+        var is_active = false;
         if (self.selected.count() > 0) {
             const origin = self.gizmo_position;
             var origin_mut = origin;
@@ -351,6 +370,7 @@ pub const VertexTranslate = struct {
                 //ed.edit_state.mpos,
                 ed,
             );
+            is_active = !(giz_active == .low);
 
             const commit = ed.edit_state.rmouse == .rising;
             const real_commit = giz_active == .high and commit;
@@ -394,6 +414,9 @@ pub const VertexTranslate = struct {
                 undo.applyRedo(ustack.items, ed);
             }
         }
+
+        const r = ed.camRay(td.screen_area, td.view_3d.*);
+        try self.updateSelection(td, ed, !is_active, draw_nd, r);
     }
 
     pub fn buildGui(vt: *i3DTool, _: *Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
