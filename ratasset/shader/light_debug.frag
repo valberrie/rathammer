@@ -18,6 +18,7 @@ uniform vec3 view_pos;
 uniform vec3 light_dir;
 uniform vec3 light_color;
 uniform vec2 screenSize;
+uniform vec2 the_fucking_window_offset;
 uniform float exposure;
 uniform float gamma = 2.2;
 uniform bool draw_debug = false;
@@ -43,7 +44,7 @@ vec3 calculatePointLight(vec3 normal,vec3 view_dir, vec3 frag_pos){
 }
 
 void main(){
-    vec2 uv = gl_FragCoord.xy / screenSize;
+    vec2 uv = (gl_FragCoord.xy - the_fucking_window_offset) / screenSize;
     //vec2 uv = TexCoords;
 
     vec3 frag_pos = texture(g_pos, uv).rgb;

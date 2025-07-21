@@ -22,6 +22,7 @@ uniform vec4 ambient_color;
 uniform vec2 screenSize;
 uniform float exposure;
 uniform float gamma = 2.2;
+uniform vec2 the_fucking_window_offset;
 int CASCADE_COUNT = 4;
 
 float shadowCalculation(vec3 fp, vec3 norm){
@@ -73,7 +74,9 @@ vec3 calculateDirLight(vec3 normal, vec3 ldir, vec4 lcolor, vec3 view_dir, float
 }
 
 void main(){
-    vec2 uv = (gl_FragCoord.xy / screenSize);
+    //FUCKING glFragcoord maps to window not viewport, come on.
+    //Im glad they added an identifier to add 0.5 to each gl_FragCoord. That is a great use of space in the documentation. I would have found it very difficult to add 0.5 to gl_FragCoord myself.
+    vec2 uv = ((gl_FragCoord.xy - the_fucking_window_offset) / screenSize);
 
     vec3 frag_pos = texture(g_pos, uv).rgb;
     vec3 normal = texture(g_norm, uv).rgb;
