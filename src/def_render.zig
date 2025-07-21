@@ -183,14 +183,16 @@ pub const Renderer = struct {
                 //c.glViewport(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h);
                 //dctx.setViewport(screen_area);
                 _ = dctx;
+                const y_: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
                 c.glViewport(
                     @intFromFloat(screen_area.x),
-                    @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h)),
+                    y_,
                     @intFromFloat(screen_area.w),
                     @intFromFloat(screen_area.h),
                 );
 
                 const scrsz = graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
+                const win_offset = graph.Vec2i{ .x = @intFromFloat(screen_area.x), .y = y_ };
                 if (true) {
                     { //Draw sun
                         c.glDepthMask(c.GL_FALSE);
@@ -221,6 +223,7 @@ pub const Renderer = struct {
                         graph.GL.passUniform(sh1, "gamma", self.gamma);
                         graph.GL.passUniform(sh1, "light_dir", light_dir);
                         graph.GL.passUniform(sh1, "screenSize", scrsz);
+                        graph.GL.passUniform(sh1, "the_fucking_window_offset", win_offset);
                         graph.GL.passUniform(sh1, "ambient_color", ambient_scaled);
                         graph.GL.passUniform(sh1, "light_color", self.sun_color);
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[0]", @as(f32, planes[0]));
@@ -238,7 +241,7 @@ pub const Renderer = struct {
                         c.glBlendEquation(c.GL_FUNC_ADD);
 
                         if (true) {
-                            self.drawLighting(cam, light_dir, scrsz, view);
+                            self.drawLighting(cam, light_dir, scrsz, view, win_offset);
                         }
                     }
                     if (true) { //copy depth buffer
@@ -250,12 +253,10 @@ pub const Renderer = struct {
                         c.glBlitFramebuffer(
                             0,
                             0,
-                            //@intFromFloat(screen_dim.y - (screen_area.y + screen_area.h)),
                             self.gbuffer.scr_w,
                             self.gbuffer.scr_h,
                             x,
                             y,
-                            //@intFromFloat(screen_dim.y - (screen_area.y + screen_area.h)),
                             x + self.gbuffer.scr_w,
                             y + self.gbuffer.scr_h,
                             c.GL_DEPTH_BUFFER_BIT,
@@ -269,7 +270,7 @@ pub const Renderer = struct {
         self.last_frame_view_mat = cam.getViewMatrix();
     }
 
-    fn drawLighting(self: *Self, cam: graph.Camera3D, ld: Vec3, wh: anytype, view: anytype) void {
+    fn drawLighting(self: *Self, cam: graph.Camera3D, ld: Vec3, wh: anytype, view: anytype, window_offset: anytype) void {
         graph.c.glCullFace(graph.c.GL_FRONT);
         defer graph.c.glCullFace(graph.c.GL_BACK);
         const sh = self.shader.light;
@@ -283,6 +284,7 @@ pub const Renderer = struct {
         graph.GL.passUniform(sh, "gamma", self.gamma);
         graph.GL.passUniform(sh, "light_dir", ld);
         graph.GL.passUniform(sh, "screenSize", wh);
+        graph.GL.passUniform(sh, "the_fucking_window_offset", window_offset);
         //graph.GL.passUniform(sh, "light_color", sun_color.toFloat());
         graph.GL.passUniform(sh, "draw_debug", false);
 
