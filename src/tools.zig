@@ -459,7 +459,7 @@ pub const FastFaceManip = struct {
     right: bool = false,
     main_id: ?ecs.EcsT.Id = null,
 
-    draw_grid: bool = true,
+    draw_grid: bool = false,
 
     selected: std.ArrayList(Selected),
 

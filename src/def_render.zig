@@ -43,6 +43,8 @@ pub const Renderer = struct {
     pitch: f32 = 35,
     yaw: f32 = 165,
     sun_color: [4]f32 = [4]f32{ 1, 1, 1, 255 },
+    do_lighting: bool = true,
+    copy_depth: bool = true,
 
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
         const shadow_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
@@ -240,12 +242,11 @@ pub const Renderer = struct {
                         defer c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
                         c.glBlendEquation(c.GL_FUNC_ADD);
 
-                        if (true) {
+                        if (self.do_lighting) {
                             self.drawLighting(cam, light_dir, scrsz, view, win_offset);
                         }
                     }
-                    if (true) { //copy depth buffer
-
+                    if (self.copy_depth) {
                         const y: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
                         const x: i32 = @intFromFloat(screen_area.x);
                         c.glBindFramebuffer(c.GL_READ_FRAMEBUFFER, self.gbuffer.buffer);

@@ -190,6 +190,8 @@ pub const PauseWindow = struct {
             if (guis.label(vt, gui, win, ly.getArea(), "ambient scale", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.ambient_scale, -10, 100, .{}));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "draw skybox", .{ .bool_ptr = &ed.draw_state.tog.skybox }, null));
+            vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "lighting", .{ .bool_ptr = &ed.renderer.do_lighting }, null));
+            vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "copy depth", .{ .bool_ptr = &ed.renderer.copy_depth }, null));
         }
         if (eql(u8, tab, "main")) {
             var ly = guis.VerticalLayout{
