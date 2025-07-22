@@ -96,9 +96,13 @@ pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
     const output_dir = try std.fs.cwd().openDir(outputdir, .{});
 
     const game_path = try catString(alloc, &.{ gamedir, "/", args.gamename });
-    try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension }, working_dir);
-    try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
-    try runCommand(alloc, &.{ "wine", try catString(alloc, &.{ gamedir, "/bin/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension }, working_dir);
+    const start_i = if (DO_WINE) 0 else 1;
+    const vbsp = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension };
+    const vvis = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
+    const vrad = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
+    try runCommand(alloc, vbsp[start_i..], working_dir);
+    try runCommand(alloc, vvis[start_i..], working_dir);
+    try runCommand(alloc, vrad[start_i..], working_dir);
 
     const bsp_name = try printString(alloc, "{s}.bsp", .{map_no_extension});
     try working.copyFile(bsp_name, output_dir, bsp_name, .{});

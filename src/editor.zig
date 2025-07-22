@@ -30,7 +30,6 @@ const Autosaver = @import("autosave.zig").Autosaver;
 const NotifyCtx = @import("notify.zig").NotifyCtx;
 const Selection = @import("selection.zig");
 const VisGroups = @import("visgroup.zig");
-const MapBuilder = @import("map_builder.zig");
 const jsontovmf = @import("jsonToVmf.zig").jsontovmf;
 const ecs = @import("ecs.zig");
 const json_map = @import("json_map.zig");
