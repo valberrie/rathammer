@@ -1,0 +1,83 @@
+RatHammer is an editor for Valve's Source engine maps, though it can also be used standalone as well.
+
+I started developing RatHammer without the intention of it becoming a fully fledged editor, I initially wanted to create a sort of sandbox game I was calling 2x4 simulator, where players could build graybox style environments. In other words, the goal of rathammer is to make the creation of 3d environments enjoyable. 
+The style of building the world out of many convex polyhedra is a core part of this.
+Supporting arbitrary mesh editing, for example, is out of scope.
+
+I occasionally get the urge to make some 3D environments and Half Life 2, with its asset library and its 'easy' way of making level geometry make it a default.
+The issue is that Hammer does not run on Linux, and the ergonomics are terrible.
+You can't rebind keys for example, and if you use a keyboard layout other than Qwerty you will have to constantly switch layouts. Every operation requires you to move your left hand over to the enter key. And most editing requires you to orient yourself in 4 different views at once. In its current state RatHammer does not have full feature parity with Hammer, but it can do a lot of editing in a way that is much nicer.
+
+I recommend starting RatHammer from a terminal so you can see error messages. If you use the built in Vbsp runner, the compile output of Vbsp, Vvis and Vrad is printed to this console as well.
+'''
+rathammer --help # Show all the flags you can set
+'''
+# Games
+By Default RatHammer will search for Half Life 2 in your OS's default steam directory
+On Windows "/Program Files (x86)/Steam/steamapps/common"
+On Linux "$HOME/.local/share/Steam/steamapps/common"
+
+All games are defined inside of 'config.vdf' ##TODO INFO ON WHERE CONFIG IS
+To map for a different Source game or use it for custom levels, you must edit config.vdf and set the default_game appropriately
+All paths for game configuration can be temporarily overridden with command line flags, use --help to see these.
+If Rathammer fails to start, read through the console output and look for lines like this:
+'''
+Failed to open directory Half-Life 2 in /tmp with error: error.FileNotFound
+Set a custom cwd with --custom_cwd flag
+'''
+Unless something horribly wrong happened (Windows builds can be finicky), RatHammer will usually give you good idea of why it can't start.
+
+To load a vmf or json map you can use the --vmf flag, or you can select a map to load once the editor is started.
+
+## Editing
+Once you have successfully started RatHammer you will be greeted by a "pause menu", there are various global settings in here and documentation. Open and close the pause menu with 'Escape'
+RatHammer was designed with 3D editing as the main form. There are 2d views but are relegated to speciality tasks that benefit from a orthographic view, such as alignment and selection of vertices in an axis aligned solid.
+Navigation of the 3d view is done with the WASD keys the c key moves the camera down, and the space bar moves it up.
+To un-capture the mouse cursor, hold the shift key
+
+All keys can be remapped in the config.vdf file. By default all keys map to physical keys on the keyboard rather than symbols, so if you use a layout other than QWERTY, the keys are in the same place as they would be on a QWERTY layout. This behavior can be changed per key in the config.
+
+## Selections
+At any time, you can change the selection. To select an object put the cross-hair (or mouse cursor if you hold shift to uncapture) over an object and press 'E'.
+To select more than one object, toggle the selection mode to 'many' using the tab key. 
+In the top left corner of the 3d view there is information about the current selection and grid size etc.
+To clear the current selection press ctrl+E
+By having a separate key for selection, it means the mouse buttons can be used exclusively for object manipulation.
+
+## How RatHammer specifies geometry.
+Before you start editing it is important to understand how RatHammer stores brushes and what Source engine games expect of brushes.
+Vmf and Bsp files store all brushes as a collection of intersecting planes. This forces any single brush to have certain properties:
+* Be fully sealed or 'solid'.
+* Be convex, I.E you can shrink wrap it without any air bubbles.
+* No two faces can have the same normal.
+
+The last one is important as it means you cannot cut a face in two, to texture it for example, without cutting the entire brush in two.
+
+RatHammer stores and edits polygon meshes, more specifically, each brush is comprised of a set of vertices and 4 or more sides. Each side specifies a convex polygon by indexing into the vertices. RatHammer will not stop you from breaking the above rules, and will often allow you to export broken brushes to vmf, so be careful.
+
+## Tools
+At the bottom of the 3d view there is a row of tools, the active tool has a green border around it. Above each icon is the keybinding used to activate that tool.
+Some tools may perform an action when you 'activate' that tool again.
+On the right of the screen is the inspector. In the 'tools' tab you will find settings and documentation for the current tool.
+
+### Translate tool
+Click and drag the gizmo to translate.
+Clicking the white cube above the gizmo will toggle between and translation and rotation gizmo.
+#TODO ADD THIS. Clicking on any part of the selected brushes will let you move the solid in the xy plane. Holding alt allows movement in the z. This is similar to how Trenchbroom does it.
+
+### Face translate tool.
+A Specialized tool for moving the faces of a single solid in an arbitrary direction. If more than one entity is selected it will draw a bounding box around all selected and allow you to scale them proportionally. 
+
+
+# Using RatHammer as a generic level editor.
+These are all the files required to start rathammer:
+'''
+A directory containing all the things. This is specified by 'base_dir' lets call ours my_custom.
+A fgd file defining entities RatHammer can create. #TODO WHAT IS THE MOST MINIMAL FGD
+A gameinfo.txt # SAME AS ABOVE
+Directory of materials and models
+supports png and OBJ TODO
+'''
+
+
+# The json map format

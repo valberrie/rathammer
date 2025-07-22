@@ -264,7 +264,13 @@ pub const VertexTranslate = struct {
         //const r = ed.camRay(td.screen_area, td.view_3d.*);
         var this_frame_had_selection = false;
         solid_loop: for (selected_slice) |sel| {
-            if (ed.getComponent(sel, .solid)) |solid| {
+            if (ed.getComponent(sel, .displacements)) |disps| {
+                for (disps.disps.items) |disp| {
+                    for (disp._verts.items) |vert| {
+                        td.draw.point3D(vert, 0xff0000ff, 12);
+                    }
+                }
+            } else if (ed.getComponent(sel, .solid)) |solid| {
                 solid.drawEdgeOutline(td.draw, Vec3.zero(), .{
                     .point_color = 0xff_0000_77,
                     .point_size = ed.config.dot_size,
