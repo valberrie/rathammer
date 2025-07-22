@@ -3,6 +3,7 @@ const thread_pool = @import("thread_pool.zig");
 const Context = @import("editor.zig").Context;
 const graph = @import("graph");
 /// This will destroy() itself onComplete()
+const log = std.log.scoped(.Async);
 pub const SdlFileData = struct {
     pub const Action = enum {
         save_map,
@@ -122,6 +123,7 @@ pub const MapCompile = struct {
         };
         const aa = self.arena.allocator();
         try pool.spawnJob(workFunc, .{ self, map_builder.Paths{
+            .cwd = paths.cwd,
             .gamename = try aa.dupe(u8, paths.gamename),
             .gamedir_pre = try aa.dupe(u8, paths.gamedir_pre),
             .tmpdir = try aa.dupe(u8, paths.tmpdir),
@@ -153,7 +155,8 @@ pub const MapCompile = struct {
         defer self.pool_ptr.insertCompletedJob(&self.job) catch {};
         if (map_builder.buildmap(self.arena.allocator(), args)) {
             self.status = .built;
-        } else |_| {
+        } else |err| {
+            log.err("Build map failed with : {!}", .{err});
             self.status = .failed;
         }
     }

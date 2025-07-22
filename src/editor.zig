@@ -48,7 +48,9 @@ const util3d = @import("util_3d.zig");
 const pointfile = @import("pointfile.zig");
 const def_render = @import("def_render.zig");
 
-pub const TMP_DIR = "/tmp/mapcompile";
+const builtin = @import("builtin");
+const WINDOZE = builtin.target.os.tag == .windows;
+pub const TMP_DIR = if (WINDOZE) "C:/rathammer_tmp" else "/tmp/mapcompile";
 pub const MAP_OUT = "dump";
 
 const Model = struct {
@@ -1184,6 +1186,7 @@ pub const Context = struct {
                     .gamedir_pre = self.game_conf.base_dir,
                     .gamename = gname,
                     .outputdir = try self.printScratch("hl2/maps", .{}),
+                    .cwd = self.dirs.cwd,
                     .tmpdir = TMP_DIR,
                 });
             }
@@ -1291,7 +1294,6 @@ pub const Context = struct {
 };
 
 pub const LoadCtx = struct {
-    const builtin = @import("builtin");
 
     //No need for high fps when loading. Only repaint this often.
     refresh_period_ms: usize = 66,

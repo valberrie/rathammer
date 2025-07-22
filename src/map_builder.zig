@@ -1,5 +1,6 @@
 const std = @import("std");
 const graph = @import("graph");
+const util = @import("util.zig");
 
 pub fn splitPath(path: []const u8) struct { []const u8, []const u8 } {
     if (std.mem.lastIndexOfAny(u8, path, "/\\")) |index| {
@@ -55,6 +56,7 @@ pub fn main() !void {
         Arg("tmpdir", .string, "directory for map artifacts, default is /tmp/mapcompile"),
     }, &arg_it);
     try buildmap(alloc, .{
+        .cwd = std.fs.cwd(),
         .gamename = args.gamename orelse "hl2_complete",
         .gamedir_pre = args.gamedir orelse "Half-Life 2",
         .tmpdir = args.tmpdir orelse "/tmp/mapcompile",
@@ -66,20 +68,23 @@ pub fn main() !void {
     });
 }
 pub const Paths = struct {
+    cwd: std.fs.Dir,
     gamename: []const u8,
     gamedir_pre: []const u8,
     tmpdir: []const u8,
     outputdir: []const u8,
     vmf: []const u8,
 };
+const log = std.log.scoped(.map_builder);
 
 //Does not keep track of memory
 pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
-    //defer _ = gpa.detectLeaks();
+    const game_cwd = args.cwd;
 
-    const cwd = std.fs.cwd();
-
-    const gamedir = try cwd.realpathAlloc(alloc, args.gamedir_pre);
+    const gamedir = game_cwd.realpathAlloc(alloc, args.gamedir_pre) catch |err| {
+        log.err("realpath failed of {s} {!}", .{ args.gamedir_pre, err });
+        return err;
+    };
     std.debug.print("found gamedir: {s}\n", .{gamedir});
 
     const working_dir = args.tmpdir;
@@ -89,16 +94,24 @@ pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
 
     const stripped = splitPath(mapname);
     const map_no_extension = stripExtension(stripped[1]);
-    const working = try std.fs.cwd().makeOpenPath(working_dir, .{});
+    const working = std.fs.cwd().makeOpenPath(working_dir, .{}) catch |err| {
+        log.err("working dir failed {s} {!}", .{ working_dir, err });
+        return err;
+    };
 
-    try std.fs.cwd().copyFile(mapname, working, stripped[1], .{});
+    std.fs.cwd().copyFile(mapname, working, stripped[1], .{}) catch |err| {
+        return err;
+    };
 
-    const output_dir = try std.fs.cwd().openDir(outputdir, .{});
+    const output_dir = game_cwd.openDir(outputdir, .{}) catch |err| {
+        log.err("failed to open output dir {s}, with {!}", .{ outputdir, err });
+        return err;
+    };
 
     const game_path = try catString(alloc, &.{ gamedir, "/", args.gamename });
     const start_i = if (DO_WINE) 0 else 1;
     const vbsp = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension };
-    const vvis = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
+    const vvis = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
     const vrad = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
     try runCommand(alloc, vbsp[start_i..], working_dir);
     try runCommand(alloc, vvis[start_i..], working_dir);
