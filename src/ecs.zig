@@ -1215,7 +1215,7 @@ pub const Displacement = struct {
         return ret;
     }
 
-    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_s: usize, dispinfo: *const vmf.DispInfo) !Self {
+    pub fn initFromVmf(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_s: usize, dispinfo: *const vmf.DispInfo) !Self {
         return .{
             ._verts = std.ArrayList(Vec3).init(alloc),
             ._index = std.ArrayList(u32).init(alloc),

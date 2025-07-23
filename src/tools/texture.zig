@@ -37,6 +37,8 @@ pub const TextureTool = struct {
         u_flip,
         v_flip,
         swap,
+
+        make_disp,
     };
     const GuiTextEnum = enum {
         uscale,
@@ -146,6 +148,15 @@ pub const TextureTool = struct {
         const solid = (self.ed.getComponent(e_id, .solid)) orelse return;
         if (f_id >= solid.sides.items.len) return;
         const side = &solid.sides.items[f_id];
+
+        var has_disp = false;
+        if (self.ed.getComponent(e_id, .displacements)) |disp| {
+            has_disp = disp.getDispPtr(f_id) != null;
+        }
+
+        if (!has_disp) {
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Make displacment", H.btn(self, .make_disp)));
+        }
 
         {
             const Tb = Wg.TextboxNumber.build;
@@ -274,6 +285,17 @@ pub const TextureTool = struct {
                 //TODO put this into the undo stack
                 sel.solid.rebuild(self.id orelse return, self.ed) catch return;
                 self.ed.draw_state.meshes_dirty = true;
+            },
+            .make_disp => {
+                const sel_id = self.id orelse return;
+                if (self.ed.getComponent(sel_id, .displacements) == null) {
+                    const disp = try ecs.Displacements.init(self.ed.alloc, sel.solid.sides.items.len);
+                    try self.ed.ecs.attach(sel_id, .displacements, disp);
+                }
+                if (self.ed.getComponent(sel_id, .displacements)) |disp| {
+                    _ = disp;
+                    //if()
+                }
             },
         }
         if (!old.eql(new)) {
