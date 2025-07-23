@@ -518,28 +518,48 @@ pub const UndoDisplacmentModify = struct {
     id: Id,
     disp_id: u32,
     offset_offset: []const Vec3, //Added to disp.offsets on redo. Subtracted on undo
+    offset_index: []const u32, //parallel to offset_offset indexes into disp.offset
 
-    pub fn create(alloc: std.mem.Allocator) !*iUndo {
+    pub fn create(alloc: std.mem.Allocator, id: Id, disp_id: u32, offset: []const Vec3, index: []const u32) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{
             .vt = .{ .undo_fn = &@This().undo, .redo_fn = &@This().redo, .deinit_fn = &@This().deinit },
+            .offset_offset = try alloc.dupe(Vec3, offset),
+            .offset_index = try alloc.dupe(u32, index),
+            .id = id,
+            .disp_id = disp_id,
         };
         return &obj.vt;
     }
 
     pub fn undo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
-        _ = editor;
+        if (editor.ecs.getOptPtr(self.id, .displacements) catch null) |disps| {
+            const disp = disps.getDispPtrFromDispId(self.disp_id) orelse return;
+            for (self.offset_index, 0..) |ind, i| {
+                disp.offsets.items[ind] = disp.offsets.items[ind].add(self.offset_offset[i].scale(-1));
+            }
+            disp.markForRebuild(self.id, editor) catch return;
+            editor.draw_state.meshes_dirty = true;
+        }
     }
+
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        _ = self;
-        _ = editor;
+        if (editor.ecs.getOptPtr(self.id, .displacements) catch null) |disps| {
+            const disp = disps.getDispPtrFromDispId(self.disp_id) orelse return;
+            for (self.offset_index, 0..) |ind, i| {
+                disp.offsets.items[ind] = disp.offsets.items[ind].add(self.offset_offset[i]);
+            }
+            disp.markForRebuild(self.id, editor) catch return;
+            editor.draw_state.meshes_dirty = true;
+        }
     }
 
     pub fn deinit(vt: *iUndo, alloc: std.mem.Allocator) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        alloc.free(self.offset_offset);
+        alloc.free(self.offset_index);
         alloc.destroy(self);
     }
 };

@@ -173,6 +173,8 @@ pub const VertexTranslate = struct {
         one,
     } = .many,
 
+    do_displacements: bool = true,
+
     gizmo: Gizmo = .{},
     gizmo_position: Vec3 = Vec3.zero(),
 
@@ -269,7 +271,8 @@ pub const VertexTranslate = struct {
         //const r = ed.camRay(td.screen_area, td.view_3d.*);
         var this_frame_had_selection = false;
         solid_loop: for (selected_slice) |sel| {
-            if (ed.getComponent(sel, .displacements)) |disps| {
+            const disps_o = if (self.do_displacements) ed.getComponent(sel, .displacements) else null;
+            if (disps_o) |disps| {
                 try id_mapper.put(sel, {});
 
                 for (disps.disps.items, 0..) |disp, disp_i| {
@@ -401,9 +404,16 @@ pub const VertexTranslate = struct {
             for (selected_slice) |id| {
                 const manip_verts = self.selected.getPtr(id) orelse continue;
 
-                if (ed.getComponent(id, .displacements)) |disps| {
+                const disps_o = if (self.do_displacements) ed.getComponent(id, .displacements) else null;
+                if (disps_o) |disps| {
                     switch (giz_active) {
                         else => {},
+                        .rising => {},
+                        .falling => {
+                            for (disps.disps.items) |*disp| {
+                                try disp.markForRebuild(id, ed);
+                            }
+                        },
                         .high => {
                             const Help = struct {
                                 dist: Vec3,
@@ -456,13 +466,48 @@ pub const VertexTranslate = struct {
                     const manip_verts = self.selected.getPtr(id) orelse continue;
                     if (manip_verts.items(.index).len == 0) continue;
 
-                    try ustack.append(try undo.UndoVertexTranslate.create(
-                        ed.undoctx.alloc,
-                        id,
-                        dist,
-                        manip_verts.items(.index),
-                        null,
-                    ));
+                    const disps_o = if (self.do_displacements) ed.getComponent(id, .displacements) else null;
+                    if (disps_o) |_| {
+                        const ar = ed.frame_arena.allocator();
+                        var present = std.AutoHashMap(u32, void).init(ar);
+                        var offsets = std.ArrayList(Vec3).init(ar);
+                        var offset_index = std.ArrayList(u32).init(ar);
+
+                        for (manip_verts.items(.disp_i)) |did| {
+                            if (did) |d|
+                                try present.put(d, {});
+                        }
+
+                        var it = present.keyIterator();
+                        while (it.next()) |disp_id| {
+                            offsets.clearRetainingCapacity();
+                            offset_index.clearRetainingCapacity();
+                            for (manip_verts.items(.disp_i), 0..) |did, ind| {
+                                if (did orelse continue == disp_id.*) {
+                                    try offsets.append(dist);
+                                    try offset_index.append(manip_verts.items(.index)[ind]);
+                                }
+                            }
+                            std.debug.print("PUTTING THE UNDO\n", .{});
+                            try ustack.append(try undo.UndoDisplacmentModify.create(
+                                ed.undoctx.alloc,
+                                id,
+                                disp_id.*,
+                                offsets.items,
+                                offset_index.items,
+                            ));
+                        }
+                        // Determine which disp sides are present in manip_verts
+                        // for each put a dispmodify
+                    } else {
+                        try ustack.append(try undo.UndoVertexTranslate.create(
+                            ed.undoctx.alloc,
+                            id,
+                            dist,
+                            manip_verts.items(.index),
+                            null,
+                        ));
+                    }
                 }
                 undo.applyRedo(ustack.items, ed);
             }
@@ -488,6 +533,7 @@ pub const VertexTranslate = struct {
         //area_vt.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "select one", .{ .bool_ptr = &self. }, null));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Selection mode", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.selection_mode, .{}));
+        area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Modify disps", .{ .bool_ptr = &self.do_displacements }, null));
     }
 };
 

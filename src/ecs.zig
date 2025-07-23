@@ -210,7 +210,7 @@ pub const MeshBatch = struct {
 
     pub fn rebuildIfDirty(self: *Self, editor: *Editor) !void {
         if (self.is_dirty) {
-            self.is_dirty = false;
+            defer self.is_dirty = false; //we defer this incase rebuild marks them dirty again to avoid a loop
             return self.rebuild(editor);
         }
     }
@@ -1158,11 +1158,15 @@ pub const Displacements = struct {
         }
     }
 
+    pub fn getDispPtrFromDispId(self: *Self, disp_id: u32) ?*Displacement {
+        if (disp_id >= self.disps.items.len) return null;
+        return &self.disps.items[disp_id];
+    }
+
     pub fn getDispPtr(self: *Self, side_id: usize) ?*Displacement {
         if (side_id >= self.sides.items.len) return null;
         const index = self.sides.items[side_id] orelse return null;
-        if (index >= self.disps.items.len) return null;
-        return &self.disps.items[index];
+        return self.getDispPtrFromDispId(@intCast(index));
     }
 
     pub fn put(self: *Self, disp: Displacement, side_id: usize) !void {
@@ -1311,6 +1315,12 @@ pub const Displacement = struct {
             solid.verts.items[ss[3]],
         };
         try editor.csgctx.genMeshDisplacement(&corners, self);
+    }
+
+    pub fn markForRebuild(self: *Self, id: EcsT.Id, editor: *Editor) !void {
+        const batch = try editor.getOrPutMeshBatch(self.tex_id);
+        batch.*.is_dirty = true;
+        try batch.*.contains.put(id, {});
     }
 
     pub fn rebuild(self: *Self, id: EcsT.Id, editor: *Editor) !void {
