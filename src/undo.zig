@@ -515,6 +515,10 @@ pub const UndoSetKeyValue = struct {
 pub const UndoDisplacmentModify = struct {
     vt: iUndo,
 
+    id: Id,
+    disp_id: u32,
+    offset_offset: []const Vec3, //Added to disp.offsets on redo. Subtracted on undo
+
     pub fn create(alloc: std.mem.Allocator) !*iUndo {
         var obj = try alloc.create(@This());
         obj.* = .{

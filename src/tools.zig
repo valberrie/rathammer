@@ -345,13 +345,11 @@ pub const VertexTranslate = struct {
                 return;
             }
         }
-        std.debug.print("PUTTING NEW\n", .{});
         try res.value_ptr.append(self.selected.allocator, .{
             .vert = vert,
             .index = vert_index,
             .disp_i = disp_i,
         });
-        std.debug.print("New len {d}\n", .{res.value_ptr.len});
     }
 
     fn setGizmoPositionToMean(self: *Self) void {
@@ -381,7 +379,6 @@ pub const VertexTranslate = struct {
 
         var is_active = false;
         if (self.selected.count() > 0) {
-            std.debug.print("COUNT: {d}\n", .{self.selected.count()});
             const origin = self.gizmo_position;
             var origin_mut = origin;
             const giz_active = self.gizmo.handle(

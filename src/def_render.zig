@@ -44,6 +44,7 @@ pub const Renderer = struct {
     yaw: f32 = 165,
     sun_color: [4]f32 = [4]f32{ 1, 1, 1, 255 },
     do_lighting: bool = true,
+    debug_light_coverage: bool = false,
     copy_depth: bool = true,
 
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
@@ -287,7 +288,7 @@ pub const Renderer = struct {
         graph.GL.passUniform(sh, "screenSize", wh);
         graph.GL.passUniform(sh, "the_fucking_window_offset", window_offset);
         //graph.GL.passUniform(sh, "light_color", sun_color.toFloat());
-        graph.GL.passUniform(sh, "draw_debug", false);
+        graph.GL.passUniform(sh, "draw_debug", self.debug_light_coverage);
 
         graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
         graph.GL.passUniform(sh, "view", view);
