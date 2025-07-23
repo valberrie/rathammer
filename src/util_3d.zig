@@ -37,6 +37,21 @@ pub fn extrinsicEulerAnglesToMat3(angles: Vec3) Mat3 {
     return z1.mul(y1.mul(x1));
 }
 
+//Specific to the source angles when indicating a direction
+pub fn eulerToNormal(angles: Vec3) Vec3 {
+    const sin = std.math.sin;
+    const rad = std.math.degreesToRadians;
+    const cos = std.math.cos;
+
+    const pitch = rad(angles.x() * -1);
+    const yaw = rad(angles.y() * -1 + 90);
+
+    const xf = cos(yaw) * cos(pitch);
+    const zf = sin(pitch);
+    const yf = sin(yaw) * cos(pitch);
+    return Vec3.new(yf, xf, zf);
+}
+
 /// Returns {ray_origin, ray_direction}
 pub fn screenSpaceRay(win_dim: graph.Vec2f, screen_pos: graph.Vec2f, view: graph.za.Mat4) [2]Vec3 {
     const sw = win_dim.smul(0.5); //1920 / 2

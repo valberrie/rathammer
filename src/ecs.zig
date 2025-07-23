@@ -1368,6 +1368,7 @@ pub const Displacement = struct {
             const inter0 = uv0.lerp(uv1, ri * t);
             const inter1 = uv3.lerp(uv2, ri * t);
             const uv = inter0.lerp(inter1, ci * t);
+            const norm = self.normals.items[i];
 
             try mesh.vertices.append(.{
                 .x = v.x(),
@@ -1375,9 +1376,9 @@ pub const Displacement = struct {
                 .z = v.z(),
                 .u = uv.x(),
                 .v = uv.y(),
-                .nx = 0,
-                .ny = 0,
-                .nz = 0,
+                .nx = norm.x(),
+                .ny = norm.y(),
+                .nz = norm.z(),
                 .color = 0xffffffff,
             });
         }

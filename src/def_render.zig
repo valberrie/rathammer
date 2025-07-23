@@ -7,6 +7,7 @@ const Mat4 = graph.za.Mat4;
 const Vec3 = graph.za.Vec3;
 const DrawCtx = graph.ImmediateDrawingContext;
 const mesh = graph.meshutil;
+const util3d = @import("util_3d.zig");
 
 pub const DrawCall = struct {
     prim: GL.PrimitiveMode,
@@ -137,15 +138,7 @@ pub const Renderer = struct {
                 //-35 165 0
                 var light_dir = Vec3.new(@sin(std.math.degreesToRadians(35)), 0, @sin(std.math.degreesToRadians(165))).norm();
                 {
-                    const sin = std.math.sin;
-                    const rad = std.math.degreesToRadians;
-                    const cos = std.math.cos;
-                    const yaw = self.yaw - 0; //Why -60, idk but it makes valves angles correct
-                    const xf = cos(rad(yaw)) * cos(rad(self.pitch));
-                    const zf = sin(rad(self.pitch));
-                    const yf = sin(rad(yaw)) * cos(rad(self.pitch));
-                    const a = Vec3.new(-yf, -xf, -zf);
-                    light_dir = a;
+                    light_dir = util3d.eulerToNormal(Vec3.new(self.pitch, self.yaw + 180, 0)).scale(1);
                 }
                 //const light_dir = Vec3.new(0, 0, param.fac - 10).norm();
                 //const light_dir = Vec3.new(-20, 50, -20).norm();

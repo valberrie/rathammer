@@ -69,6 +69,8 @@ pub const TextureTool = struct {
 
     line_thickness: f32 = 5,
 
+    show_disp_normal: bool = false,
+
     //Left click to select a face,
     //right click to apply texture to any face
     pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
@@ -207,6 +209,10 @@ pub const TextureTool = struct {
             area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "cent", H.btn(self, .j_center)));
         }
         area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "swap axis", H.btn(self, .swap)));
+
+        if (has_disp) {
+            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw normals", .{ .bool_ptr = &self.show_disp_normal }, null));
+        }
     }
 
     fn textbox_cb(vt: *iArea, _: *Gui, string: []const u8, id: usize) void {
@@ -296,7 +302,7 @@ pub const TextureTool = struct {
                 if (self.ed.getComponent(sel_id, .displacements)) |disp| {
                     if (disp.getDispPtr(face_id) == null) {
                         const normal = side.normal(sel.solid);
-                        var new_disp = try ecs.Displacement.init(self.ed.alloc, side.tex_id, face_id, 3, normal);
+                        var new_disp = try ecs.Displacement.init(self.ed.alloc, side.tex_id, face_id, 3, normal.scale(-1));
                         try new_disp.genVerts(sel.solid, self.ed);
                         try disp.put(new_disp, face_id);
                     }
@@ -413,6 +419,7 @@ pub const TextureTool = struct {
         }
 
         //Draw a red outline around the face
+        //And other draw stuff, too
         if (try self.getCurrentlySelected(editor)) |sel| {
             const v = sel.solid.verts.items;
             const ind = sel.side.index.items;
@@ -422,6 +429,16 @@ pub const TextureTool = struct {
                     const p = v[ind[ti]];
                     editor.draw_state.ctx.line3D(last, p, 0xff0000ff, self.line_thickness);
                     last = p;
+                }
+            }
+            if (self.show_disp_normal) {
+                if (editor.getComponent(self.id orelse return, .displacements)) |disps| {
+                    for (disps.disps.items) |disp| {
+                        for (disp._verts.items, 0..) |vert, i| {
+                            const norm = disp.normals.items[i];
+                            editor.draw_state.ctx.line3D(vert, vert.add(norm.scale(8)), 0x66CDAAff, self.line_thickness);
+                        }
+                    }
                 }
             }
         }

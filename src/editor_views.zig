@@ -209,6 +209,41 @@ pub fn draw3Dview(
         }
     }
 
+    //Draw helpers for the selected entity
+    if (self.selection.getGroupOwnerExclusive(&self.groups)) |sel_id| {
+        blk: {
+            const selection = self.selection.getSlice();
+            if (self.getComponent(sel_id, .entity)) |ent| {
+                var origin = ent.origin;
+                if (selection.len == 1) {
+                    if (self.getComponent(selection[0], .solid)) |solid| {
+                        _ = solid;
+                        if (self.getComponent(selection[0], .bounding_box)) |bb| {
+                            const diff = bb.b.sub(bb.a).scale(0.5);
+                            origin = bb.a.add(diff);
+                        }
+                    }
+                }
+                if (self.getComponent(sel_id, .key_values)) |kvs| {
+                    const eclass = self.fgd_ctx.getPtr(ent.class) orelse break :blk;
+                    for (eclass.field_data.items) |field| {
+                        switch (field.type) {
+                            .angle => {
+                                var angle = kvs.getFloats(field.name, 3) orelse break :blk;
+                                //angle[1] *= -1;
+                                //angle[1] += 90;
+                                //angle[0] *= -1;
+                                const rotated = util3d.eulerToNormal(Vec3.fromSlice(&angle));
+                                draw_nd.line3D(origin, origin.add(rotated.scale(64)), 0xff0000ff, 12);
+                            },
+                            else => {},
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (self.isBindState(self.config.keys.undo.b, .rising)) {
         self.undoctx.undo(self);
     }
