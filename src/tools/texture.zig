@@ -402,6 +402,7 @@ pub const TextureTool = struct {
                         undo.applyRedo(ustack.items, editor);
                     },
                     .pick => {
+                        if (side.tex_id == edit.missingTexture().id) return; //Missing texture
                         try editor.asset_browser.recent_mats.put(side.tex_id);
                         editor.asset_browser.selected_mat_vpk_id = side.tex_id;
                     },

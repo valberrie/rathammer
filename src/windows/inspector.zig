@@ -11,7 +11,8 @@ const iWindow = guis.iWindow;
 const iArea = guis.iArea;
 const undo = @import("../undo.zig");
 const Wg = guis.Widget;
-const Context = @import("../editor.zig").Context;
+const edit = @import("../editor.zig");
+const Context = edit.Context;
 const ptext = @import("widget_texture.zig");
 const fgd = @import("../fgd.zig");
 //TODO
@@ -881,7 +882,11 @@ pub const InspectorWindow = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
         const asb = &self.editor.asset_browser;
         if (id >= asb.recent_mats.list.items.len) return;
-        asb.selected_mat_vpk_id = asb.recent_mats.list.items[id];
+        const missing = edit.missingTexture();
+        const vpk_id = asb.recent_mats.list.items[id];
+        const tex = self.editor.getTexture(vpk_id) catch return;
+        if (tex.id == missing.id) return;
+        asb.selected_mat_vpk_id = vpk_id;
         self.vt.needs_rebuild = true;
     }
 };
