@@ -288,13 +288,18 @@ pub const TextureTool = struct {
             },
             .make_disp => {
                 const sel_id = self.id orelse return;
+                const face_id = self.face_index orelse return;
                 if (self.ed.getComponent(sel_id, .displacements) == null) {
                     const disp = try ecs.Displacements.init(self.ed.alloc, sel.solid.sides.items.len);
                     try self.ed.ecs.attach(sel_id, .displacements, disp);
                 }
                 if (self.ed.getComponent(sel_id, .displacements)) |disp| {
-                    _ = disp;
-                    //if()
+                    if (disp.getDispPtr(face_id) == null) {
+                        const normal = side.normal(sel.solid);
+                        var new_disp = try ecs.Displacement.init(self.ed.alloc, side.tex_id, face_id, 3, normal);
+                        try new_disp.genVerts(sel.solid, self.ed);
+                        try disp.put(new_disp, face_id);
+                    }
                 }
             },
         }

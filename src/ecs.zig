@@ -1199,9 +1199,9 @@ pub const Displacement = struct {
 
     //start_pos: Vec3 = Vec3.zero(),
     elevation: f32 = 0,
+    //TODO do the tri_tags?
     //tri_tags: ScalarRow = undefined,
 
-    //TODO duping things with parents how
     pub fn dupe(self: *Self, _: anytype, _: anytype) !Self {
         var ret = self.*;
         ret._verts = try self._verts.clone();
@@ -1211,6 +1211,37 @@ pub const Displacement = struct {
         ret.normal_offsets = try self.normal_offsets.clone();
         ret.dists = try self.dists.clone();
         ret.alphas = try self.alphas.clone();
+
+        return ret;
+    }
+
+    fn vertsPerRow(power: u32) u32 {
+        return (std.math.pow(u32, 2, power) + 1);
+    }
+
+    //TODO sanitize power, what does source support?
+    pub fn init(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_s: usize, power: u32, normal: Vec3) !Self {
+        const vper_row = vertsPerRow(power);
+        const count = vper_row * vper_row;
+        var ret = @This(){
+            ._verts = std.ArrayList(Vec3).init(alloc),
+            ._index = std.ArrayList(u32).init(alloc),
+            .tex_id = tex_id,
+            .parent_side_i = parent_s,
+            .power = power,
+            .normals = VectorRow.init(alloc),
+            .offsets = VectorRow.init(alloc),
+            .normal_offsets = VectorRow.init(alloc),
+
+            .dists = ScalarRow.init(alloc),
+            .alphas = ScalarRow.init(alloc),
+        };
+
+        try ret.normals.appendNTimes(normal, count);
+        try ret.offsets.appendNTimes(Vec3.zero(), count);
+        try ret.normal_offsets.appendNTimes(normal, count);
+        try ret.dists.appendNTimes(0, count);
+        try ret.alphas.appendNTimes(0, count);
 
         return ret;
     }
