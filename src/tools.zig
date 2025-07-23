@@ -140,14 +140,10 @@ pub const ToolRegistryOld = struct {
 pub const VertexTranslate = struct {
     const Self = @This();
     pub threadlocal var tool_id: ToolReg = initToolReg;
-    const SelectedVertex = struct {
-        id: ecs.EcsT.Id,
-        vert_index: u16,
-        vert: Vec3,
-    };
     const Sel = std.MultiArrayList(struct {
         vert: Vec3,
         index: u32,
+        disp_i: ?u32 = null,
     });
 
     //How will the vertex translation work?
@@ -161,7 +157,6 @@ pub const VertexTranslate = struct {
     //distance we want to accept depends on our distance from vertex
 
     vt: i3DTool,
-    //selected_verts: std.ArrayList(SelectedVertex),
     selected: std.AutoHashMap(ecs.EcsT.Id, Sel),
 
     /// The perpendicular distance between a vertex and the mouse's ray must be smaller to be a
@@ -193,9 +188,19 @@ pub const VertexTranslate = struct {
                 .event_fn = &event,
             },
             .selected = std.AutoHashMap(ecs.EcsT.Id, Sel).init(alloc),
-            //.selected_verts = std.ArrayList(SelectedVertex).init(alloc),
         };
         return &self.vt;
+    }
+
+    fn raycastVert(self: *Self, ray: [2]Vec3, vert: Vec3, draw: *DrawCtx, ed: *Editor) bool {
+        const POT_VERT_COLOR = 0x66CDAAff;
+        const proj = util3d.projectPointOntoRay(ray[0], ray[1], vert);
+        const distance = proj.distance(vert);
+        if (distance < self.ray_vertex_distance_max) {
+            draw.point3D(vert, POT_VERT_COLOR, ed.config.dot_size);
+            return true;
+        }
+        return false;
     }
 
     pub fn deinit(vt: *i3DTool, alloc: std.mem.Allocator) void {
@@ -256,18 +261,29 @@ pub const VertexTranslate = struct {
 
     fn updateSelection(self: *Self, td: ToolData, ed: *Editor, do_selection: bool, draw_nd: *DrawCtx, ray: [2]Vec3) !void {
         const ar = ed.frame_arena.allocator();
+        // every frame, stick all selected into here and then use it to prune unselected;
         var id_mapper = std.AutoHashMap(ecs.EcsT.Id, void).init(ar);
         const selected_slice = ed.selection.getSlice();
 
-        const POT_VERT_COLOR = 0x66CDAAff;
         const lm = ed.edit_state.lmouse;
         //const r = ed.camRay(td.screen_area, td.view_3d.*);
         var this_frame_had_selection = false;
         solid_loop: for (selected_slice) |sel| {
             if (ed.getComponent(sel, .displacements)) |disps| {
-                for (disps.disps.items) |disp| {
-                    for (disp._verts.items) |vert| {
+                try id_mapper.put(sel, {});
+
+                for (disps.disps.items, 0..) |disp, disp_i| {
+                    for (disp._verts.items, 0..) |vert, v_i| {
                         td.draw.point3D(vert, 0xff0000ff, 12);
+                        if ((this_frame_had_selection and self.selection_mode == .one) or !do_selection)
+                            continue; //skip raycast code but still draw the points so no flashing
+
+                        if (self.raycastVert(ray, vert, draw_nd, ed)) {
+                            if (lm == .rising) {
+                                this_frame_had_selection = true;
+                                try self.addOrRemoveVert(sel, @intCast(v_i), vert, @intCast(disp_i));
+                            }
+                        }
                     }
                 }
             } else if (ed.getComponent(sel, .solid)) |solid| {
@@ -277,19 +293,15 @@ pub const VertexTranslate = struct {
                 });
                 try id_mapper.put(sel, {});
 
-                if (this_frame_had_selection and self.selection_mode == .one)
-                    continue :solid_loop;
-
                 if (!do_selection)
                     continue; //Gizmo has priority over vert selection
                 for (solid.verts.items, 0..) |vert, v_i| {
-                    const proj = util3d.projectPointOntoRay(ray[0], ray[1], vert);
-                    const distance = proj.distance(vert);
-                    if (distance < self.ray_vertex_distance_max) {
-                        draw_nd.point3D(vert, POT_VERT_COLOR, ed.config.dot_size);
+                    if (this_frame_had_selection and self.selection_mode == .one)
+                        continue :solid_loop;
+                    if (self.raycastVert(ray, vert, draw_nd, ed)) {
                         if (lm == .rising) {
                             this_frame_had_selection = true;
-                            try self.addOrRemoveVert(sel, @intCast(v_i), vert);
+                            try self.addOrRemoveVert(sel, @intCast(v_i), vert, null);
                         }
                     }
                 }
@@ -321,19 +333,25 @@ pub const VertexTranslate = struct {
         }
     }
 
-    fn addOrRemoveVert(self: *Self, id: ecs.EcsT.Id, vert_index: u16, vert: Vec3) !void {
+    fn addOrRemoveVert(self: *Self, id: ecs.EcsT.Id, vert_index: u16, vert: Vec3, disp_i: ?u32) !void {
         const res = try self.selected.getOrPut(id);
         if (!res.found_existing) {
             res.value_ptr.* = .{};
         }
 
         for (res.value_ptr.items(.index), 0..) |item, vi| {
-            if (item == vert_index) {
+            if (item == vert_index and res.value_ptr.items(.disp_i)[vi] == disp_i) {
                 _ = res.value_ptr.swapRemove(vi);
                 return;
             }
         }
-        try res.value_ptr.append(self.selected.allocator, .{ .vert = vert, .index = vert_index });
+        std.debug.print("PUTTING NEW\n", .{});
+        try res.value_ptr.append(self.selected.allocator, .{
+            .vert = vert,
+            .index = vert_index,
+            .disp_i = disp_i,
+        });
+        std.debug.print("New len {d}\n", .{res.value_ptr.len});
     }
 
     fn setGizmoPositionToMean(self: *Self) void {
@@ -363,6 +381,7 @@ pub const VertexTranslate = struct {
 
         var is_active = false;
         if (self.selected.count() > 0) {
+            std.debug.print("COUNT: {d}\n", .{self.selected.count()});
             const origin = self.gizmo_position;
             var origin_mut = origin;
             const giz_active = self.gizmo.handle(
@@ -384,23 +403,54 @@ pub const VertexTranslate = struct {
             const dist = ed.grid.snapV3(origin_mut.sub(origin));
             for (selected_slice) |id| {
                 const manip_verts = self.selected.getPtr(id) orelse continue;
-                const solid = ed.getComponent(id, .solid) orelse continue;
 
-                switch (giz_active) {
-                    .low => {},
-                    .rising => {
-                        try solid.removeFromMeshMap(id, ed);
-                    },
-                    .falling => {
-                        try solid.translate(id, Vec3.zero(), ed, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
+                if (ed.getComponent(id, .displacements)) |disps| {
+                    switch (giz_active) {
+                        else => {},
+                        .high => {
+                            const Help = struct {
+                                dist: Vec3,
 
-                        //Draw it here too so we it doesn't flash for a single frame
-                        try solid.drawImmediate(td.draw, ed, dist, null);
-                    },
+                                verts: []const u32,
+                                disp_i: []const ?u32,
+                                disp_index: u32,
 
-                    .high => {
-                        try solid.drawImmediate(td.draw, ed, dist, manip_verts.items(.index));
-                    },
+                                fn offset(h: @This(), _: Vec3, index: u32) Vec3 {
+                                    for (h.verts, 0..) |v, vi| {
+                                        if (v == index and h.disp_i[vi] == h.disp_index)
+                                            return h.dist;
+                                    }
+                                    return Vec3.zero();
+                                }
+                            };
+                            for (disps.disps.items, 0..) |*disp, disp_index| {
+                                const h = Help{
+                                    .dist = dist,
+                                    .verts = manip_verts.items(.index),
+                                    .disp_i = manip_verts.items(.disp_i),
+                                    .disp_index = @intCast(disp_index),
+                                };
+                                try disp.drawImmediate(td.draw, ed, id, h, Help.offset);
+                            }
+                        },
+                    }
+                } else if (ed.getComponent(id, .solid)) |solid| {
+                    switch (giz_active) {
+                        .low => {},
+                        .rising => {
+                            try solid.removeFromMeshMap(id, ed);
+                        },
+                        .falling => {
+                            try solid.translate(id, Vec3.zero(), ed, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
+
+                            //Draw it here too so we it doesn't flash for a single frame
+                            try solid.drawImmediate(td.draw, ed, dist, null);
+                        },
+
+                        .high => {
+                            try solid.drawImmediate(td.draw, ed, dist, manip_verts.items(.index));
+                        },
+                    }
                 }
             }
             if (real_commit) {

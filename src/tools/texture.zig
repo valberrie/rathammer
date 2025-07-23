@@ -301,6 +301,8 @@ pub const TextureTool = struct {
                         try disp.put(new_disp, face_id);
                     }
                 }
+                if (self.win_ptr) |win|
+                    win.needs_rebuild = true;
             },
         }
         if (!old.eql(new)) {
