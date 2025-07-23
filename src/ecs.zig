@@ -1,3 +1,4 @@
+/// This file is where all the core data types are for those interested
 const std = @import("std");
 const graph = @import("graph");
 const profile = @import("profile.zig");
@@ -55,6 +56,7 @@ pub const EcsT = graph.Ecs.Registry(&.{
         }
     }),
     Comp("connections", Connections),
+    //TODO is this shit even used. delete
     Comp("ladder_translate_hull", struct {
         //For the ladder entity.
         //We need to put two bb's that are far from the actual entity
@@ -1008,6 +1010,8 @@ pub const Solid = struct {
     /// If it is null, all vertices are offset
     pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, only_verts: ?[]const u32) !void {
         for (self.sides.items) |side| {
+            if (side.displacement_id != null) //don't draw this sideit
+                continue;
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
                 .texture = (try editor.getTexture(side.tex_id)).id,
@@ -1052,6 +1056,8 @@ pub const Solid = struct {
     //the vertexOffsetCb is given the vertex, the side_index, the index
     pub fn drawImmediateCustom(self: *Self, draw: *DrawCtx, ed: *Editor, user: anytype, vertOffsetCb: fn (@TypeOf(user), Vec3, u32, u32) Vec3) !void {
         for (self.sides.items, 0..) |side, s_i| {
+            if (side.displacement_id != null) //don't draw this sideit
+                continue;
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
                 .texture = (try ed.getTexture(side.tex_id)).id,
@@ -1367,6 +1373,62 @@ pub const Displacement = struct {
         }
         for (self._index.items) |ind| {
             try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
+        }
+    }
+
+    //vertOffsetCb is given the vertex, index into _verts
+    pub fn drawImmediate(self: *Self, draw: *DrawCtx, ed: *Editor, self_id: EcsT.Id, user_data: anytype, vertOffsetCb: fn (@TypeOf(user_data), Vec3, u32) Vec3) !void {
+        //pub fn drawImmediate(self: *Self, draw: *DrawCtx, ed: *Editor, self_id: EcsT.Id) !void {
+        const solid = (ed.ecs.getOptPtr(self_id, .solid) catch return orelse return);
+        const tex = try ed.getTexture(self.tex_id);
+        const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
+            .shader = DrawCtx.billboard_shader,
+            .texture = tex.id,
+            .camera = ._3d,
+        } }) catch return).billboard;
+        const side = &solid.sides.items[self.parent_side_i];
+        const si = self.vert_start_i;
+        const vper_row = vertsPerRow(self.power);
+        const vper_rowf: f32 = @floatFromInt(vper_row);
+        const t = 1.0 / (vper_rowf - 1);
+        const uvs = try ed.csgctx.calcUVCoordsIndexed(
+            solid.verts.items,
+            side.index.items,
+            side.*,
+            @intCast(tex.w),
+            @intCast(tex.h),
+            Vec3.zero(),
+        );
+        if (self._verts.items.len != vper_row * vper_row) return;
+        const uv0 = uvs[si % 4];
+        const uv1 = uvs[(si + 1) % 4];
+        const uv2 = uvs[(si + 2) % 4];
+        const uv3 = uvs[(si + 3) % 4];
+
+        const offset = batch.vertices.items.len;
+        for (self._verts.items, 0..) |v, i| {
+            const fi: f32 = @floatFromInt(i);
+            const ri: f32 = @trunc(fi / vper_rowf);
+            const ci: f32 = @trunc(@mod(fi, vper_rowf));
+
+            const inter0 = uv0.lerp(uv1, ri * t);
+            const inter1 = uv3.lerp(uv2, ri * t);
+            const uv = inter0.lerp(inter1, ci * t);
+            const off = vertOffsetCb(user_data, v, @intCast(i));
+            const nv = off.add(v);
+
+            try batch.vertices.append(.{
+                .pos = .{
+                    .x = nv.x(),
+                    .y = nv.y(),
+                    .z = nv.z(),
+                },
+                .uv = .{ .x = uv.x(), .y = uv.y() },
+                .color = 0xffff_ffff,
+            });
+        }
+        for (self._index.items) |ind| {
+            try batch.indicies.append(ind + @as(u32, @intCast(offset)));
         }
     }
 };

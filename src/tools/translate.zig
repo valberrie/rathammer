@@ -348,6 +348,22 @@ pub const Translate = struct {
                             });
                     }
                 }
+                if (self.getComponent(id, .displacements)) |disps| {
+                    const Help = struct {
+                        dist: Vec3,
+
+                        fn offset(h: @This(), _: Vec3, _: u32) Vec3 {
+                            return h.dist;
+                        }
+                    };
+
+                    if (giz_active == .high) {
+                        const h = Help{ .dist = dist };
+                        for (disps.disps.items) |*disp| {
+                            try disp.drawImmediate(draw, self, id, h, Help.offset);
+                        }
+                    }
+                }
                 if (self.getComponent(id, .entity)) |ent| {
                     const bb = self.getComponent(id, .bounding_box) orelse continue;
                     const del = Vec3.set(1); //Pad the frame so in doesn't get drawn over by ent frame
