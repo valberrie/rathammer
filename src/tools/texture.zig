@@ -302,7 +302,7 @@ pub const TextureTool = struct {
                 if (self.ed.getComponent(sel_id, .displacements)) |disp| {
                     if (disp.getDispPtr(face_id) == null) {
                         const normal = side.normal(sel.solid);
-                        var new_disp = try ecs.Displacement.init(self.ed.alloc, side.tex_id, face_id, 3, normal.scale(-1));
+                        var new_disp = try ecs.Displacement.init(self.ed.alloc, side.tex_id, face_id, 2, normal.scale(-1));
                         try new_disp.genVerts(sel.solid, self.ed);
                         try disp.put(new_disp, face_id);
                     }

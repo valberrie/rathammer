@@ -230,9 +230,6 @@ pub fn draw3Dview(
                         switch (field.type) {
                             .angle => {
                                 var angle = kvs.getFloats(field.name, 3) orelse break :blk;
-                                //angle[1] *= -1;
-                                //angle[1] += 90;
-                                //angle[0] *= -1;
                                 const rotated = util3d.eulerToNormal(Vec3.fromSlice(&angle));
                                 draw_nd.line3D(origin, origin.add(rotated.scale(64)), 0xff0000ff, 12);
                             },

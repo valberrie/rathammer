@@ -157,6 +157,11 @@ pub const Groups = struct {
 
 pub const MeshMap = std.AutoHashMap(vpk.VpkResId, *MeshBatch);
 pub threadlocal var mesh_build_time = profile.BasicProfiler.init();
+
+//HOW to DO THE BLEND?
+//problem is we map materials -> texture 1:1.
+//so blend.vmt ?? how to map it to two texture?
+
 /// Solid mesh storage:
 /// Solids are stored as entities in the ecs.
 /// The actual mesh data is stored in `Meshmap'.
@@ -253,6 +258,7 @@ pub const MeshBatch = struct {
         }
     }
 };
+
 pub const AABB = struct {
     pub const ECS_NO_SERIAL = void;
     a: Vec3 = Vec3.zero(),
