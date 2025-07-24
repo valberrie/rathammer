@@ -15,8 +15,6 @@ layout(binding = 2) uniform sampler2D g_albedo;
 
 uniform mat4 cam_view;
 uniform vec3 view_pos;
-uniform vec3 light_dir;
-uniform vec3 light_color;
 uniform vec2 screenSize;
 uniform vec2 the_fucking_window_offset;
 uniform float exposure;
@@ -45,7 +43,6 @@ vec3 calculatePointLight(vec3 normal,vec3 view_dir, vec3 frag_pos){
 
 void main(){
     vec2 uv = (gl_FragCoord.xy - the_fucking_window_offset) / screenSize;
-    //vec2 uv = TexCoords;
 
     vec3 frag_pos = texture(g_pos, uv).rgb;
     vec3 normal = texture(g_norm, uv).rgb;
@@ -54,21 +51,10 @@ void main(){
 
     vec3 view_dir = normalize(view_pos - frag_pos);
 
-    //float shadow = shadowCalculation(frag_pos, normal);
-
-    //vec3 result = (ambient + (1.0 - shadow) * lights) * diffuse;
     vec3 result =  calculatePointLight(normal, view_dir, frag_pos) * diffuse;
 
-
-    //FragColor = vec4(diff_color,1);
-    //FragColor = vec4(diffuse, 1);
     FragColor = vec4(result, 1);
 
     if(draw_debug)
-        FragColor = vec4(1,1,1,1);
-
-    //vec3 mapped = result / (result + vec3(1.0));
-    //vec3 mapped = vec3(1.0) - exp(-result * exposure);
-    //mapped = pow(mapped, vec3(1.0/gamma));
-    //FragColor.rgb = pow(FragColor.rgb, vec3(1.0/gamma));
+        FragColor = vec4(diff_color / 255,1);
 }

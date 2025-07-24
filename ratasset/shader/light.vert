@@ -21,6 +21,7 @@ uniform mat4 model = mat4(1.0f);
 uniform mat4 view = mat4(1.0f);
 
 float calcRadius(){
+    const float perc = 0.3;
     float lmin = 256.0 / 5.0;
     float lmax = max(max(diff_color.r,diff_color.g),diff_color.b);
 
@@ -29,6 +30,8 @@ float calcRadius(){
 
 void main(){
     float radius = calcRadius();
+    if(radius != radius)
+        radius = 0.1;
     
     gl_Position = view * vec4((vpos * radius + light_pos ) , 1);
     out_light_pos = light_pos;

@@ -147,6 +147,8 @@ pub const Context = struct {
     draw_state: struct {
         init_asset_count: usize = 0, //Used to indicate we are loading things
 
+        active_lights: usize = 0,
+
         factor: f32 = 64,
         light_mul: f32 = 0.11,
         const_add: f32 = 0, //Added to light constant factor

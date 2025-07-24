@@ -26,6 +26,7 @@ pub const Renderer = struct {
         forward: glID,
         gbuffer: glID,
         light: glID,
+        spot: glID,
         sun: glID,
     },
     mode: enum { forward, def } = .forward,
@@ -35,7 +36,8 @@ pub const Renderer = struct {
     draw_calls: std.ArrayList(DrawCall),
     last_frame_view_mat: Mat4 = undefined,
     sun_batch: SunQuadBatch,
-    light_batch: LightInstanceBatch,
+    point_light_batch: PointLightInstanceBatch,
+    spot_light_batch: SpotLightInstanceBatch,
 
     ambient: [4]f32 = [4]f32{ 1, 1, 1, 255 },
     ambient_scale: f32 = 1,
@@ -47,6 +49,7 @@ pub const Renderer = struct {
     do_lighting: bool = true,
     debug_light_coverage: bool = false,
     copy_depth: bool = true,
+    light_render_dist: f32 = 1024 * 2,
 
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
         const shadow_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
@@ -66,6 +69,10 @@ pub const Renderer = struct {
             .{ .path = "light.vert", .t = .vert },
             .{ .path = "light_debug.frag", .t = .frag },
         });
+        const spot_light_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
+            .{ .path = "spot_light.vert", .t = .vert },
+            .{ .path = "spot_light.frag", .t = .frag },
+        });
         const def_sun_shad = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
             .{ .path = "sun.vert", .t = .vert },
             .{ .path = "sun.frag", .t = .frag },
@@ -76,9 +83,11 @@ pub const Renderer = struct {
                 .forward = forward,
                 .gbuffer = gbuffer_shader,
                 .light = light_shader,
+                .spot = spot_light_shader,
                 .sun = def_sun_shad,
             },
-            .light_batch = try LightInstanceBatch.init(alloc, shader_dir),
+            .point_light_batch = try PointLightInstanceBatch.init(alloc, shader_dir, "icosphere.obj"),
+            .spot_light_batch = try SpotLightInstanceBatch.init(alloc, shader_dir, "cone.obj"),
             .sun_batch = SunQuadBatch.init(alloc),
             .draw_calls = std.ArrayList(DrawCall).init(alloc),
             .csm = Csm.createCsm(2048, Csm.CSM_COUNT, def_sun_shad),
@@ -88,6 +97,11 @@ pub const Renderer = struct {
 
     pub fn beginFrame(self: *Self) void {
         self.draw_calls.clearRetainingCapacity();
+    }
+
+    pub fn clearLights(self: *Self) void {
+        self.point_light_batch.clear();
+        self.spot_light_batch.clear();
     }
 
     pub fn submitDrawCall(self: *Self, d: DrawCall) !void {
@@ -109,6 +123,8 @@ pub const Renderer = struct {
         dctx: *DrawCtx,
         pl: anytype,
     ) !void {
+        self.point_light_batch.pushVertexData();
+        self.spot_light_batch.pushVertexData();
         const view1 = cam.getMatrix(screen_area.w / screen_area.h, param.near, param.far);
         self.csm.pad = param.pad;
         switch (self.mode) {
@@ -237,7 +253,7 @@ pub const Renderer = struct {
                         c.glBlendEquation(c.GL_FUNC_ADD);
 
                         if (self.do_lighting) {
-                            self.drawLighting(cam, light_dir, scrsz, view, win_offset);
+                            self.drawLighting(cam, scrsz, view, win_offset);
                         }
                     }
                     if (self.copy_depth) {
@@ -265,34 +281,56 @@ pub const Renderer = struct {
         self.last_frame_view_mat = cam.getViewMatrix();
     }
 
-    fn drawLighting(self: *Self, cam: graph.Camera3D, ld: Vec3, wh: anytype, view: anytype, window_offset: anytype) void {
-        graph.c.glCullFace(graph.c.GL_FRONT);
+    fn drawLighting(self: *Self, cam: graph.Camera3D, wh: anytype, view: anytype, window_offset: anytype) void {
+        if (!self.debug_light_coverage)
+            graph.c.glCullFace(graph.c.GL_FRONT);
         defer graph.c.glCullFace(graph.c.GL_BACK);
-        const sh = self.shader.light;
-        c.glUseProgram(sh);
-        c.glBindVertexArray(self.light_batch.vao);
-        c.glBindTextureUnit(0, self.gbuffer.pos);
-        c.glBindTextureUnit(1, self.gbuffer.normal);
-        c.glBindTextureUnit(2, self.gbuffer.albedo);
-        graph.GL.passUniform(sh, "view_pos", cam.pos);
-        graph.GL.passUniform(sh, "exposure", self.exposure);
-        graph.GL.passUniform(sh, "gamma", self.gamma);
-        graph.GL.passUniform(sh, "light_dir", ld);
-        graph.GL.passUniform(sh, "screenSize", wh);
-        graph.GL.passUniform(sh, "the_fucking_window_offset", window_offset);
-        //graph.GL.passUniform(sh, "light_color", sun_color.toFloat());
-        graph.GL.passUniform(sh, "draw_debug", self.debug_light_coverage);
+        { //point lights
+            const sh = self.shader.light;
+            c.glUseProgram(sh);
+            c.glBindVertexArray(self.point_light_batch.vao);
+            c.glBindTextureUnit(0, self.gbuffer.pos);
+            c.glBindTextureUnit(1, self.gbuffer.normal);
+            c.glBindTextureUnit(2, self.gbuffer.albedo);
+            graph.GL.passUniform(sh, "view_pos", cam.pos);
+            graph.GL.passUniform(sh, "exposure", self.exposure);
+            graph.GL.passUniform(sh, "gamma", self.gamma);
+            graph.GL.passUniform(sh, "screenSize", wh);
+            graph.GL.passUniform(sh, "the_fucking_window_offset", window_offset);
+            //graph.GL.passUniform(sh, "light_color", sun_color.toFloat());
+            graph.GL.passUniform(sh, "draw_debug", self.debug_light_coverage);
 
-        graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
-        graph.GL.passUniform(sh, "view", view);
+            graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
+            graph.GL.passUniform(sh, "view", view);
 
-        self.light_batch.draw();
+            self.point_light_batch.draw();
+        }
+        {
+            const sh = self.shader.spot;
+            c.glUseProgram(sh);
+            c.glBindVertexArray(self.spot_light_batch.vao);
+            c.glBindTextureUnit(0, self.gbuffer.pos);
+            c.glBindTextureUnit(1, self.gbuffer.normal);
+            c.glBindTextureUnit(2, self.gbuffer.albedo);
+            graph.GL.passUniform(sh, "view_pos", cam.pos);
+            graph.GL.passUniform(sh, "exposure", self.exposure);
+            graph.GL.passUniform(sh, "gamma", self.gamma);
+            graph.GL.passUniform(sh, "screenSize", wh);
+            graph.GL.passUniform(sh, "the_fucking_window_offset", window_offset);
+            graph.GL.passUniform(sh, "draw_debug", self.debug_light_coverage);
+
+            graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
+            graph.GL.passUniform(sh, "view", view);
+
+            self.spot_light_batch.draw();
+        }
     }
 
     pub fn deinit(self: *Self) void {
         self.draw_calls.deinit();
         self.sun_batch.deinit();
-        self.light_batch.deinit();
+        self.point_light_batch.deinit();
+        self.spot_light_batch.deinit();
     }
 };
 //In forward, we just do the draw call
@@ -540,99 +578,112 @@ const Csm = struct {
     }
 };
 
-pub const LightInstanceBatch = struct {
-    pub const Vertex = packed struct {
-        pos: graph.Vec3f,
-    };
-
-    pub const InVertex = packed struct {
-        light_pos: graph.Vec3f,
-        ambient: graph.Vec3f = graph.Vec3f.new(0.1, 0.1, 0.1),
-        diffuse: graph.Vec3f = graph.Vec3f.new(1, 1, 1),
-        specular: graph.Vec3f = graph.Vec3f.new(4, 4, 4),
-
-        constant: f32 = 1,
-        linear: f32 = 0.7,
-        quadratic: f32 = 1.8,
-    };
-
-    vbo: c_uint = 0,
-    vao: c_uint = 0,
-    ebo: c_uint = 0,
-    ivbo: c_uint = 0,
-
-    vertices: std.ArrayList(Vertex),
-    indicies: std.ArrayList(u32),
-    inst: std.ArrayList(InVertex),
-
-    pub fn init(alloc: std.mem.Allocator, asset_dir: std.fs.Dir) !@This() {
-        var ret = @This(){
-            .vertices = std.ArrayList(Vertex).init(alloc),
-            .indicies = std.ArrayList(u32).init(alloc),
-            .inst = std.ArrayList(InVertex).init(alloc),
+pub fn LightBatchGeneric(comptime vertT: type) type {
+    return struct {
+        pub const Vertex = packed struct {
+            pos: graph.Vec3f,
         };
 
-        c.glGenVertexArrays(1, &ret.vao);
-        c.glGenBuffers(1, &ret.vbo);
-        c.glGenBuffers(1, &ret.ebo);
-        graph.GL.generateVertexAttributes(ret.vao, ret.vbo, Vertex);
-        c.glBindVertexArray(ret.vao);
-        c.glGenBuffers(1, &ret.ivbo);
-        c.glEnableVertexAttribArray(1);
-        c.glBindBuffer(c.GL_ARRAY_BUFFER, ret.ivbo);
-        graph.GL.generateVertexAttributesEx(ret.vao, ret.ivbo, InVertex, 1);
-        c.glBindVertexArray(ret.vao);
-        for (1..8) |i|
-            c.glVertexAttribDivisor(@intCast(i), 1);
+        vbo: c_uint = 0,
+        vao: c_uint = 0,
+        ebo: c_uint = 0,
+        ivbo: c_uint = 0,
 
-        var obj = try mesh.loadObj(alloc, asset_dir, "icosphere.obj", 1);
-        defer obj.deinit();
-        if (obj.meshes.items.len == 0) return error.invalidIcoSphere;
-        for (obj.meshes.items[0].vertices.items) |v| {
-            try ret.vertices.append(.{ .pos = graph.Vec3f.new(v.x, v.y, v.z) });
+        vertices: std.ArrayList(Vertex),
+        indicies: std.ArrayList(u32),
+        inst: std.ArrayList(vertT),
+
+        pub fn init(alloc: std.mem.Allocator, asset_dir: std.fs.Dir, obj_name: []const u8) !@This() {
+            var ret = @This(){
+                .vertices = std.ArrayList(Vertex).init(alloc),
+                .indicies = std.ArrayList(u32).init(alloc),
+                .inst = std.ArrayList(vertT).init(alloc),
+            };
+
+            c.glGenVertexArrays(1, &ret.vao);
+            c.glGenBuffers(1, &ret.vbo);
+            c.glGenBuffers(1, &ret.ebo);
+            graph.GL.generateVertexAttributes(ret.vao, ret.vbo, Vertex);
+            c.glBindVertexArray(ret.vao);
+            c.glGenBuffers(1, &ret.ivbo);
+            c.glEnableVertexAttribArray(1);
+            c.glBindBuffer(c.GL_ARRAY_BUFFER, ret.ivbo);
+            graph.GL.generateVertexAttributesEx(ret.vao, ret.ivbo, vertT, 1);
+            c.glBindVertexArray(ret.vao);
+            const count = @typeInfo(vertT).@"struct".fields.len;
+            for (1..count + 1) |i|
+                c.glVertexAttribDivisor(@intCast(i), 1);
+
+            var obj = try mesh.loadObj(alloc, asset_dir, obj_name, 1);
+            defer obj.deinit();
+            if (obj.meshes.items.len == 0) return error.invalidIcoSphere;
+            for (obj.meshes.items[0].vertices.items) |v| {
+                try ret.vertices.append(.{ .pos = graph.Vec3f.new(v.x, v.y, v.z) });
+            }
+            try ret.indicies.appendSlice(obj.meshes.items[0].indicies.items);
+            ret.pushVertexData();
+
+            return ret;
         }
-        try ret.indicies.appendSlice(obj.meshes.items[0].indicies.items);
-        ret.pushVertexData();
-        //c.glVertexAttribPointer(
-        //    1,
-        //    3,
-        //    c.GL_FLOAT,
-        //    c.GL_FALSE,
-        //    @sizeOf(Vertex),
-        //    null,
-        //);
-        //c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
 
-        return ret;
-    }
+        pub fn deinit(self: *@This()) void {
+            self.vertices.deinit();
+            self.indicies.deinit();
+            self.inst.deinit();
+        }
 
-    pub fn deinit(self: *@This()) void {
-        self.vertices.deinit();
-        self.indicies.deinit();
-        self.inst.deinit();
-    }
+        pub fn pushVertexData(self: *@This()) void {
+            c.glBindVertexArray(self.vao);
+            graph.GL.bufferData(c.GL_ARRAY_BUFFER, self.vbo, Vertex, self.vertices.items);
+            graph.GL.bufferData(c.GL_ELEMENT_ARRAY_BUFFER, self.ebo, u32, self.indicies.items);
+            graph.GL.bufferData(c.GL_ARRAY_BUFFER, self.ivbo, vertT, self.inst.items);
+        }
 
-    pub fn pushVertexData(self: *@This()) void {
-        c.glBindVertexArray(self.vao);
-        graph.GL.bufferData(c.GL_ARRAY_BUFFER, self.vbo, Vertex, self.vertices.items);
-        graph.GL.bufferData(c.GL_ELEMENT_ARRAY_BUFFER, self.ebo, u32, self.indicies.items);
-        graph.GL.bufferData(c.GL_ARRAY_BUFFER, self.ivbo, InVertex, self.inst.items);
-    }
+        pub fn clear(self: *@This()) void {
+            self.inst.clearRetainingCapacity();
+        }
 
-    pub fn clear(self: *@This()) void {
-        self.inst.clearRetainingCapacity();
-    }
+        pub fn draw(self: *@This()) void {
+            c.glDrawElementsInstanced(
+                c.GL_TRIANGLES,
+                @intCast(self.indicies.items.len),
+                c.GL_UNSIGNED_INT,
+                null,
+                @intCast(self.inst.items.len),
+            );
+            c.glBindVertexArray(0);
+        }
+    };
+}
 
-    pub fn draw(self: *@This()) void {
-        //c.glBindVertexArray(self.vao);
-        //c.glDrawArraysInstanced(c.GL_TRIANGLES, 0, @intCast(self.vertices.items.len), @intCast(self.inst.items.len));
-        c.glDrawElementsInstanced(
-            c.GL_TRIANGLES,
-            @intCast(self.indicies.items.len),
-            c.GL_UNSIGNED_INT,
-            null,
-            @intCast(self.inst.items.len),
-        );
-        c.glBindVertexArray(0);
-    }
+pub const PointLightVertex = packed struct {
+    light_pos: graph.Vec3f,
+    ambient: graph.Vec3f = graph.Vec3f.new(0.1, 0.1, 0.1),
+    diffuse: graph.Vec3f = graph.Vec3f.new(1, 1, 1),
+    specular: graph.Vec3f = graph.Vec3f.new(4, 4, 4),
+
+    constant: f32 = 1,
+    linear: f32 = 0.7,
+    quadratic: f32 = 1.8,
 };
+
+pub const SpotLightVertex = packed struct {
+    pos: graph.Vec3f,
+
+    ambient: graph.Vec3f = graph.Vec3f.new(0.1, 0.1, 0.1),
+    diffuse: graph.Vec3f = graph.Vec3f.new(1, 1, 1),
+    specular: graph.Vec3f = graph.Vec3f.new(4, 4, 4),
+
+    constant: f32 = 1,
+    linear: f32 = 0.7,
+    quadratic: f32 = 1.8,
+
+    cutoff: f32,
+    cutoff_outer: f32,
+
+    dir: graph.Vec3f, //These form a quat lol
+    w: f32,
+};
+
+pub const PointLightInstanceBatch = LightBatchGeneric(PointLightVertex);
+pub const SpotLightInstanceBatch = LightBatchGeneric(SpotLightVertex);

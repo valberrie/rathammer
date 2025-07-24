@@ -189,6 +189,8 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.const_add, -1, 1, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "ambient scale", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.ambient_scale, -10, 100, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "light render dist", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.light_render_dist, 64, 1024 * 40, .{}));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "draw skybox", .{ .bool_ptr = &ed.draw_state.tog.skybox }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "lighting", .{ .bool_ptr = &ed.renderer.do_lighting }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "copy depth", .{ .bool_ptr = &ed.renderer.copy_depth }, null));

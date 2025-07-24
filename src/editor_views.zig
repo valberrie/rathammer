@@ -87,6 +87,8 @@ pub fn draw3Dview(
 
     const view_3d = self.draw_state.cam3d.getMatrix(screen_area.w / screen_area.h, self.draw_state.cam_near_plane, self.draw_state.cam_far_plane);
     self.renderer.beginFrame();
+    self.renderer.clearLights();
+    self.draw_state.active_lights = 0;
 
     var it = self.meshmap.iterator();
     while (it.next()) |mesh| {
@@ -120,19 +122,22 @@ pub fn draw3Dview(
             }
         }
 
-        self.renderer.light_batch.clear();
         //var itit = self.ecs.iterator(.entity);
         //while (itit.next()) |item| {
         for (try self.classtrack.get("light", &self.ecs)) |item| {
             //if (std.mem.eql(u8, "light", item.class)) {
-            const kvs = try self.ecs.getOptPtr(item, .key_values) orelse continue;
             const ent = try self.ecs.getOptPtr(item, .entity) orelse continue;
+
+            if (self.draw_state.cam3d.pos.distance(ent.origin) > self.renderer.light_render_dist) continue;
+
+            const kvs = try self.ecs.getOptPtr(item, .key_values) orelse continue;
             const color = kvs.getFloats("_light", 4) orelse continue;
             const constant = kvs.getFloats("_constant_attn", 1) orelse 0;
             const lin = kvs.getFloats("_linear_attn", 1) orelse 1;
             const quad = kvs.getFloats("_quadratic_attn", 1) orelse 0;
 
-            try self.renderer.light_batch.inst.append(.{
+            self.draw_state.active_lights += 1;
+            try self.renderer.point_light_batch.inst.append(.{
                 .light_pos = graph.Vec3f.new(ent.origin.x(), ent.origin.y(), ent.origin.z()),
                 .quadratic = quad,
                 .constant = constant + self.draw_state.const_add,
@@ -141,7 +146,37 @@ pub fn draw3Dview(
             });
             //}
         }
-        self.renderer.light_batch.pushVertexData();
+        for (try self.classtrack.get("light_spot", &self.ecs)) |item| {
+            const ent = try self.ecs.getOptPtr(item, .entity) orelse continue;
+            if (self.draw_state.cam3d.pos.distance(ent.origin) > self.renderer.light_render_dist) continue;
+            const kvs = try self.ecs.getOptPtr(item, .key_values) orelse continue;
+            const color = kvs.getFloats("_light", 4) orelse continue;
+            const angles = kvs.getFloats("angles", 3) orelse continue;
+            const constant = kvs.getFloats("_constant_attn", 1) orelse 0;
+            const lin = kvs.getFloats("_linear_attn", 1) orelse 1;
+            const quad = kvs.getFloats("_quadratic_attn", 1) orelse 0;
+            const cutoff = kvs.getFloats("_cone", 1) orelse 45;
+            const cutoff_inner = kvs.getFloats("_inner_cone", 1) orelse 45;
+            const pitch = kvs.getFloats("pitch", 1) orelse 0;
+            self.draw_state.active_lights += 1;
+
+            const rotated = util3d.eulerToNormal(Vec3.new(-pitch, angles[1], 0));
+            const angle = Vec3.new(1, 0, 0).getAngle(rotated);
+            const norm = Vec3.new(1, 0, 0).cross(rotated);
+            const quat = graph.za.Quat.fromAxis(angle, norm);
+
+            try self.renderer.spot_light_batch.inst.append(.{
+                .pos = graph.Vec3f.new(ent.origin.x(), ent.origin.y(), ent.origin.z()),
+                .quadratic = quad,
+                .constant = constant + self.draw_state.const_add,
+                .linear = lin,
+                .diffuse = graph.Vec3f.new(color[0], color[1], color[2]).scale(color[3] * self.draw_state.light_mul),
+                .cutoff_outer = cutoff,
+                .cutoff = cutoff_inner,
+                .dir = graph.Vec3f.new(quat.x, quat.y, quat.z),
+                .w = quat.w,
+            });
+        }
     }
 
     try self.renderer.draw(self.draw_state.cam3d, screen_area, old_dim, .{
@@ -429,6 +464,9 @@ pub fn draw3Dview(
         var mt = graph.MultiLineText.start(draw, screen_area.pos(), font);
         if (self.draw_state.init_asset_count > 0) {
             mt.textFmt("Loading assets: {d}", .{self.draw_state.init_asset_count}, fh, col);
+        }
+        if (self.draw_state.active_lights > 0) {
+            mt.textFmt("Lights: {d}", .{self.draw_state.active_lights}, fh, col);
         }
         if (self.grid.isOne()) {
             mt.textFmt("grid: {d:.2}", .{self.grid.s.x()}, fh, col);
