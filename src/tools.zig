@@ -139,6 +139,9 @@ pub const ToolRegistryOld = struct {
 
 pub const VertexTranslate = struct {
     const Self = @This();
+    const Btn = enum {
+        snap_selected,
+    };
     pub threadlocal var tool_id: ToolReg = initToolReg;
     const Sel = std.MultiArrayList(struct {
         vert: Vec3,
@@ -159,6 +162,8 @@ pub const VertexTranslate = struct {
     vt: i3DTool,
     selected: std.AutoHashMap(ecs.EcsT.Id, Sel),
 
+    cb_vt: iArea = undefined,
+
     /// The perpendicular distance between a vertex and the mouse's ray must be smaller to be a
     /// candidate for selection.
     /// Measured in hammer units (hu).
@@ -177,8 +182,9 @@ pub const VertexTranslate = struct {
 
     gizmo: Gizmo = .{},
     gizmo_position: Vec3 = Vec3.zero(),
+    ed: *Editor,
 
-    pub fn create(alloc: std.mem.Allocator) !*i3DTool {
+    pub fn create(alloc: std.mem.Allocator, ed: *Editor) !*i3DTool {
         var self = try alloc.create(@This());
         self.* = .{
             .vt = .{
@@ -189,6 +195,7 @@ pub const VertexTranslate = struct {
                 .gui_build_cb = &buildGui,
                 .event_fn = &event,
             },
+            .ed = ed,
             .selected = std.AutoHashMap(ecs.EcsT.Id, Sel).init(alloc),
         };
         return &self.vt;
@@ -534,6 +541,43 @@ pub const VertexTranslate = struct {
         if (guis.label(area_vt, gui, win, ly.getArea(), "Selection mode", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.selection_mode, .{}));
         area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Modify disps", .{ .bool_ptr = &self.do_displacements }, null));
+        area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "snap selected to integer", .{
+            .cb_vt = &self.cb_vt,
+            .cb_fn = &btn_cb,
+            .id = @intFromEnum(Btn.snap_selected),
+        }));
+    }
+
+    pub fn btn_cb(vt: *iArea, id: usize, gui: *RGui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+        self.btn_cbErr(id, gui, win) catch return;
+    }
+    pub fn btn_cbErr(self: *@This(), id: usize, _: *RGui, _: *guis.iWindow) !void {
+        const btn_k = @as(Btn, @enumFromInt(id));
+        switch (btn_k) {
+            .snap_selected => {
+                var it = self.selected.iterator();
+                while (it.next()) |item| {
+                    if (self.ed.getComponent(item.key_ptr.*, .solid)) |solid| {
+                        const disps_o = self.ed.getComponent(item.key_ptr.*, .displacements);
+                        const sl = item.value_ptr.*;
+                        for (sl.items(.index), 0..) |ind, i| {
+                            if (sl.items(.disp_i)[i]) |di| {
+                                if (disps_o) |disps| {
+                                    const disp = disps.getDispPtrFromDispId(di) orelse continue;
+                                    const old_vert = disp._verts.items[ind];
+
+                                    const new_vert = util3d.snapV3(old_vert, 1);
+                                    disp.offsets.items[ind] = disp.offsets.items[ind].add(new_vert.sub(old_vert));
+                                }
+                            } else {
+                                solid.verts.items[ind] = util3d.snapV3(solid.verts.items[ind], 1);
+                            }
+                        }
+                    }
+                }
+            },
+        }
     }
 };
 

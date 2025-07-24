@@ -407,7 +407,7 @@ pub const Context = struct {
         try self.tools.register("cube_draw", tool_def.CubeDraw);
         try self.tools.register("fast_face", tool_def.FastFaceManip);
         try self.tools.registerCustom("texture", tool_def.TextureTool, try tool_def.TextureTool.create(self.alloc, self));
-        try self.tools.register("vertex", tool_def.VertexTranslate);
+        try self.tools.registerCustom("vertex", tool_def.VertexTranslate, try tool_def.VertexTranslate.create(self.alloc, self));
         try self.tools.register("clip", tool_def.Clipping);
     }
 
