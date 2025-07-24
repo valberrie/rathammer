@@ -104,7 +104,7 @@ pub fn draw3Dview(
         //mesh.value_ptr.*.mesh.drawSimple(view_3d, mat, self.draw_state.basic_shader);
     }
 
-    if (self.renderer.mode == .def) { //TODO Remove
+    if (self.renderer.mode == .def) {
         if (self.classtrack.getLast("light_environment", &self.ecs)) |env_id| {
             if (self.getComponent(env_id, .key_values)) |kvs| {
                 const pitch = kvs.getFloats("pitch", 1) orelse 0;
@@ -177,7 +177,21 @@ pub fn draw3Dview(
                 .w = quat.w,
             });
         }
+        for (try self.classtrack.get("infodecal", &self.ecs)) |item| {
+            const ent = try self.ecs.getOptPtr(item, .entity) orelse continue;
+            if (self.draw_state.cam3d.pos.distance(ent.origin) > self.renderer.light_render_dist) continue;
+            //const kvs = try self.ecs.getOptPtr(item, .key_values) orelse continue;
+            //
+            try self.renderer.decal_batch.inst.append(.{
+                .pos = graph.Vec3f.new(ent.origin.x(), ent.origin.y(), ent.origin.z()),
+                .ext = graph.Vec3f.new(16, 32, 24),
+            });
+        }
     }
+    try self.renderer.decal_batch.inst.append(.{
+        .pos = graph.Vec3f.new(0, 0, 0),
+        .ext = graph.Vec3f.new(100, 100, 100),
+    });
 
     try self.renderer.draw(self.draw_state.cam3d, screen_area, old_dim, .{
         .fac = self.draw_state.factor,

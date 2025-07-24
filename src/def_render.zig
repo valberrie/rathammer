@@ -28,6 +28,7 @@ pub const Renderer = struct {
         light: glID,
         spot: glID,
         sun: glID,
+        decal: glID,
     },
     mode: enum { forward, def } = .forward,
     gbuffer: GBuffer,
@@ -38,6 +39,7 @@ pub const Renderer = struct {
     sun_batch: SunQuadBatch,
     point_light_batch: PointLightInstanceBatch,
     spot_light_batch: SpotLightInstanceBatch,
+    decal_batch: DecalBatch,
 
     ambient: [4]f32 = [4]f32{ 1, 1, 1, 255 },
     ambient_scale: f32 = 1,
@@ -47,6 +49,7 @@ pub const Renderer = struct {
     yaw: f32 = 165,
     sun_color: [4]f32 = [4]f32{ 1, 1, 1, 255 },
     do_lighting: bool = true,
+    do_decals: bool = false,
     debug_light_coverage: bool = false,
     copy_depth: bool = true,
     light_render_dist: f32 = 1024 * 2,
@@ -77,6 +80,10 @@ pub const Renderer = struct {
             .{ .path = "sun.vert", .t = .vert },
             .{ .path = "sun.frag", .t = .frag },
         });
+        const decal_shad = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
+            .{ .path = "decal.vert", .t = .vert },
+            .{ .path = "decal.frag", .t = .frag },
+        });
         return Self{
             .shader = .{
                 .csm = shadow_shader,
@@ -84,10 +91,12 @@ pub const Renderer = struct {
                 .gbuffer = gbuffer_shader,
                 .light = light_shader,
                 .spot = spot_light_shader,
+                .decal = decal_shad,
                 .sun = def_sun_shad,
             },
             .point_light_batch = try PointLightInstanceBatch.init(alloc, shader_dir, "icosphere.obj"),
             .spot_light_batch = try SpotLightInstanceBatch.init(alloc, shader_dir, "cone.obj"),
+            .decal_batch = try DecalBatch.init(alloc, shader_dir, "cube.obj"),
             .sun_batch = SunQuadBatch.init(alloc),
             .draw_calls = std.ArrayList(DrawCall).init(alloc),
             .csm = Csm.createCsm(2048, Csm.CSM_COUNT, def_sun_shad),
@@ -102,6 +111,7 @@ pub const Renderer = struct {
     pub fn clearLights(self: *Self) void {
         self.point_light_batch.clear();
         self.spot_light_batch.clear();
+        self.decal_batch.clear();
     }
 
     pub fn submitDrawCall(self: *Self, d: DrawCall) !void {
@@ -125,6 +135,7 @@ pub const Renderer = struct {
     ) !void {
         self.point_light_batch.pushVertexData();
         self.spot_light_batch.pushVertexData();
+        self.decal_batch.pushVertexData();
         const view1 = cam.getMatrix(screen_area.w / screen_area.h, param.near, param.far);
         self.csm.pad = param.pad;
         switch (self.mode) {
@@ -191,10 +202,10 @@ pub const Renderer = struct {
                         c.glDrawElements(@intFromEnum(dc.prim), dc.num_elements, dc.element_type, null);
                     }
                 }
+                const scrsz = graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
                 //c.glViewport(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h);
                 //dctx.setViewport(screen_area);
-                _ = dctx;
                 const y_: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
                 c.glViewport(
                     @intFromFloat(screen_area.x),
@@ -203,7 +214,6 @@ pub const Renderer = struct {
                     @intFromFloat(screen_area.h),
                 );
 
-                const scrsz = graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
                 const win_offset = graph.Vec2i{ .x = @intFromFloat(screen_area.x), .y = y_ };
                 if (true) {
                     { //Draw sun
@@ -242,11 +252,12 @@ pub const Renderer = struct {
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[1]", @as(f32, planes[1]));
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[2]", @as(f32, planes[2]));
                         graph.GL.passUniform(sh1, "cascadePlaneDistances[3]", @as(f32, last_plane));
-                        graph.GL.passUniform(sh1, "cam_view", cam.getViewMatrix());
+                        const cam_mat = cam.getViewMatrix();
+                        graph.GL.passUniform(sh1, "cam_view", cam_mat);
+                        graph.GL.passUniform(sh1, "cam_view_inv", cam_mat.inv());
 
                         c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.sun_batch.vertices.items.len)));
 
-                        //Is needed?
                         c.glEnable(c.GL_BLEND);
                         c.glBlendFunc(c.GL_ONE, c.GL_ONE);
                         defer c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
@@ -255,6 +266,9 @@ pub const Renderer = struct {
                         if (self.do_lighting) {
                             self.drawLighting(cam, scrsz, view, win_offset);
                         }
+                    }
+                    if (self.do_decals) {
+                        self.drawDecal(cam, scrsz, view, .{ .x = 0, .y = 0 }, far);
                     }
                     if (self.copy_depth) {
                         const y: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
@@ -275,10 +289,37 @@ pub const Renderer = struct {
                         );
                         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
                     }
+                    _ = dctx;
+                    //dctx.rectTex(screen_area, graph.Rec(0, 0, screen_area.w, screen_area.h), .{ .id = self.gbuffer.depth, .w = scrsz.x, .h = scrsz.y });
                 }
             },
         }
         self.last_frame_view_mat = cam.getViewMatrix();
+    }
+
+    fn drawDecal(self: *Self, cam: graph.Camera3D, wh: anytype, view: anytype, window_offset: anytype, far_clip: f32) void {
+        {
+            c.glDepthMask(c.GL_FALSE);
+            defer c.glDepthMask(c.GL_TRUE);
+            _ = window_offset;
+            const sh = self.shader.decal;
+            c.glUseProgram(sh);
+            c.glBindVertexArray(self.decal_batch.vao);
+            c.glBindTextureUnit(0, self.gbuffer.pos);
+            c.glBindTextureUnit(1, self.gbuffer.normal);
+            c.glBindTextureUnit(2, self.gbuffer.depth);
+            graph.GL.passUniform(sh, "view_pos", cam.pos);
+            graph.GL.passUniform(sh, "exposure", self.exposure);
+            graph.GL.passUniform(sh, "gamma", self.gamma);
+            graph.GL.passUniform(sh, "screenSize", wh);
+            graph.GL.passUniform(sh, "draw_debug", self.debug_light_coverage);
+            graph.GL.passUniform(sh, "far_clip", far_clip);
+
+            graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
+            graph.GL.passUniform(sh, "view", view);
+
+            self.decal_batch.draw();
+        }
     }
 
     fn drawLighting(self: *Self, cam: graph.Camera3D, wh: anytype, view: anytype, window_offset: anytype) void {
@@ -331,6 +372,7 @@ pub const Renderer = struct {
         self.sun_batch.deinit();
         self.point_light_batch.deinit();
         self.spot_light_batch.deinit();
+        self.decal_batch.deinit();
     }
 };
 //In forward, we just do the draw call
@@ -394,10 +436,16 @@ const GBuffer = struct {
         const attachments = [_]c_int{ c.GL_COLOR_ATTACHMENT0, c.GL_COLOR_ATTACHMENT1, c.GL_COLOR_ATTACHMENT2, 0 };
         c.glDrawBuffers(3, @ptrCast(&attachments[0]));
 
-        c.glGenRenderbuffers(1, &ret.depth);
-        c.glBindRenderbuffer(c.GL_RENDERBUFFER, ret.depth);
-        c.glRenderbufferStorage(c.GL_RENDERBUFFER, c.GL_DEPTH_COMPONENT, scrw, scrh);
-        c.glFramebufferRenderbuffer(c.GL_FRAMEBUFFER, c.GL_DEPTH_ATTACHMENT, c.GL_RENDERBUFFER, ret.depth);
+        c.glGenTextures(1, &ret.depth);
+        c.glBindTexture(c.GL_TEXTURE_2D, ret.depth);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_DEPTH_COMPONENT, scrw, scrh, 0, c.GL_DEPTH_COMPONENT, c.GL_FLOAT, null);
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_DEPTH_ATTACHMENT, c.GL_TEXTURE_2D, ret.depth, 0);
+
+        //c.glGenRenderbuffers(1, &ret.depth);
+        //c.glBindRenderbuffer(c.GL_RENDERBUFFER, ret.depth);
+        //c.glRenderbufferStorage(c.GL_RENDERBUFFER, c.GL_DEPTH_COMPONENT, scrw, scrh);
+        //c.glFramebufferRenderbuffer(c.GL_FRAMEBUFFER, c.GL_DEPTH_ATTACHMENT, c.GL_RENDERBUFFER, ret.depth);
+
         if (c.glCheckFramebufferStatus(c.GL_FRAMEBUFFER) != c.GL_FRAMEBUFFER_COMPLETE)
             std.debug.print("gbuffer FBO not complete\n", .{});
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
@@ -685,5 +733,11 @@ pub const SpotLightVertex = packed struct {
     w: f32,
 };
 
+pub const DecalVertex = packed struct {
+    pos: graph.Vec3f,
+    ext: graph.Vec3f,
+};
+
 pub const PointLightInstanceBatch = LightBatchGeneric(PointLightVertex);
 pub const SpotLightInstanceBatch = LightBatchGeneric(SpotLightVertex);
+pub const DecalBatch = LightBatchGeneric(DecalVertex);

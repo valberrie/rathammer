@@ -66,9 +66,6 @@ void main(){
     scale[1][1] = rad_scale ;
     scale[2][2] = rad_scale ;
     
-    vec3 pre = vpos * scale;
-    //gl_Position = vec4(scale * vpos + light_pos, 1);
-    //gl_Position = view * vec4((vpos * radius + light_pos ) , 1);
     gl_Position = view * vec4( rotateVec(rot, vpos * scale) + light_pos  , 1);
     out_light_pos = light_pos;
 
