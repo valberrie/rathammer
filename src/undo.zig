@@ -190,24 +190,40 @@ pub const UndoTranslate = struct {
     //TODO translate entity about rot_origin;
     pub fn undo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        const quat = if (self.angle_delta) |ad| util3d.extEulerToQuat(ad.scale(-1)) else null;
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
-            solid.translate(self.id, self.vec.scale(-1), editor, self.rot_origin, if (self.angle_delta) |ad| util3d.extEulerToQuat(ad.scale(-1)) else null) catch return;
+            solid.translate(self.id, self.vec.scale(-1), editor, self.rot_origin, quat) catch return;
         }
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             ent.setOrigin(editor, self.id, ent.origin.add(self.vec.scale(-1))) catch return;
             if (self.angle_delta) |angd|
                 ent.setAngle(editor, self.id, ent.angle.sub(angd)) catch return;
         }
+        if (editor.ecs.getOptPtr(self.id, .displacements) catch return) |disps| {
+            if (quat) |qq| {
+                for (disps.disps.items) |*disp| {
+                    disp.rotate(qq);
+                }
+            }
+        }
     }
     pub fn redo(vt: *iUndo, editor: *Editor) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        const quat = if (self.angle_delta) |ad| util3d.extEulerToQuat(ad) else null;
         if (editor.ecs.getOptPtr(self.id, .solid) catch return) |solid| {
-            solid.translate(self.id, self.vec, editor, self.rot_origin, if (self.angle_delta) |ad| util3d.extEulerToQuat(ad) else null) catch return;
+            solid.translate(self.id, self.vec, editor, self.rot_origin, quat) catch return;
         }
         if (editor.ecs.getOptPtr(self.id, .entity) catch return) |ent| {
             ent.setOrigin(editor, self.id, ent.origin.add(self.vec)) catch return;
             if (self.angle_delta) |angd|
                 ent.setAngle(editor, self.id, ent.angle.add(angd)) catch return;
+        }
+        if (editor.ecs.getOptPtr(self.id, .displacements) catch return) |disps| {
+            if (quat) |qq| {
+                for (disps.disps.items) |*disp| {
+                    disp.rotate(qq);
+                }
+            }
         }
     }
 

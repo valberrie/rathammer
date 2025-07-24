@@ -1289,6 +1289,82 @@ pub const Displacement = struct {
         return solid.verts.items[side.index.items[si]];
     }
 
+    fn avgVert(comptime T: type, old_items: anytype, new_items: anytype, func: fn (T, T) T, old_row_count: u32) void {
+        const new_row_count = old_row_count * 2 - 1;
+        for (old_items, 0..) |n, i| {
+            const col_index = @divFloor(i, old_row_count);
+            const row_index = @mod(i, old_row_count);
+            new_items[row_index * 2 + col_index * new_row_count] = n;
+        }
+        for (0..old_row_count) |ri| {
+            const start = ri * new_row_count;
+            for (new_items[start .. start + new_row_count], 0..) |*n, i| {
+                if (i % 2 != 0) {
+                    const a = new_items[i - 1];
+                    const b = new_items[i + 1];
+                    n.* = func(a, b);
+                }
+            }
+        }
+    }
+
+    //THIS is horribly broken
+    //TODO write a catmull-clark.
+    //I think it needs to work over n meshes sewn together
+    pub fn subdivide(self: *Self, id: EcsT.Id, ed: *Editor) !void {
+        const H = struct {
+            pub fn avgVec(a: Vec3, b: Vec3) Vec3 {
+                return a.add(b).scale(0.5);
+            }
+
+            pub fn avgFloat(a: f32, b: f32) f32 {
+                return (a + b) / 2;
+            }
+        };
+        const MAX_POWER = 10;
+        if (self.power >= MAX_POWER) return;
+        const old_v = vertsPerRow(self.power);
+        self.power += 1;
+        const vper_row = vertsPerRow(self.power);
+
+        var new_norms = VectorRow.init(self.normals.allocator);
+        try new_norms.resize(vper_row * vper_row);
+        avgVert(Vec3, self.normals.items, new_norms.items, H.avgVec, old_v);
+
+        var new_off = VectorRow.init(self.normals.allocator);
+        try new_off.resize(vper_row * vper_row);
+        avgVert(Vec3, self.offsets.items, new_off.items, H.avgVec, old_v);
+
+        var new_noff = VectorRow.init(self.normals.allocator);
+        try new_noff.resize(vper_row * vper_row);
+        avgVert(Vec3, self.normal_offsets.items, new_noff.items, H.avgVec, old_v);
+
+        var new_dist = ScalarRow.init(self.normals.allocator);
+        try new_dist.resize(vper_row * vper_row);
+        avgVert(f32, self.dists.items, new_dist.items, H.avgFloat, old_v);
+
+        var new_alpha = ScalarRow.init(self.normals.allocator);
+        try new_alpha.resize(vper_row * vper_row);
+        avgVert(f32, self.alphas.items, new_alpha.items, H.avgFloat, old_v);
+
+        self.normals.deinit();
+        self.normals = new_norms;
+
+        self.offsets.deinit();
+        self.offsets = new_off;
+
+        self.normal_offsets.deinit();
+        self.normal_offsets = new_noff;
+
+        self.dists.deinit();
+        self.dists = new_dist;
+
+        self.alphas.deinit();
+        self.alphas = new_alpha;
+
+        try self.markForRebuild(id, ed);
+    }
+
     pub fn deinit(self: *Self) void {
         self._verts.deinit();
         self._index.deinit();
@@ -1390,6 +1466,15 @@ pub const Displacement = struct {
         }
         for (self._index.items) |ind| {
             try mesh.indicies.append(ind + @as(u32, @intCast(offset)));
+        }
+    }
+
+    pub fn rotate(self: *Self, rot: Quat) void {
+        for (self.offsets.items, 0..) |*off, i| {
+            off.* = rot.rotateVec(off.*);
+            self.normals.items[i] = rot.rotateVec(self.normals.items[i]);
+            self.normal_offsets.items[i] = rot.rotateVec(self.normal_offsets.items[i]);
+            self.offsets.items[i] = rot.rotateVec(self.offsets.items[i]);
         }
     }
 

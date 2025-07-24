@@ -39,6 +39,7 @@ pub const TextureTool = struct {
         swap,
 
         make_disp,
+        subdivide,
     };
     const GuiTextEnum = enum {
         uscale,
@@ -157,7 +158,8 @@ pub const TextureTool = struct {
         }
 
         if (!has_disp) {
-            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Make displacment", H.btn(self, .make_disp)));
+            if (side.index.items.len == 4)
+                area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Make displacment", H.btn(self, .make_disp)));
         }
 
         {
@@ -212,6 +214,7 @@ pub const TextureTool = struct {
 
         if (has_disp) {
             area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw normals", .{ .bool_ptr = &self.show_disp_normal }, null));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, ly.getArea(), "Subdivide", H.btn(self, .subdivide)));
         }
     }
 
@@ -309,6 +312,15 @@ pub const TextureTool = struct {
                 }
                 if (self.win_ptr) |win|
                     win.needs_rebuild = true;
+            },
+            .subdivide => {
+                const sel_id = self.id orelse return;
+                const face_id = self.face_index orelse return;
+                if (self.ed.getComponent(sel_id, .displacements)) |disp| {
+                    if (disp.getDispPtr(face_id)) |dface| {
+                        try dface.subdivide(sel_id, self.ed);
+                    }
+                }
             },
         }
         if (!old.eql(new)) {
