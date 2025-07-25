@@ -1187,6 +1187,7 @@ pub const Context = struct {
                     .vmf = "dump.vmf",
                     .gamedir_pre = self.game_conf.base_dir,
                     .gamename = gname,
+                    //TODO put this in config
                     .outputdir = try self.printScratch("hl2/maps", .{}),
                     .cwd = self.dirs.cwd,
                     .tmpdir = TMP_DIR,

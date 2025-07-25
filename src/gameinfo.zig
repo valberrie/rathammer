@@ -70,7 +70,9 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
                 continue;
             }
             log.info("Mounting loose dir: {s}", .{path});
-            try vpkctx.addLooseDir(dir, path);
+            vpkctx.addLooseDir(dir, path) catch |err| {
+                log.err("Failed to mount loose dir: {s} {!}", .{ path, err });
+            };
         }
     }
     //TODO this is temp

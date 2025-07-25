@@ -785,8 +785,11 @@ pub const ParseCtx = struct {
         const buf = &self.scratch_buf;
         while (try tkz.nextEatNewline()) |first| {
             if (first.tag == .r_bracket) break; //this class in done
-            if (first.tag != .plain_string) return error.syntax;
             const fsl = tkz.getSlice(first);
+            if (first.tag != .plain_string) {
+                std.debug.print("TOKEN {s}\n", .{fsl});
+                return error.syntax;
+            }
             if (stringToEnum(EntClass.Io.Kind, fsl)) |fw| { //Input, output field
                 const io_name = try tkz.expectNext(.plain_string);
                 _ = try tkz.expectNext(.l_paren);
@@ -905,11 +908,11 @@ pub const ParseCtx = struct {
         const buf = &self.scratch_buf;
         const tkz = &self.tkz;
         var default_str: ?[]const u8 = null;
-        const TypeStr = enum { choices, flags, string, float, integer, boolean, color255, angle, decal, material, studio };
+        const TypeStr = enum { choices, @"*choices", flags, string, float, integer, boolean, color255, angle, decal, material, studio };
         var new_type = EntClass.Field.Type{ .generic = {} };
         if (stringToEnum(TypeStr, self.sanitizeIdent(tkz.getSlice(type_tok)))) |st| {
             switch (st) {
-                .choices => {
+                .choices, .@"*choices" => {
                     var new_choices = std.ArrayList(EntClass.Field.Type.KV).init(ctx.alloc);
                     _ = try tkz.expectNext(.equals);
                     _ = try tkz.expectNextEatNewline(.l_bracket);
