@@ -409,6 +409,11 @@ pub fn draw3Dview(
         .screen_area = screen_area,
         .view_3d = &view_3d,
         .draw = draw,
+        .text_param = .{
+            .color = 0xffff_ffff,
+            .px_size = fh,
+            .font = font,
+        },
     };
     if (self.getCurrentTool()) |vt| {
         const selected = self.selection.getSlice();
@@ -511,6 +516,7 @@ pub fn draw3Dview(
         }
         mt.drawBgRect(0x99, fh * 30);
     }
+
     self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw, font);
     draw.rect(graph.Rec(
         crossp.x,

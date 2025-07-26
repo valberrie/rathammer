@@ -106,6 +106,7 @@ pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, p
     win.pumpEvents(.wait);
     win.grabMouse(false);
     try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
+    draw.real_screen_dimensions = win.screen_dimensions.toF();
     try editor.update(win);
 
     {
@@ -336,6 +337,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
         try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
+        draw.real_screen_dimensions = win.screen_dimensions.toF();
 
         //win.grabMouse(editor.draw_state.grab.is);
         win.grabMouse(editor.panes.grab.was_grabbed);

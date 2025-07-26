@@ -118,6 +118,7 @@ pub const Ctx2dView = struct {
             .view_3d = &view_3d,
             .cam2d = &self.cam,
             .draw = draw,
+            .text_param = .{ .px_size = 10, .color = 0xffff_ffff, .font = &ed.loadctx.font.font },
         };
         if (ed.getCurrentTool()) |tool_vt| {
             const selected = ed.selection.getSlice();

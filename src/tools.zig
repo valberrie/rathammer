@@ -82,6 +82,7 @@ pub const ToolData = struct {
     cam2d: ?*const graph.Camera2D = null,
     screen_area: graph.Rect,
     draw: *DrawCtx,
+    text_param: graph.ImmediateDrawingContext.TextParam,
 };
 
 pub const ToolRegistryOld = struct {
