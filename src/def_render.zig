@@ -157,30 +157,19 @@ pub const Renderer = struct {
                 }
             },
             .def => {
-                //self.csm.pad = param.fac;
-                //const view = view1;
                 const view = if (param.index == 0) view1 else self.csm.mats[(param.index - 1) % self.csm.mats.len];
-                //self.csm.mats[0];
                 self.last_frame_view_mat = cam.getViewMatrix();
-                //-35 165 0
                 var light_dir = Vec3.new(@sin(std.math.degreesToRadians(35)), 0, @sin(std.math.degreesToRadians(165))).norm();
                 {
                     light_dir = util3d.eulerToNormal(Vec3.new(self.pitch, self.yaw + 180, 0)).scale(1);
                 }
-                //const light_dir = Vec3.new(0, 0, param.fac - 10).norm();
-                //const light_dir = Vec3.new(-20, 50, -20).norm();
                 const far = param.far;
                 const planes = [_]f32{
                     pl[0],
                     pl[1],
                     pl[2],
-
-                    //far * 0.005,
-                    //far * 0.015,
-                    //far * 0.058,
                 };
                 const last_plane = pl[3];
-                //const last_plane = far * 0.58;
                 self.csm.calcMats(cam.fov, screen_area.w / screen_area.h, param.near, far, self.last_frame_view_mat, light_dir, planes);
                 self.csm.draw(self);
                 self.gbuffer.updateResolution(@intFromFloat(screen_area.w), @intFromFloat(screen_area.h));
@@ -204,8 +193,6 @@ pub const Renderer = struct {
                 }
                 const scrsz = graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
-                //c.glViewport(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h);
-                //dctx.setViewport(screen_area);
                 const y_: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
                 c.glViewport(
                     @intFromFloat(screen_area.x),
@@ -338,7 +325,6 @@ pub const Renderer = struct {
             graph.GL.passUniform(sh, "gamma", self.gamma);
             graph.GL.passUniform(sh, "screenSize", wh);
             graph.GL.passUniform(sh, "the_fucking_window_offset", window_offset);
-            //graph.GL.passUniform(sh, "light_color", sun_color.toFloat());
             graph.GL.passUniform(sh, "draw_debug", self.debug_light_coverage);
 
             graph.GL.passUniform(sh, "cam_view", cam.getViewMatrix());
@@ -416,7 +402,6 @@ const GBuffer = struct {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
         c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, ret.pos, 0);
 
-        // - normal color buffer
         c.glGenTextures(1, &ret.normal);
         c.glBindTexture(c.GL_TEXTURE_2D, ret.normal);
         c.glTexImage2D(c.GL_TEXTURE_2D, 0, norm_fmt, scrw, scrh, 0, c.GL_RGBA, c.GL_HALF_FLOAT, null);
@@ -424,7 +409,6 @@ const GBuffer = struct {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
         c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT1, c.GL_TEXTURE_2D, ret.normal, 0);
 
-        // - color + specular color buffer
         c.glGenTextures(1, &ret.albedo);
         c.glBindTexture(c.GL_TEXTURE_2D, ret.albedo);
         c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA16F, scrw, scrh, 0, c.GL_RGBA, c.GL_HALF_FLOAT, null);
@@ -432,7 +416,6 @@ const GBuffer = struct {
         c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
         c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT2, c.GL_TEXTURE_2D, ret.albedo, 0);
 
-        // - tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
         const attachments = [_]c_int{ c.GL_COLOR_ATTACHMENT0, c.GL_COLOR_ATTACHMENT1, c.GL_COLOR_ATTACHMENT2, 0 };
         c.glDrawBuffers(3, @ptrCast(&attachments[0]));
 
@@ -440,11 +423,6 @@ const GBuffer = struct {
         c.glBindTexture(c.GL_TEXTURE_2D, ret.depth);
         c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_DEPTH_COMPONENT, scrw, scrh, 0, c.GL_DEPTH_COMPONENT, c.GL_FLOAT, null);
         c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_DEPTH_ATTACHMENT, c.GL_TEXTURE_2D, ret.depth, 0);
-
-        //c.glGenRenderbuffers(1, &ret.depth);
-        //c.glBindRenderbuffer(c.GL_RENDERBUFFER, ret.depth);
-        //c.glRenderbufferStorage(c.GL_RENDERBUFFER, c.GL_DEPTH_COMPONENT, scrw, scrh);
-        //c.glFramebufferRenderbuffer(c.GL_FRAMEBUFFER, c.GL_DEPTH_ATTACHMENT, c.GL_RENDERBUFFER, ret.depth);
 
         if (c.glCheckFramebufferStatus(c.GL_FRAMEBUFFER) != c.GL_FRAMEBUFFER_COMPLETE)
             std.debug.print("gbuffer FBO not complete\n", .{});
@@ -540,7 +518,6 @@ const Csm = struct {
         const sh = rend.shader.csm;
         c.glUseProgram(sh);
         for (rend.draw_calls.items) |dc| {
-            //GL.passUniform(sh, "view", dc.view.*);
             c.glBindVertexArray(dc.vao);
             c.glDrawElements(@intFromEnum(dc.prim), dc.num_elements, dc.element_type, null);
         }

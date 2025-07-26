@@ -150,13 +150,14 @@ pub const Context = struct {
         active_lights: usize = 0,
         draw_outlines: bool = true,
 
+        draw_displacment_solid: bool = false,
+
         factor: f32 = 64,
         light_mul: f32 = 0.11,
         const_add: f32 = 0, //Added to light constant factor
         far: f32 = 512 * 64,
         pad: f32 = 164,
         index: usize = 0,
-        //planes: [4]f32 = [4]f32{ 512.0 * 64 / 50.0, 512 * 64.0 / 25.0, 512 * 64.0 / 10.0, 512 * 64.0 / 2.0 },
         planes: [4]f32 = [4]f32{ 462, 1300, 4200, 16400 },
         pointfile: ?pointfile.PointFile = null,
         portalfile: ?pointfile.PortalFile = null,

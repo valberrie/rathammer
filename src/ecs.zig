@@ -522,7 +522,10 @@ pub const Side = struct {
                 a.axis.z() == b.axis.z();
         }
     };
-    displacement_id: ?EcsT.Id = null,
+
+    /// Used by displacement
+    omit_from_batch: bool = false,
+
     index: std.ArrayList(u32) = undefined,
     u: UVaxis = .{},
     v: UVaxis = .{},
@@ -565,7 +568,7 @@ pub const Side = struct {
     }
 
     pub fn rebuild(side: *@This(), solid: *Solid, batch: *MeshBatch, editor: *Editor) !void {
-        if (side.displacement_id != null) //don't draw this sideit
+        if (side.omit_from_batch)
             return;
         side.tex_id = batch.tex_res_id;
         side.tw = batch.tex.w;
@@ -1021,7 +1024,7 @@ pub const Solid = struct {
     /// If it is null, all vertices are offset
     pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, only_verts: ?[]const u32) !void {
         for (self.sides.items) |side| {
-            if (side.displacement_id != null) //don't draw this sideit
+            if (side.omit_from_batch)
                 continue;
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
@@ -1067,7 +1070,7 @@ pub const Solid = struct {
     //the vertexOffsetCb is given the vertex, the side_index, the index
     pub fn drawImmediateCustom(self: *Self, draw: *DrawCtx, ed: *Editor, user: anytype, vertOffsetCb: fn (@TypeOf(user), Vec3, u32, u32) Vec3) !void {
         for (self.sides.items, 0..) |side, s_i| {
-            if (side.displacement_id != null) //don't draw this sideit
+            if (side.omit_from_batch) //don't draw this sideit
                 continue;
             const batch = &(draw.getBatch(.{ .batch_kind = .billboard, .params = .{
                 .shader = DrawCtx.billboard_shader,
@@ -1418,7 +1421,10 @@ pub const Displacement = struct {
         self.tex_id = batch.tex_res_id;
         const solid = try editor.ecs.getOptPtr(id, .solid) orelse return;
         if (self.parent_side_i >= solid.sides.items.len) return;
-        solid.sides.items[self.parent_side_i].displacement_id = id;
+        for (solid.sides.items) |*side| {
+            side.omit_from_batch = !editor.draw_state.draw_displacment_solid;
+        }
+        solid.sides.items[self.parent_side_i].omit_from_batch = true;
 
         self._verts.clearRetainingCapacity();
         self._index.clearRetainingCapacity();

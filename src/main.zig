@@ -365,6 +365,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         };
 
         const winrect = graph.Rec(0, 0, draw.screen_dimensions.x, draw.screen_dimensions.y);
+        gui.clamp_window = winrect;
         graph.c.glEnable(graph.c.GL_BLEND);
         try editor.update(&win);
 

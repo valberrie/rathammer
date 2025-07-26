@@ -196,6 +196,7 @@ pub const PauseWindow = struct {
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "copy depth", .{ .bool_ptr = &ed.renderer.copy_depth }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "light debug", .{ .bool_ptr = &ed.renderer.debug_light_coverage }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw outline", .{ .bool_ptr = &ed.draw_state.draw_outlines }, null));
+            vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw displacement solid", .{ .bool_ptr = &ed.draw_state.draw_displacment_solid }, null));
         }
         if (eql(u8, tab, "main")) {
             var ly = guis.VerticalLayout{
