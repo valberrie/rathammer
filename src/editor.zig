@@ -148,6 +148,7 @@ pub const Context = struct {
         init_asset_count: usize = 0, //Used to indicate we are loading things
 
         active_lights: usize = 0,
+        draw_outlines: bool = true,
 
         factor: f32 = 64,
         light_mul: f32 = 0.11,
@@ -229,8 +230,6 @@ pub const Context = struct {
     dirs: struct {
         const Dir = std.fs.Dir;
         cwd: Dir,
-        base: Dir,
-        game: Dir,
         fgd: Dir,
         pref: Dir,
         autosave: Dir,
@@ -378,8 +377,8 @@ pub const Context = struct {
             };
         };
         const custom_cwd_msg = "Set a custom cwd with --custom_cwd flag";
-        const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, custom_cwd_msg);
-        const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, custom_cwd_msg);
+        //const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, custom_cwd_msg);
+        //const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, custom_cwd_msg);
         const fgd_dir = util.openDirFatal(cwd, args.fgddir orelse game_conf.fgd_dir, .{}, "");
 
         loadctx.cb("Dir's opened");
@@ -398,8 +397,16 @@ pub const Context = struct {
         self.asset = try graph.AssetBake.AssetMap.initFromManifest(self.alloc, pref, "packed");
         self.asset_atlas = try graph.AssetBake.AssetMap.initTextureFromManifest(self.alloc, pref, "packed");
 
-        self.dirs = .{ .cwd = cwd, .base = base_dir, .game = game_dir, .fgd = fgd_dir, .pref = pref, .autosave = autosave };
-        try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx, loadctx);
+        for (game_conf.gameinfo.items) |gamei| {
+            const base_dir_ = util.openDirFatal(cwd, gamei.base_dir, .{}, custom_cwd_msg);
+            const game_dir_ = util.openDirFatal(cwd, gamei.game_dir, .{}, custom_cwd_msg);
+
+            try gameinfo.loadGameinfo(self.alloc, base_dir_, game_dir_, &self.vpkctx, loadctx);
+        }
+
+        self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave };
+
+        //try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx, loadctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
 
@@ -1177,21 +1184,21 @@ pub const Context = struct {
                     try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
                 } else |_| {}
 
-                const gname = name_blk: {
-                    const game_name = self.game_conf.game_dir;
-                    const start = if (std.mem.lastIndexOfScalar(u8, game_name, '/')) |i| i + 1 else 0;
-                    break :name_blk game_name[start..];
-                };
+                //const gname = name_blk: {
+                //    const game_name = self.game_conf.game_dir;
+                //    const start = if (std.mem.lastIndexOfScalar(u8, game_name, '/')) |i| i + 1 else 0;
+                //    break :name_blk game_name[start..];
+                //};
 
-                try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
-                    .vmf = "dump.vmf",
-                    .gamedir_pre = self.game_conf.base_dir,
-                    .gamename = gname,
-                    //TODO put this in config
-                    .outputdir = try self.printScratch("hl2/maps", .{}),
-                    .cwd = self.dirs.cwd,
-                    .tmpdir = TMP_DIR,
-                });
+                //try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
+                //    .vmf = "dump.vmf",
+                //    .gamedir_pre = self.game_conf.base_dir,
+                //    .gamename = gname,
+                //    //TODO put this in config
+                //    .outputdir = try self.printScratch("hl2/maps", .{}),
+                //    .cwd = self.dirs.cwd,
+                //    .tmpdir = TMP_DIR,
+                //});
             }
         }
 

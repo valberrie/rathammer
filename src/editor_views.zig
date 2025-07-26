@@ -196,7 +196,7 @@ pub fn draw3Dview(
     try self.renderer.draw(self.draw_state.cam3d, screen_area, old_dim, .{
         .fac = self.draw_state.factor,
         .near = self.draw_state.cam_near_plane,
-        .far = self.draw_state.far,
+        .far = self.draw_state.cam_far_plane,
         .pad = self.draw_state.pad,
         .index = self.draw_state.index,
     }, draw, self.draw_state.planes);
@@ -279,6 +279,9 @@ pub fn draw3Dview(
                         switch (field.type) {
                             .angle => {
                                 var angle = kvs.getFloats(field.name, 3) orelse break :blk;
+                                if (kvs.getFloats("pitch", 1)) |pitch| { //Workaround for valves shitty fgd
+                                    angle[0] = -pitch;
+                                }
                                 const rotated = util3d.eulerToNormal(Vec3.fromSlice(&angle));
                                 draw_nd.line3D(origin, origin.add(rotated.scale(64)), 0xff0000ff, 12);
                             },
@@ -409,14 +412,16 @@ pub fn draw3Dview(
     };
     if (self.getCurrentTool()) |vt| {
         const selected = self.selection.getSlice();
-        for (selected) |sel| {
-            if (self.getComponent(sel, .solid)) |solid| {
-                solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
-                    .point_color = vt.selected_solid_point_color,
-                    .edge_color = vt.selected_solid_edge_color,
-                    .edge_size = 2,
-                    .point_size = self.config.dot_size,
-                });
+        if (self.draw_state.draw_outlines) {
+            for (selected) |sel| {
+                if (self.getComponent(sel, .solid)) |solid| {
+                    solid.drawEdgeOutline(draw_nd, Vec3.zero(), .{
+                        .point_color = vt.selected_solid_point_color,
+                        .edge_color = vt.selected_solid_edge_color,
+                        .edge_size = 2,
+                        .point_size = self.config.dot_size,
+                    });
+                }
             }
         }
         try vt.runTool_fn(vt, td, self);

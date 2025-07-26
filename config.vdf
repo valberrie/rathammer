@@ -57,6 +57,8 @@ keys {
     cube_draw_plane_down    scancode:z
 }
 
+dot_size 16
+
 paths {
     //Set the directory rathammer searchs for games. if unset, searches default steam directory
     //steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"
@@ -82,10 +84,18 @@ window {
 //All directory paths are relative to the program's cwd
 games {
     basic_hl2 {
-        base_dir    "Half-Life 2" 
-        game_dir    "Half-Life 2/hl2_complete" 
-        fgd_dir     "Half-Life 2/bin"
+        gameinfo {
+            base_dir "Half-Life 2"
+            game_dir "Half-Life 2/hl2_complete"
+        }
 
+        gameinfo {
+            base_dir "Counter-Strike Source"
+            game_dir "Counter-Strike Source/cstrike"
+        }
+
+
+        fgd_dir     "Half-Life 2/bin"
         //Relative to fgd_dir. fgd's can include other fgd's so setting 
         //fgd_dir rather than specifying the path in "fgd" is required.
         fgd         "halflife2.fgd" 
@@ -107,10 +117,14 @@ games {
     }
 
     tf2 {
-        base_dir    "Team Fortress 2"
-        game_dir    "Team Fortress 2/tf"
-        fgd_dir     "Team Fortress 2/bin"
-        fgd         "tf.fgd"
+        gameinfo {
+            base_dir "Team Fortress 2"
+            game_dir "Team Fortress 2/tf"
+        }
+
+
+        fgd_dir     "Half-Life 2/bin"
+        fgd         "halflife2.fgd"
 
         asset_browser_exclude {
             prefix "materials/"
@@ -184,6 +198,24 @@ games {
         game_dir    "Black Mesa/bms"
         fgd_dir     "Black Mesa/bin"
         fgd         "bms.fgd"
+
+        asset_browser_exclude {
+            prefix "materials/"
+            entry "models"
+            entry "gamepadui"
+            entry "skybox"
+            entry "vgui"
+            entry "particle"
+            entry "console"
+            entry "sprites"
+        }
+    }
+    
+    gmod {
+        base_dir    "GarrysMod"
+        game_dir    "GarrysMod/garrysmod"
+        fgd_dir     "GarrysMod/bin"
+        fgd         "garrysmod.fgd"
 
         asset_browser_exclude {
             prefix "materials/"

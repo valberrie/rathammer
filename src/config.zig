@@ -101,10 +101,20 @@ pub const Config = struct {
 };
 
 pub const GameEntry = struct {
-    base_dir: []const u8,
-    game_dir: []const u8,
+    pub const GameInfo = struct {
+        base_dir: []const u8,
+        game_dir: []const u8,
+    };
+    pub const MapBuilder = struct {
+        bsp_dir: []const u8 = "",
+        exe_dir: []const u8 = "",
+    };
+    gameinfo: std.ArrayList(GameInfo),
+
     fgd_dir: []const u8,
     fgd: []const u8,
+
+    mapbuilder: MapBuilder,
 
     asset_browser_exclude: struct {
         prefix: []const u8,
@@ -119,8 +129,10 @@ pub const ConfigCtx = struct {
 
     pub fn deinit(self: *@This()) void {
         var it = self.config.games.map.valueIterator();
-        while (it.next()) |item|
+        while (it.next()) |item| {
             item.asset_browser_exclude.entry.deinit();
+            item.gameinfo.deinit();
+        }
         self.config.games.map.deinit();
         self.config.keys.workspace.deinit();
         self.config.keys.tool.deinit();

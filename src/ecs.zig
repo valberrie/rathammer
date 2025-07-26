@@ -366,8 +366,13 @@ pub const Entity = struct {
 
     pub fn setAngle(self: *@This(), editor: *Editor, self_id: EcsT.Id, angle: Vec3) !void {
         self.angle = angle;
-        if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs|
+        if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
             try kvs.putStringNoNotify("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
+            if (kvs.getString("pitch") != null) {
+                //Workaround to valve's shitty fgd
+                try kvs.putStringNoNotify("pitch", try editor.printScratch("{d}", .{-angle.x()}));
+            }
+        }
         self.updateModelbb(editor, self_id);
     }
 
