@@ -41,7 +41,7 @@ float shadowCalculation(vec3 fp, vec3 norm){
     proj_coord = proj_coord * 0.5 + 0.5 ;
 
     float bias = max(0.005 * (1.0 - dot(norm, light_dir)), 0.005);
-    const float bias_mod = 0.5;
+    const float bias_mod = 0.1;
     bias *= 1 / (cascadePlaneDistances[layer] * bias_mod);
 
     float current_depth = proj_coord.z;

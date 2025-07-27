@@ -378,8 +378,6 @@ pub const Context = struct {
             };
         };
         const custom_cwd_msg = "Set a custom cwd with --custom_cwd flag";
-        //const base_dir = util.openDirFatal(cwd, args.basedir orelse game_conf.base_dir, .{}, custom_cwd_msg);
-        //const game_dir = util.openDirFatal(cwd, args.gamedir orelse game_conf.game_dir, .{}, custom_cwd_msg);
         const fgd_dir = util.openDirFatal(cwd, args.fgddir orelse game_conf.fgd_dir, .{}, "");
 
         loadctx.cb("Dir's opened");
@@ -403,6 +401,14 @@ pub const Context = struct {
             const game_dir_ = util.openDirFatal(cwd, gamei.game_dir, .{}, custom_cwd_msg);
 
             try gameinfo.loadGameinfo(self.alloc, base_dir_, game_dir_, &self.vpkctx, loadctx, if (gamei.gameinfo_name.len != 0) gamei.gameinfo_name else "gameinfo.txt");
+        }
+
+        if (args.basedir) |bd| {
+            if (args.gamedir) |gd| {
+                const base_dir_ = util.openDirFatal(cwd, bd, .{}, custom_cwd_msg);
+                const game_dir_ = util.openDirFatal(cwd, gd, .{}, custom_cwd_msg);
+                try gameinfo.loadGameinfo(self.alloc, base_dir_, game_dir_, &self.vpkctx, loadctx, "gameinfo.txt");
+            }
         }
 
         self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave };

@@ -81,20 +81,27 @@ window {
 }
 
 
-//All directory paths are relative to the program's cwd
+//All directory paths are relative to paths.steam_path or the default steam path on your platform
 games {
     basic_hl2 {
+        // Each game can mount multiple game infos
         gameinfo {
+            // There must be a gameinfo.txt inside of game_dir, or a 'gameinfo_name' if set
             base_dir "Half-Life 2"
             game_dir "Half-Life 2/hl2_complete"
+            //gameinfo_name "rathammer_gameinfo.txt" //Specify a custom gameinfo.txt
         }
 
-        gameinfo {
-            base_dir "Counter-Strike Source"
-            game_dir "Counter-Strike Source/cstrike"
+        // Used to do a fast compile when pressing F9. 
+        // To do a more specific compile. Write a shell or bat script and run it.
+        mapbuilder {
+            game_dir    "Half-Life 2"
+            game_name   "hl2_complete"
+            output_dir  "hl2/maps"
         }
 
-
+        // A game can only specify one fgd
+        // To include more, use the @include directive in your fgd
         fgd_dir     "Half-Life 2/bin"
         //Relative to fgd_dir. fgd's can include other fgd's so setting 
         //fgd_dir rather than specifying the path in "fgd" is required.
