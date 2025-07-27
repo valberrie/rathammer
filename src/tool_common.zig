@@ -18,6 +18,16 @@ pub fn drawDistance(start: Vec3, delta: Vec3, draw: *DrawCtx, tp: DrawCtx.TextPa
     draw.textFmt(ss, "{d} {d} {d}", .{ delta.x(), delta.y(), delta.z() }, tt);
 }
 
+pub fn drawPoint(point: Vec3, draw: *DrawCtx, tp: DrawCtx.TextParam, screen_area: graph.Rect, view: graph.za.Mat4) void {
+    var tt = tp;
+    tt.background_rect = 0xaa;
+    const ss = util3d.worldToScreenSpace(screen_area, view, point).add(
+        .{ .x = 0, .y = 0 },
+    );
+
+    draw.textFmt(ss, "{d} {d} {d}", .{ point.x(), point.y(), point.z() }, tt);
+}
+
 pub fn drawBBDimensions(min: Vec3, max: Vec3, draw: *DrawCtx, t: DrawCtx.TextParam, screen_area: graph.Rect, view: graph.za.Mat4) void {
     const cc = util3d.cubeFromBounds(min, max);
     const ex = cc[1];

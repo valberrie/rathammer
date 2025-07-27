@@ -322,6 +322,7 @@ pub const Translate = struct {
                 self,
             );
 
+            var text_pos = origin;
             var giz_active = giz_active_pre;
             const selected = self.selection.getSlice();
             if (tool.enable_fast_move) {
@@ -333,11 +334,11 @@ pub const Translate = struct {
                     }
                     const pot = self.rayctx.sortFine();
                     if (pot.len > 0) {
-                        const NORM_THRESH = 0.3;
+                        const NORM_THRESH = 0.45;
                         const p = pot[0];
                         tool.fast_move.start = p.point;
                         const plane_norm = Vec3.new(0, 0, 1); // We start with an xy plane
-                        if (@abs(self.draw_state.cam3d.front.dot(plane_norm)) < NORM_THRESH) {
+                        if (@abs(rc[1].dot(plane_norm)) < NORM_THRESH) {
                             const solid = self.getComponent(p.id, .solid) orelse return;
                             const norm = solid.sides.items[p.side_id orelse return].normal(solid);
                             tool.fast_move.norm = norm;
@@ -349,23 +350,10 @@ pub const Translate = struct {
                 }
                 if (self.edit_state.lmouse == .high and giz_active_pre == .low and tool.fast_move.norm != null) {
                     const norm = tool.fast_move.norm orelse Vec3.new(0, 0, 1);
-                    draw_nd.point3D(tool.fast_move.start, 0xff00ffff, 16);
                     if (util3d.doesRayIntersectPlane(rc[0], rc[1], tool.fast_move.start, norm)) |inter| {
-                        draw_nd.point3D(inter, 0x00ffffff, 16);
-                        draw_nd.line3D(tool.fast_move.start, inter, 0xff0000ff, 4);
                         const dist = inter.sub(tool.fast_move.start);
-                        if (dist.length() > 1) { //Draw the plane
-                            const sc = 64;
-                            const b1 = dist.norm();
-                            const b2 = b1.cross(norm);
-                            const p0 = tool.fast_move.start.add(b1.scale(sc));
-                            const p1 = tool.fast_move.start.add(b2.scale(sc));
-                            const p2 = tool.fast_move.start.add(b1.scale(-sc));
-                            const p3 = tool.fast_move.start.add(b2.scale(-sc));
-                            td.draw.convexPoly(&.{ p0, p1, p2, p3 }, 0xff88);
-                            draw_nd.convexPoly(&.{ p0, p1, p2, p3 }, 0xff44);
-                        }
                         origin_mut = origin.add(dist);
+                        text_pos = tool.fast_move.start;
                     }
                 }
                 if (giz_active_pre == .low)
@@ -386,7 +374,7 @@ pub const Translate = struct {
                 .falling => tool._delta = Vec3.zero(),
             }
             if (giz_active == .high) {
-                toolcom.drawDistance(origin, dist, &self.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
+                toolcom.drawDistance(text_pos, dist, &self.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
             }
             // on giz -> rising, dupe selected and use that until giz_active -> low
             // on event -> unFocus, if we have a selection, put it back
