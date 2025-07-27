@@ -182,6 +182,20 @@ pub const CubeDraw = struct {
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
         const snap = if (tool.snap_new_verts) ed.grid else grid.Snap.zero();
         const bounds = tool.bb_gizmo.aabbGizmo(&tool.start, &tool.end, rc, ed.edit_state.lmouse, ed.grid, draw_nd);
+
+        {
+            var tp = td.text_param;
+            tp.background_rect = 0xff;
+            toolutil.drawBBDimensions(
+                bounds[0],
+                bounds[1],
+                draw_nd,
+                tp,
+                td.screen_area,
+                td.view_3d.*,
+            );
+        }
+
         if (ed.edit_state.lmouse == .falling) {
             //tool.start = bounds[0];
             //tool.end = bounds[1];

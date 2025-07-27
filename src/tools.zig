@@ -20,6 +20,7 @@ const iArea = guis.iArea;
 const iWindow = guis.iWindow;
 const Wg = guis.Widget;
 const gridutil = @import("grid.zig");
+const toolutil = @import("tool_common.zig");
 
 pub usingnamespace @import("tools/cube_draw.zig");
 pub usingnamespace @import("tools/texture.zig");
@@ -400,7 +401,6 @@ pub const VertexTranslate = struct {
                 draw_nd,
                 td.screen_area,
                 td.view_3d.*,
-                //ed.edit_state.mpos,
                 ed,
             );
             is_active = !(giz_active == .low);
@@ -409,6 +409,9 @@ pub const VertexTranslate = struct {
             const real_commit = giz_active == .high and commit;
 
             const dist = ed.grid.snapV3(origin_mut.sub(origin));
+            if (giz_active == .high) {
+                toolutil.drawDistance(origin, dist, &ed.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
+            }
             for (selected_slice) |id| {
                 const manip_verts = self.selected.getPtr(id) orelse continue;
 
@@ -604,6 +607,7 @@ pub const FastFaceManip = struct {
     main_id: ?ecs.EcsT.Id = null,
 
     draw_grid: bool = false,
+    draw_text: bool = true,
 
     selected: std.ArrayList(Selected),
 
@@ -733,6 +737,17 @@ pub const FastFaceManip = struct {
                             if (util3d.planeNormalGizmo(self.start, plane_norm, ray)) |inter_| {
                                 _, const pos = inter_;
                                 const dist = editor.grid.snapV3(pos);
+
+                                if (self.draw_text) {
+                                    toolutil.drawDistance(
+                                        self.start,
+                                        dist,
+                                        &editor.draw_state.screen_space_text_ctx,
+                                        td.text_param,
+                                        td.screen_area,
+                                        td.view_3d.*,
+                                    );
+                                }
 
                                 if (self.draw_grid) {
                                     const counts = editor.grid.countV3(dist);
@@ -1220,6 +1235,7 @@ pub const TranslateFace = struct {
 
                     if (giz_active == .high) {
                         const dist = self.grid.snapV3(origin.sub(origin_i));
+                        toolutil.drawDistance(origin_i, dist, &self.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
                         try solid.drawImmediate(td.draw, self, dist, side.index.items);
                         if (self.edit_state.rmouse == .rising) {
                             //try solid.translateSide(id, dist, self, s_i);

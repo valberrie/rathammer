@@ -6,6 +6,55 @@ const util3d = @import("util_3d.zig");
 const Editor = @import("editor.zig").Context;
 const grid = @import("grid.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
+const Font = graph.FontUtil.PublicFontInterface;
+
+pub fn drawDistance(start: Vec3, delta: Vec3, draw: *DrawCtx, tp: DrawCtx.TextParam, screen_area: graph.Rect, view: graph.za.Mat4) void {
+    var tt = tp;
+    tt.background_rect = 0xaa;
+    const ss = util3d.worldToScreenSpace(screen_area, view, start.add(delta)).add(
+        .{ .x = 0, .y = 0 },
+    );
+
+    draw.textFmt(ss, "{d} {d} {d}", .{ delta.x(), delta.y(), delta.z() }, tt);
+}
+
+pub fn drawPoint(point: Vec3, draw: *DrawCtx, tp: DrawCtx.TextParam, screen_area: graph.Rect, view: graph.za.Mat4) void {
+    var tt = tp;
+    tt.background_rect = 0xaa;
+    const ss = util3d.worldToScreenSpace(screen_area, view, point).add(
+        .{ .x = 0, .y = 0 },
+    );
+
+    draw.textFmt(ss, "{d} {d} {d}", .{ point.x(), point.y(), point.z() }, tt);
+}
+
+pub fn drawBBDimensions(min: Vec3, max: Vec3, draw: *DrawCtx, t: DrawCtx.TextParam, screen_area: graph.Rect, view: graph.za.Mat4) void {
+    const cc = util3d.cubeFromBounds(min, max);
+    const ex = cc[1];
+    const hx = ex.scale(0.5);
+
+    {
+        const pos = cc[0].add(Vec3.new(hx.x(), 0, hx.z()));
+        const ss = util3d.worldToScreenSpace(screen_area, view, pos);
+        draw.textFmt(ss, "{d}", .{cc[1].x()}, t);
+        const start = Vec3.new(cc[0].x(), cc[0].y(), cc[0].z() + cc[1].z() / 2);
+        draw.line3D(start, start.add(Vec3.new(cc[1].x(), 0, 0)), 0xff, 1);
+    }
+    {
+        const pos = cc[0].add(Vec3.new(0, hx.y(), hx.z()));
+        const ss = util3d.worldToScreenSpace(screen_area, view, pos);
+        draw.textFmt(ss, "{d}", .{ex.y()}, t);
+        const start = cc[0].add(Vec3.new(0, 0, hx.z()));
+        draw.line3D(start, start.add(Vec3.new(0, ex.y(), 0)), 0xff, 1);
+    }
+    {
+        const pos = cc[0].add(hx);
+        const ss = util3d.worldToScreenSpace(screen_area, view, pos);
+        draw.textFmt(ss, "{d}", .{ex.z()}, t);
+        const start = cc[0].add(Vec3.new(hx.x(), hx.y(), 0));
+        draw.line3D(start, start.add(Vec3.new(0, 0, ex.z())), 0xff, 1);
+    }
+}
 
 pub const AABBGizmo = struct {
     start_point: Vec3 = Vec3.zero(),
@@ -150,4 +199,8 @@ pub const DrawBoundingVolume = struct {
             },
         }
     }
+};
+
+pub const FastMove = struct {
+    pub fn start() !void {}
 };

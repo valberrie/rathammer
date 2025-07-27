@@ -8,6 +8,7 @@ const raycast = @import("../raycast_solid.zig");
 const DrawCtx = graph.ImmediateDrawingContext;
 const undo = @import("../undo.zig");
 const Vec3 = graph.za.Vec3;
+const toolutil = @import("../tool_common.zig");
 
 pub const Clipping = struct {
     pub threadlocal var tool_id: tools.ToolReg = tools.initToolReg;
@@ -211,6 +212,11 @@ pub const Clipping = struct {
                     } else {
                         draw_nd.point3D(p, point_color[i], ed.config.dot_size);
                     }
+                }
+                { // Draw the numbers
+                    toolutil.drawPoint(p0, &ed.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
+                    toolutil.drawPoint(p1, &ed.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
+                    toolutil.drawPoint(p2, &ed.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
                 }
 
                 const pnorm = util3d.trianglePlane(.{ p0, p1, p2 }).norm();

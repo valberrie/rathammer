@@ -235,7 +235,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const console_win = try ConsoleWindow.create(&gui, editor, &editor.shell.cb_vt);
     try gui.addWindow(&console_win.vt, Rec(0, 0, 800, 600));
 
-    const main_3d_id = try editor.panes.add(try editor_view.Main3DView.create(editor.panes.alloc, &os9gui));
+    const main_3d_id = try editor.panes.add(try editor_view.Main3DView.create(editor.panes.alloc, &font.font, gui.style.config.text_h));
     const main_2d_id = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .y));
     const main_2d_id2 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .x));
     const main_2d_id3 = try editor.panes.add(try Ctx2dView.create(editor.panes.alloc, .z));

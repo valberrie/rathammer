@@ -96,7 +96,7 @@ pub const Gizmo = struct {
             Vec3.new(pz, oz / 2, pz), //xz
             Vec3.new(oz / 2, pz, pz), //xz
         };
-        const al = 0xaa;
+        const al: u32 = 0xaa;
         const colors = [cube_orig.len]u32{
             0xff000000 + al,
             0xff0000 + al,
@@ -106,9 +106,11 @@ pub const Gizmo = struct {
             0xffff00 + al,
         };
         const ind = self.selected_axis.index() orelse 100000;
-        for (cube_orig, 0..) |co, i| {
-            const color = if (i == ind) 0xffff_ffff else colors[i];
-            draw.cube(co, cubes[i], color);
+        if (lmouse != .high) {
+            for (cube_orig, 0..) |co, i| {
+                const color = if (i == ind) 0xffff_ff88 else colors[i];
+                draw.cube(co, cubes[i], color);
+            }
         }
 
         var min_dist: f32 = std.math.floatMax(f32);

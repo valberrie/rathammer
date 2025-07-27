@@ -187,6 +187,7 @@ pub const Context = struct {
 
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,
+        screen_space_text_ctx: graph.ImmediateDrawingContext,
     },
 
     selection: Selection,
@@ -336,6 +337,7 @@ pub const Context = struct {
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
+                .screen_space_text_ctx = DrawCtx.init(alloc),
                 .basic_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
                     .{ .path = "basic.vert", .t = .vert },
                     .{ .path = "basic.frag", .t = .frag },
@@ -466,6 +468,7 @@ pub const Context = struct {
         }
         self.meshmap.deinit();
         self.draw_state.ctx.deinit();
+        self.draw_state.screen_space_text_ctx.deinit();
         if (self.draw_state.pointfile) |pf|
             pf.verts.deinit();
         if (self.draw_state.portalfile) |pf|
@@ -1029,17 +1032,17 @@ pub const Context = struct {
         loadctx.cb("csg generated");
     }
 
-    pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx, font: *graph.FontInterface) void {
+    pub fn drawToolbar(self: *Self, area: graph.Rect, draw: *DrawCtx, font: *graph.FontInterface, fh: f32) void {
         const start = area.pos();
-        const w = 100;
+        const w = fh * 5;
         const tool_index = self.edit_state.__tool_index;
         for (self.tools.vtables.items, 0..) |tool, i| {
             const fi: f32 = @floatFromInt(i);
-            const rec = graph.Rec(start.x + fi * w, start.y, 100, 100);
+            const rec = graph.Rec(start.x + fi * w, start.y, w, w);
             tool.tool_icon_fn(tool, draw, self, rec);
             var buf: [32]u8 = undefined;
             const n = if (i < self.config.keys.tool.items.len) self.config.keys.tool.items[i].b.nameFull(&buf) else "NONE";
-            draw.textClipped(rec, "{s}", .{n}, .{ .px_size = 32, .font = font, .color = 0xff }, .left);
+            draw.textClipped(rec, "{s}", .{n}, .{ .px_size = fh, .font = font, .color = 0xff }, .left);
             if (tool_index == i) {
                 draw.rectBorder(rec, 3, 0x00ff00ff);
             }
