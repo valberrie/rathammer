@@ -129,7 +129,9 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                         //because some class's don't specify it even though they need it.
                         if (std.mem.eql(u8, "origin", kv.key_ptr.*))
                             continue;
-                        try vr.writeKv(kv.key_ptr.*, kv.value_ptr.slice());
+                        const slice = kv.value_ptr.slice();
+                        if (slice.len > 0 and kv.key_ptr.*.len > 0)
+                            try vr.writeKv(kv.key_ptr.*, kv.value_ptr.slice());
                     }
                 }
 
