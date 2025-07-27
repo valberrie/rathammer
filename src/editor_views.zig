@@ -42,15 +42,15 @@ pub const Main3DView = struct {
         draw3Dview(editor, screen_area, d.draw, self.font, self.fh) catch return;
     }
 
-    pub fn create(alloc: std.mem.Allocator, os9gui: *Os9Gui) !*panereg.iPane {
+    pub fn create(alloc: std.mem.Allocator, font: *graph.FontUtil.PublicFontInterface, font_h: f32) !*panereg.iPane {
         var ret = try alloc.create(@This());
         ret.* = .{
             .vt = .{
                 .deinit_fn = &@This().deinit,
                 .draw_fn = &@This().draw_fn,
             },
-            .font = os9gui.font,
-            .fh = os9gui.style.config.text_h,
+            .font = font,
+            .fh = font_h,
         };
         return &ret.vt;
     }
@@ -472,8 +472,8 @@ pub fn draw3Dview(
 
     try draw.flush(null, self.draw_state.cam3d);
     //Crosshair
-    const cw = 4;
-    const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
+    //const cw = 4;
+    //const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     try draw_nd.flush(null, self.draw_state.cam3d);
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
@@ -517,13 +517,18 @@ pub fn draw3Dview(
         mt.drawBgRect(0x99, fh * 30);
     }
 
-    self.drawToolbar(graph.Rec(0, screen_area.h - 100, 1000, 1000), draw, font);
-    draw.rect(graph.Rec(
-        crossp.x,
-        crossp.y,
-        cw * 2,
-        cw * 2,
-    ), 0xffffffff);
+    const off = fh * 5;
+    self.drawToolbar(graph.Rec(0, screen_area.h - off, screen_area.w, off), draw, font, fh);
+    if (self.asset.getRectFromName("crosshair.png")) |cross| {
+        const start = screen_area.center().sub(cross.dim().scale(0.5));
+        draw.rectTex(graph.Rec(
+            @trunc(start.x),
+            @trunc(start.y),
+            cross.w,
+            cross.h,
+        ), cross, self.asset_atlas);
+    }
+
     try draw.flush(null, null);
 }
 
