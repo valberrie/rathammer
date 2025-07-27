@@ -40,6 +40,8 @@ pub const TextureTool = struct {
 
         make_disp,
         subdivide,
+
+        apply_selection,
     };
     const GuiTextEnum = enum {
         uscale,
@@ -136,9 +138,10 @@ pub const TextureTool = struct {
         ly.pushHeight(Wg.TextView.heightForN(gui, 4));
         area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{ .mode = .split_on_space }));
         {
-            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 3 };
             area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Reset face world", H.btn(self, .reset_world)));
             area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Reset face norm", H.btn(self, .reset_norm)));
+            area_vt.addChildOpt(gui, win, Wg.Button.build(gui, hy.getArea(), "Apply to selection", H.btn(self, .apply_selection)));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -266,12 +269,35 @@ pub const TextureTool = struct {
         self.btn_cbErr(id, gui, win) catch return;
     }
     pub fn btn_cbErr(self: *@This(), id: usize, _: *Gui, _: *guis.iWindow) !void {
+        const btn_k = @as(GuiBtnEnum, @enumFromInt(id));
+        switch (btn_k) {
+            else => {},
+            .apply_selection => {
+                const selection = self.ed.selection.getSlice();
+                std.debug.print("Start apply\n", .{});
+                const selected_mat = (self.ed.asset_browser.selected_mat_vpk_id) orelse return;
+
+                const ustack = try self.ed.undoctx.pushNewFmt("texture apply", .{});
+                for (selection) |sel_id| {
+                    if (self.ed.getComponent(sel_id, .solid)) |solid| {
+                        for (solid.sides.items, 0..) |*sp, side_id| {
+                            const old_s = undo.UndoTextureManip.State{ .u = sp.u, .v = sp.v, .tex_id = sp.tex_id, .lightmapscale = sp.lightmapscale };
+                            var new_s = old_s;
+                            new_s.tex_id = selected_mat;
+                            try ustack.append(try undo.UndoTextureManip.create(self.ed.undoctx.alloc, old_s, new_s, sel_id, @intCast(side_id)));
+                        }
+                    }
+                }
+                std.debug.print("Applyied {d}\n", .{ustack.items.len});
+                undo.applyRedo(ustack.items, self.ed);
+            },
+        }
         const sel = (self.getCurrentlySelected(self.ed) catch null) orelse return;
         const side = sel.side;
         const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
         var new = old;
-        const btn_k = @as(GuiBtnEnum, @enumFromInt(id));
         switch (btn_k) {
+            .apply_selection => {},
             .j_fit, .j_left, .j_right, .j_top, .j_bottom, .j_center => {
                 const res = side.justify(sel.solid.verts.items, switch (btn_k) {
                     .j_fit => .fit,
