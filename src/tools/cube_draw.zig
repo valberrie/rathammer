@@ -36,6 +36,7 @@ pub const CubeDraw = struct {
         custom,
         min_w,
         max_w,
+        last,
     } = .grid,
 
     primitive_settings: struct {
@@ -64,6 +65,7 @@ pub const CubeDraw = struct {
     snap_z: bool = false,
 
     plane_z: f32 = 0,
+    last_height: f32 = 16,
 
     post_state: enum {
         reset,
@@ -170,6 +172,7 @@ pub const CubeDraw = struct {
             .custom => self.custom_height,
             .min_w => @min(@abs(dim.x()), @abs(dim.y())),
             .max_w => @max(@abs(dim.x()), @abs(dim.y())),
+            .last => self.last_height,
         };
     }
 
@@ -298,6 +301,7 @@ pub const CubeDraw = struct {
         const vpk_id = ed.asset_browser.selected_mat_vpk_id orelse 0;
         const ustack = try ed.undoctx.pushNewFmt("draw cube", .{});
         defer undo.applyRedo(ustack.items, ed);
+        self.last_height = @abs(self.start.z() - self.end.z());
         if (opts.select) {
             ed.selection.clear();
             ed.selection.mode = .many;
