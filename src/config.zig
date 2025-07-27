@@ -104,10 +104,12 @@ pub const GameEntry = struct {
     pub const GameInfo = struct {
         base_dir: []const u8,
         game_dir: []const u8,
+        gameinfo_name: []const u8 = "", //Optional
     };
     pub const MapBuilder = struct {
-        bsp_dir: []const u8 = "",
-        exe_dir: []const u8 = "",
+        game_dir: []const u8 = "",
+        game_name: []const u8 = "",
+        output_dir: []const u8 = "",
     };
     gameinfo: std.ArrayList(GameInfo),
 

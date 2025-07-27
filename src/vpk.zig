@@ -326,7 +326,6 @@ pub const Context = struct {
                             const fname_id = try self.res_map.getPut(fname_stored);
                             const res_id = encodeResourceId(ext_id, path_id, fname_id);
                             const entry = try self.entries.getOrPut(res_id);
-                            std.debug.print("adding loose {s}:{s}:{s}\n", .{ path_stored, fname_stored, ext_stored });
                             if (!entry.found_existing) {
                                 entry.value_ptr.* = Entry{
                                     .res_id = res_id,

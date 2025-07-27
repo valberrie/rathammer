@@ -402,7 +402,7 @@ pub const Context = struct {
             const base_dir_ = util.openDirFatal(cwd, gamei.base_dir, .{}, custom_cwd_msg);
             const game_dir_ = util.openDirFatal(cwd, gamei.game_dir, .{}, custom_cwd_msg);
 
-            try gameinfo.loadGameinfo(self.alloc, base_dir_, game_dir_, &self.vpkctx, loadctx);
+            try gameinfo.loadGameinfo(self.alloc, base_dir_, game_dir_, &self.vpkctx, loadctx, if (gamei.gameinfo_name.len != 0) gamei.gameinfo_name else "gameinfo.txt");
         }
 
         self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave };
@@ -1185,21 +1185,15 @@ pub const Context = struct {
                     try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
                 } else |_| {}
 
-                //const gname = name_blk: {
-                //    const game_name = self.game_conf.game_dir;
-                //    const start = if (std.mem.lastIndexOfScalar(u8, game_name, '/')) |i| i + 1 else 0;
-                //    break :name_blk game_name[start..];
-                //};
+                try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
+                    .vmf = "dump.vmf",
+                    .gamedir_pre = self.game_conf.mapbuilder.game_dir,
+                    .gamename = self.game_conf.mapbuilder.game_name,
 
-                //try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
-                //    .vmf = "dump.vmf",
-                //    .gamedir_pre = self.game_conf.base_dir,
-                //    .gamename = gname,
-                //    //TODO put this in config
-                //    .outputdir = try self.printScratch("hl2/maps", .{}),
-                //    .cwd = self.dirs.cwd,
-                //    .tmpdir = TMP_DIR,
-                //});
+                    .outputdir = self.game_conf.mapbuilder.output_dir,
+                    .cwd = self.dirs.cwd,
+                    .tmpdir = TMP_DIR,
+                });
             }
         }
 
