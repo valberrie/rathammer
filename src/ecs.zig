@@ -86,7 +86,7 @@ pub const Groups = struct {
             return self.*;
         }
 
-        pub fn serial(self: @This(), _: anytype, jw: anytype) !void {
+        pub fn serial(self: @This(), _: anytype, jw: anytype, _: EcsT.Id) !void {
             try jw.write(self.id);
         }
 
@@ -610,7 +610,7 @@ pub const Side = struct {
         try mesh.indicies.appendSlice(indexs);
     }
 
-    pub fn serial(self: @This(), editor: *Editor, jw: anytype) !void {
+    pub fn serial(self: @This(), editor: *Editor, jw: anytype, ent_id: EcsT.Id) !void {
         try jw.beginObject();
         {
             try jw.objectField("index");
@@ -626,15 +626,15 @@ pub const Side = struct {
             }
             try jw.endArray();
             try jw.objectField("u");
-            try editor.writeComponentToJson(jw, self.u);
+            try editor.writeComponentToJson(jw, self.u, ent_id);
             try jw.objectField("v");
-            try editor.writeComponentToJson(jw, self.v);
+            try editor.writeComponentToJson(jw, self.v, ent_id);
             try jw.objectField("tex_id");
-            try editor.writeComponentToJson(jw, self.tex_id);
+            try editor.writeComponentToJson(jw, self.tex_id, ent_id);
             try jw.objectField("lightmapscale");
-            try editor.writeComponentToJson(jw, self.lightmapscale);
+            try editor.writeComponentToJson(jw, self.lightmapscale, ent_id);
             try jw.objectField("smoothing_groups");
-            try editor.writeComponentToJson(jw, self.smoothing_groups);
+            try editor.writeComponentToJson(jw, self.smoothing_groups, ent_id);
         }
         try jw.endObject();
     }
@@ -1577,7 +1577,7 @@ pub const EditorInfo = struct {
 
         return error.invalidEditorInfo;
     }
-    pub fn serial(self: @This(), _: *Editor, jw: anytype) !void {
+    pub fn serial(self: @This(), _: *Editor, jw: anytype, _: EcsT.Id) !void {
         const mask_count = self.vis_mask.masks.len;
         if (mask_count != 2)
             @compileError("fix this lol");
@@ -1730,13 +1730,22 @@ pub const KeyValues = struct {
         return ret;
     }
 
-    pub fn serial(self: @This(), _: *Editor, jw: anytype) !void {
-        //Pruning fields,
-        //we need ent class
+    pub fn serial(self: @This(), ed: *Editor, jw: anytype, id: EcsT.Id) !void {
+        const eclass = blk: {
+            //Not having a valid entclass should cause all kvs to be serialized.
+            //We can load maps with entities we don't know about and then still serialize them correctly.
+            const ent = ed.ecs.getPtr(id, .entity) catch break :blk null;
+            break :blk ed.fgd_ctx.getPtr(ent.class) orelse null;
+        };
+
         try jw.beginObject();
         {
             var it = self.map.iterator();
             while (it.next()) |item| {
+                if (eclass) |entcl| {
+                    if (!entcl.fields.contains(item.key_ptr.*)) //Prune fields
+                        continue;
+                }
                 try jw.objectField(item.key_ptr.*);
                 try jw.write(item.value_ptr.slice());
             }

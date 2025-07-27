@@ -598,7 +598,7 @@ pub const Context = struct {
             {
                 try jwr.beginObject();
                 try jwr.objectField("recent_mat");
-                try self.writeComponentToJson(&jwr, self.asset_browser.recent_mats.list);
+                try self.writeComponentToJson(&jwr, self.asset_browser.recent_mats.list, 0);
                 try jwr.endObject();
             }
 
@@ -627,7 +627,7 @@ pub const Context = struct {
                                 if (ent.isSet(f_i)) {
                                     try jwr.objectField(field.name);
                                     const ptr = try self.ecs.getPtr(@intCast(id), @enumFromInt(f_i));
-                                    try self.writeComponentToJson(&jwr, ptr.*);
+                                    try self.writeComponentToJson(&jwr, ptr.*, @intCast(id));
                                 }
                             }
                         }
@@ -642,7 +642,7 @@ pub const Context = struct {
         try bwr.flush();
     }
 
-    pub fn writeComponentToJson(self: *Self, jw: anytype, comp: anytype) !void {
+    pub fn writeComponentToJson(self: *Self, jw: anytype, comp: anytype, id: EcsT.Id) !void {
         const T = @TypeOf(comp);
         const info = @typeInfo(T);
         switch (T) {
@@ -662,12 +662,12 @@ pub const Context = struct {
             .int, .float, .bool => try jw.write(comp),
             .optional => {
                 if (comp) |p|
-                    return try self.writeComponentToJson(jw, p);
+                    return try self.writeComponentToJson(jw, p, id);
                 return try jw.write(null);
             },
             .@"struct" => |s| {
                 if (std.meta.hasFn(T, "serial")) {
-                    return try comp.serial(self, jw);
+                    return try comp.serial(self, jw, id);
                 }
                 if (vdf.getArrayListChild(@TypeOf(comp))) |child| {
                     if (child == u8) {
@@ -675,7 +675,7 @@ pub const Context = struct {
                     } else {
                         try jw.beginArray();
                         for (comp.items) |item| {
-                            try self.writeComponentToJson(jw, item);
+                            try self.writeComponentToJson(jw, item, id);
                         }
                         try jw.endArray();
                     }
@@ -687,7 +687,7 @@ pub const Context = struct {
 
                     } else {
                         try jw.objectField(field.name);
-                        try self.writeComponentToJson(jw, @field(comp, field.name));
+                        try self.writeComponentToJson(jw, @field(comp, field.name), id);
                     }
                 }
                 try jw.endObject();
