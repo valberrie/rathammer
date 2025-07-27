@@ -28,6 +28,7 @@ pub const PauseWindow = struct {
 
     const Textboxes = enum {
         set_import_visgroup,
+        set_skyname,
     };
 
     const HelpText = struct {
@@ -144,7 +145,13 @@ pub const PauseWindow = struct {
         const inset = GuiHelp.insetAreaForWindowFrame(gui, vt.area.area);
         _ = self.area.addEmpty(gui, vt, graph.Rec(0, 0, 0, 0));
 
-        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{ "main", "keybinds", "visgroup", "graphics" }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
+        self.area.addChildOpt(gui, vt, Wg.Tabs.build(gui, inset, &.{
+            "main",
+            "keybinds",
+            "visgroup",
+            "graphics",
+            "mapprops",
+        }, vt, .{ .build_cb = &buildTabs, .cb_vt = &self.area, .index_ptr = &self.tab_index }));
     }
 
     fn buildTabs(win_vt: *iArea, vt: *iArea, tab: []const u8, gui: *Gui, win: *iWindow) void {
@@ -155,6 +162,16 @@ pub const PauseWindow = struct {
 
             //var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
             //vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome to visgroup", null));
+        }
+        if (eql(u8, tab, "mapprops")) {
+            var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area };
+            if (guis.label(vt, gui, win, ly.getArea(), "Set skybox: ", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
+                    .init_string = "",
+                    .commit_cb = &textbox_cb,
+                    .commit_vt = &self.area,
+                    .user_id = @intFromEnum(Textboxes.set_skyname),
+                }));
         }
         if (eql(u8, tab, "graphics")) {
             var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area };
@@ -285,9 +302,12 @@ pub const PauseWindow = struct {
     pub fn textbox_cb(vt: *iArea, _: *Gui, string: []const u8, id: usize) void {
         const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
 
+        const str = self.editor.storeString(string) catch return;
         switch (@as(Textboxes, @enumFromInt(id))) {
+            .set_skyname => {
+                self.editor.skybox.loadSky(str, &self.editor.vpkctx) catch return;
+            },
             .set_import_visgroup => {
-                const str = self.editor.storeString(string) catch return;
                 self.editor.hacky_extra_vmf.override_vis_group = str;
             },
         }

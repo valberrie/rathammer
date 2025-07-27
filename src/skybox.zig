@@ -11,10 +11,10 @@ pub const Skybox = struct {
     alloc: std.mem.Allocator,
     sky_name: []const u8,
 
-    pub fn init(alloc: std.mem.Allocator) !Self {
-        const sky_shad = try graph.Shader.loadFromFilesystem(alloc, std.fs.cwd(), &.{
-            .{ .path = "src/cubemap.vert", .t = .vert },
-            .{ .path = "src/cubemap.frag", .t = .frag },
+    pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
+        const sky_shad = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
+            .{ .path = "cubemap.vert", .t = .vert },
+            .{ .path = "cubemap.frag", .t = .frag },
         });
         return Self{
             .alloc = alloc,
