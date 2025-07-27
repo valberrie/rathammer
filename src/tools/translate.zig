@@ -63,6 +63,13 @@ pub const Translate = struct {
     } = .last_selected,
     cb_vt: iArea = undefined,
 
+    /// Clicking anywhere will move in xy plane
+    enable_fast_move: bool = true,
+    fast_move: struct {
+        start: Vec3 = Vec3.zero(),
+        norm: ?Vec3 = null,
+    } = .{},
+
     cube_draw: toolcom.DrawBoundingVolume = .{},
     bb_gizmo: toolcom.AABBGizmo = .{},
 
@@ -303,7 +310,7 @@ pub const Translate = struct {
         if (giz_origin) |origin| {
             // Care must be taken if selection is changed while gizmo is active, as solids are removed from meshmaps
             var origin_mut = origin;
-            const giz_active = tool.gizmo_translate.handle(
+            const giz_active_pre = tool.gizmo_translate.handle(
                 origin,
                 &origin_mut,
                 self.draw_state.cam3d.pos,
@@ -315,11 +322,62 @@ pub const Translate = struct {
                 self,
             );
 
+            var giz_active = giz_active_pre;
+            const selected = self.selection.getSlice();
+            if (tool.enable_fast_move) {
+                const rc = self.camRay(td.screen_area, td.view_3d.*);
+                if (self.edit_state.lmouse == .rising and giz_active_pre == .low) {
+                    self.rayctx.reset();
+                    for (selected) |sel| {
+                        try self.rayctx.addPotentialSolid(&self.ecs, rc[0], rc[1], &self.csgctx, sel);
+                    }
+                    const pot = self.rayctx.sortFine();
+                    if (pot.len > 0) {
+                        const NORM_THRESH = 0.3;
+                        const p = pot[0];
+                        tool.fast_move.start = p.point;
+                        const plane_norm = Vec3.new(0, 0, 1); // We start with an xy plane
+                        if (@abs(self.draw_state.cam3d.front.dot(plane_norm)) < NORM_THRESH) {
+                            const solid = self.getComponent(p.id, .solid) orelse return;
+                            const norm = solid.sides.items[p.side_id orelse return].normal(solid);
+                            tool.fast_move.norm = norm;
+                            // use the face as a plane
+                        } else {
+                            tool.fast_move.norm = plane_norm;
+                        }
+                    }
+                }
+                if (self.edit_state.lmouse == .high and giz_active_pre == .low and tool.fast_move.norm != null) {
+                    const norm = tool.fast_move.norm orelse Vec3.new(0, 0, 1);
+                    draw_nd.point3D(tool.fast_move.start, 0xff00ffff, 16);
+                    if (util3d.doesRayIntersectPlane(rc[0], rc[1], tool.fast_move.start, norm)) |inter| {
+                        draw_nd.point3D(inter, 0x00ffffff, 16);
+                        draw_nd.line3D(tool.fast_move.start, inter, 0xff0000ff, 4);
+                        const dist = inter.sub(tool.fast_move.start);
+                        if (dist.length() > 1) { //Draw the plane
+                            const sc = 64;
+                            const b1 = dist.norm();
+                            const b2 = b1.cross(norm);
+                            const p0 = tool.fast_move.start.add(b1.scale(sc));
+                            const p1 = tool.fast_move.start.add(b2.scale(sc));
+                            const p2 = tool.fast_move.start.add(b1.scale(-sc));
+                            const p3 = tool.fast_move.start.add(b2.scale(-sc));
+                            td.draw.convexPoly(&.{ p0, p1, p2, p3 }, 0xff88);
+                            draw_nd.convexPoly(&.{ p0, p1, p2, p3 }, 0xff44);
+                        }
+                        origin_mut = origin.add(dist);
+                    }
+                }
+                if (giz_active_pre == .low)
+                    giz_active = self.edit_state.lmouse;
+                if (self.edit_state.lmouse == .low)
+                    tool.fast_move.norm = null;
+            }
+
             tool.modeSwitchCube(self, origin, giz_active == .high, draw_nd, td);
             const commit = self.edit_state.rmouse == .rising;
             const real_commit = giz_active == .high and commit;
             const dist = self.grid.snapV3(origin_mut.sub(origin));
-            const selected = self.selection.getSlice();
             const MAX_DRAWN_VERTS = 500;
             const draw_verts = selected.len < MAX_DRAWN_VERTS;
             switch (giz_active) {

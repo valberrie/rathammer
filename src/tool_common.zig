@@ -190,3 +190,7 @@ pub const DrawBoundingVolume = struct {
         }
     }
 };
+
+pub const FastMove = struct {
+    pub fn start() !void {}
+};
