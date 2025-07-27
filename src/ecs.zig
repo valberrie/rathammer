@@ -345,7 +345,7 @@ pub const Entity = struct {
                 try self.setAngle(ed, id, Vec3.new(floats[0], floats[1], floats[2]));
             },
             .model => {
-                try self.setModel(ed, id, .{ .name = val.slice() });
+                try self.setModel(ed, id, .{ .name = val.slice() }, false);
             },
             .none => {},
         }
@@ -397,8 +397,8 @@ pub const Entity = struct {
         }
     }
 
-    pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName) !void {
-        if (editor.vpkctx.resolveId(model) catch null) |idAndName| {
+    pub fn setModel(self: *@This(), editor: *Editor, self_id: EcsT.Id, model: vpk.IdOrName, sanitize: bool) !void {
+        if (editor.vpkctx.resolveId(model, sanitize) catch null) |idAndName| {
             self._model_id = idAndName.id;
             if (try editor.ecs.getOptPtr(self_id, .key_values)) |kvs| {
                 const stored_model = try editor.storeString(idAndName.name);
@@ -434,7 +434,7 @@ pub const Entity = struct {
                 } else {
                     if (editor.getComponent(self_id, .key_values)) |kvs| {
                         if (kvs.getString("model")) |model_name| {
-                            try self.setModel(editor, self_id, .{ .name = model_name });
+                            try self.setModel(editor, self_id, .{ .name = model_name }, false);
                         }
                     }
                 }

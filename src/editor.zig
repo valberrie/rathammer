@@ -912,7 +912,7 @@ pub const Context = struct {
             if (std.json.parseFromValue(struct { recent_mat: [][]const u8 }, self.alloc, ex.*, .{})) |v| {
                 defer v.deinit();
                 for (v.value.recent_mat) |mat| {
-                    if (try self.vpkctx.resolveId(.{ .name = mat })) |id| {
+                    if (try self.vpkctx.resolveId(.{ .name = mat }, false)) |id| {
                         try self.asset_browser.recent_mats.put(id.id);
                     }
                 }
@@ -1053,7 +1053,7 @@ pub const Context = struct {
             break :blk mdl_name;
         };
 
-        return try self.vpkctx.getResourceIdFmt("mdl", "{s}", .{mdln});
+        return try self.vpkctx.getResourceIdFmt("mdl", "{s}", .{mdln}, true);
     }
 
     pub fn loadModel(self: *Self, model_name: []const u8) !vpk.VpkResId {
@@ -1103,7 +1103,7 @@ pub const Context = struct {
     }
 
     pub fn loadTextureFromVpk(self: *Self, material: []const u8) !struct { tex: graph.Texture, res_id: vpk.VpkResId } {
-        const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{material}) orelse return .{ .tex = missingTexture(), .res_id = 0 };
+        const res_id = try self.vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{material}, true) orelse return .{ .tex = missingTexture(), .res_id = 0 };
         if (self.textures.get(res_id)) |tex| return .{ .tex = tex, .res_id = res_id };
 
         try self.loadTexture(res_id);
@@ -1262,7 +1262,7 @@ pub const Context = struct {
             while (m_it.next()) |ent| {
                 if (ent._model_id) |mid| {
                     if (std.mem.indexOfScalar(vpk.VpkResId, completed_ids.items, mid) != null) {
-                        try ent.setModel(self, m_it.i, .{ .id = mid });
+                        try ent.setModel(self, m_it.i, .{ .id = mid }, false);
                     }
                 }
             }

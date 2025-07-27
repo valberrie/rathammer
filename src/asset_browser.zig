@@ -123,7 +123,7 @@ pub const AssetBrowserGui = struct {
                 .model => {
                     const mid = self.selected_model_vpk_id orelse return;
                     if (try editor.ecs.getOptPtr(ds.target_id, .entity)) |ent| {
-                        try ent.setModel(editor, ds.target_id, .{ .id = mid });
+                        try ent.setModel(editor, ds.target_id, .{ .id = mid }, false);
                     }
                     //To set the model, first change the kv,
                     //then set ent._model_id
@@ -131,7 +131,7 @@ pub const AssetBrowserGui = struct {
                 .texture => {
                     const tid = self.selected_mat_vpk_id orelse return;
                     if (try editor.ecs.getOptPtr(ds.target_id, .key_values)) |ent| {
-                        if (try editor.vpkctx.resolveId(.{ .id = tid })) |idd| {
+                        if (try editor.vpkctx.resolveId(.{ .id = tid }, false)) |idd| {
                             //var name = idd.name;
                             //if (std.mem.startsWith(u8, name, "materials/"))
                             //    name = idd.name["materials/".len..];

@@ -172,6 +172,7 @@ pub fn loadModelCrappy(
         "{s}",
         .{mdln},
         &thread_state.vtf_file_buffer,
+        true,
     ) orelse return error.nomdl, print);
     defer {
         for (info.texture_paths.items) |item|
@@ -201,7 +202,7 @@ pub fn loadModelCrappy(
             }
 
             try scratch.writer().print("{s}{s}", .{ real_tpath, tname });
-            const tex_res_id = try vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{scratch.items}) orelse continue :inner;
+            const tex_res_id = try vpkctx.getResourceIdFmt("vmt", "materials/{s}", .{scratch.items}, true) orelse continue :inner;
             try pool_state.loadTexture(tex_res_id, vpkctx);
             try texts.append(tex_res_id);
             continue :outer;
@@ -220,6 +221,7 @@ pub fn loadModelCrappy(
             "{s}",
             .{mdln},
             &thread_state.vtf_file_buffer,
+            true,
         ) orelse return error.notFound;
         var fbs_vvd = std.io.FixedBufferStream([]const u8){ .buffer = slice_vvd, .pos = 0 };
         const r = fbs_vvd.reader();
@@ -290,6 +292,7 @@ pub fn loadModelCrappy(
             .{mdln},
 
             &thread_state.vtf_file_buffer,
+            true,
         ) orelse return error.broken;
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
         const r1 = fbs.reader();

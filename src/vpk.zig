@@ -258,7 +258,7 @@ pub const Context = struct {
     }
 
     /// clobbers and returns memory from namebuf
-    pub fn resolveId(self: *Self, id: IdOrName) !?IdAndName {
+    pub fn resolveId(self: *Self, id: IdOrName, sanitize: bool) !?IdAndName {
         self.name_buf.clearRetainingCapacity();
         switch (id) {
             .id => |idd| {
@@ -270,7 +270,7 @@ pub const Context = struct {
                 };
             },
             .name => |name| {
-                const idd = try self.getResourceIdString(name) orelse return null;
+                const idd = try self.getResourceIdString(name, sanitize) orelse return null;
 
                 try self.name_buf.appendSlice(name);
                 return .{
@@ -314,7 +314,7 @@ pub const Context = struct {
                         .file => {
                             try strbuf.resize(prefix_len);
                             try strbuf.appendSlice(file.path);
-                            sanatizeVpkString(strbuf.items);
+                            //sanatizeVpkString(strbuf.items);
                             const split = splitPath(strbuf.items);
 
                             const ext_stored = try self.string_storage.store(split.ext);
@@ -479,13 +479,13 @@ pub const Context = struct {
     }
 
     /// Only call this from the main thread.
-    pub fn getFileTempFmt(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype) !?[]const u8 {
+    pub fn getFileTempFmt(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype, sanitize: bool) !?[]const u8 {
         //Also , race condition
-        return self.getFileTempFmtBuf(extension, fmt, args, &self.filebuf);
+        return self.getFileTempFmtBuf(extension, fmt, args, &self.filebuf, sanitize);
     }
 
-    pub fn getFileTempFmtBuf(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype, buf: *std.ArrayList(u8)) !?[]const u8 {
-        const res_id = try self.getResourceIdFmt(extension, fmt, args) orelse return null;
+    pub fn getFileTempFmtBuf(self: *Self, extension: []const u8, comptime fmt: []const u8, args: anytype, buf: *std.ArrayList(u8), sanitize: bool) !?[]const u8 {
+        const res_id = try self.getResourceIdFmt(extension, fmt, args, sanitize) orelse return null;
         buf.clearRetainingCapacity();
         return try self.getFileFromRes(res_id, buf);
     }
@@ -513,12 +513,13 @@ pub const Context = struct {
     }
 
     /// Thread safe
-    pub fn getResourceIdFmt(self: *Self, ext: []const u8, comptime fmt: []const u8, args: anytype) !?VpkResId {
+    pub fn getResourceIdFmt(self: *Self, ext: []const u8, comptime fmt: []const u8, args: anytype, sanitize: bool) !?VpkResId {
         self.mutex.lock();
         defer self.mutex.unlock();
         self.split_buf.clearRetainingCapacity();
         try self.split_buf.writer().print(fmt, args);
-        sanatizeVpkString(self.split_buf.items);
+        if (sanitize)
+            sanatizeVpkString(self.split_buf.items);
         //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
         const sl = self.split_buf.items;
         const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;
@@ -526,12 +527,13 @@ pub const Context = struct {
         return self.getResourceId(ext, sl[0..slash], sl[slash + 1 ..]);
     }
 
-    pub fn getResourceIdString(self: *Self, name: []const u8) !?VpkResId {
+    pub fn getResourceIdString(self: *Self, name: []const u8, sanitize: bool) !?VpkResId {
         self.mutex.lock();
         defer self.mutex.unlock();
         self.split_buf.clearRetainingCapacity();
         _ = try self.split_buf.writer().write(name);
-        sanatizeVpkString(self.split_buf.items);
+        if (sanitize)
+            sanatizeVpkString(self.split_buf.items);
         //_ = std.ascii.lowerString(self.split_buf.items, self.split_buf.items);
         const sl = self.split_buf.items;
         const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse return error.noSlash;

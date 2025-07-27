@@ -248,6 +248,7 @@ pub const Context = struct {
                                                 "materials/{s}",
                                                 .{base.literal},
                                                 &thread_state.vtf_file_buffer,
+                                                true,
                                             ) orelse {
                                                 std.debug.print("Not found: {s} \n", .{base.literal});
                                                 //std.debug.print("{s}\n", .{tt});

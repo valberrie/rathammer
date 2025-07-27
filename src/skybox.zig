@@ -76,7 +76,7 @@ pub const Skybox = struct {
         };
         const endings = [_][]const u8{ "ft", "bk", "lf", "rt", "up", "dn" };
         for (endings, 0..) |end, i| {
-            const vtf_buf = try vpkctx.getFileTempFmt("vtf", "materials/skybox/{s}{s}", .{ sky_name, end }) orelse {
+            const vtf_buf = try vpkctx.getFileTempFmt("vtf", "materials/skybox/{s}{s}", .{ sky_name, end }, true) orelse {
                 std.debug.print("Cant find sky {s}{s}\n", .{ sky_name, end });
                 continue;
             };

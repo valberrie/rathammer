@@ -25,8 +25,9 @@ pub const VpkMapper = struct {
         self.arena.deinit();
     }
 
-    pub fn getResourceIdString(self: *@This(), str: []const u8) !?vpk.VpkResId {
+    pub fn getResourceIdString(self: *@This(), str: []const u8, san: bool) !?vpk.VpkResId {
         if (self.str_map.get(str)) |id| return id;
+        _ = san;
 
         const duped = try self.arena.allocator().dupe(u8, str);
 
@@ -197,7 +198,7 @@ fn readComponentFromJson(ctx: InitFromJsonCtx, v: std.json.Value, T: type, vpkct
                 log.warn("invalid vpk id: {}", .{v});
                 return 0;
             }
-            const id = try vpkctx.getResourceIdString(v.string);
+            const id = try vpkctx.getResourceIdString(v.string, false);
             return id orelse return error.unknownId;
         },
         else => {},
