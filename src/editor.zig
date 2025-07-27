@@ -187,6 +187,7 @@ pub const Context = struct {
 
         /// we keep our own so that we can do some draw calls with depth some without.
         ctx: graph.ImmediateDrawingContext,
+        screen_space_text_ctx: graph.ImmediateDrawingContext,
     },
 
     selection: Selection,
@@ -336,6 +337,7 @@ pub const Context = struct {
 
             .draw_state = .{
                 .ctx = graph.ImmediateDrawingContext.init(alloc),
+                .screen_space_text_ctx = DrawCtx.init(alloc),
                 .basic_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
                     .{ .path = "basic.vert", .t = .vert },
                     .{ .path = "basic.frag", .t = .frag },
@@ -466,6 +468,7 @@ pub const Context = struct {
         }
         self.meshmap.deinit();
         self.draw_state.ctx.deinit();
+        self.draw_state.screen_space_text_ctx.deinit();
         if (self.draw_state.pointfile) |pf|
             pf.verts.deinit();
         if (self.draw_state.portalfile) |pf|

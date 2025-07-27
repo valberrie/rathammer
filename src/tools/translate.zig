@@ -212,6 +212,13 @@ pub const Translate = struct {
                 //td.view_3d.*,
                 //self.edit_state.mpos,
             );
+            if (giz_active == .high) {
+                var tt = td.text_param;
+                tt.background_rect = 0xaa;
+                const sn = snapV3(angle, tool.angle_snap);
+                const ss = util3d.worldToScreenSpace(td.screen_area, td.view_3d.*, origin);
+                self.draw_state.screen_space_text_ctx.textFmt(ss, "{d} {d} {d}", .{ sn.x(), sn.y(), sn.z() }, tt);
+            }
             tool.modeSwitchCube(self, origin, giz_active == .high, draw_nd, td);
             const commit = self.edit_state.rmouse == .rising;
             const real_commit = giz_active == .high and commit;
@@ -319,6 +326,9 @@ pub const Translate = struct {
                 .low, .rising => {},
                 .high => tool._delta = dist,
                 .falling => tool._delta = Vec3.zero(),
+            }
+            if (giz_active == .high) {
+                toolcom.drawDistance(origin, dist, &self.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
             }
             // on giz -> rising, dupe selected and use that until giz_active -> low
             // on event -> unFocus, if we have a selection, put it back

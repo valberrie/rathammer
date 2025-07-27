@@ -74,6 +74,7 @@ pub fn draw3Dview(
     );
     defer graph.c.glPolygonMode(graph.c.GL_FRONT_AND_BACK, graph.c.GL_FILL);
     try self.draw_state.ctx.beginNoClear(screen_area.dim());
+    try self.draw_state.screen_space_text_ctx.beginNoClear(screen_area.dim());
     draw.setViewport(screen_area);
     const old_dim = draw.screen_dimensions;
     draw.screen_dimensions = screen_area.dim();
@@ -475,6 +476,7 @@ pub fn draw3Dview(
     //const cw = 4;
     //const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
+
     try draw_nd.flush(null, self.draw_state.cam3d);
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
     { // text stuff
@@ -529,6 +531,7 @@ pub fn draw3Dview(
         ), cross, self.asset_atlas);
     }
 
+    try self.draw_state.screen_space_text_ctx.flush(null, null);
     try draw.flush(null, null);
 }
 
