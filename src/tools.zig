@@ -86,59 +86,6 @@ pub const ToolData = struct {
     text_param: graph.ImmediateDrawingContext.TextParam,
 };
 
-pub const ToolRegistryOld = struct {
-    const Self = @This();
-
-    tools: std.ArrayList(*i3DTool),
-    alloc: std.mem.Allocator,
-    name_map: std.StringHashMap(usize),
-
-    pub fn init(alloc: std.mem.Allocator) Self {
-        return .{
-            .alloc = alloc,
-            .tools = std.ArrayList(*i3DTool).init(alloc),
-            .name_map = std.StringHashMap(usize).init(alloc),
-        };
-    }
-
-    fn assertTool(comptime T: type) void {
-        if (!@hasDecl(T, "tool_id"))
-            @compileError("Tools must declare a: pub threadlocal var tool_id: ToolReg = initToolReg;");
-        if (@TypeOf(T.tool_id) != ToolReg)
-            @compileError("Invalid type for tool_id, should be ToolReg");
-    }
-
-    pub fn register(self: *Self, name: []const u8, comptime T: type) !void {
-        assertTool(T);
-
-        const alloc_name = try self.alloc.dupe(u8, name);
-        if (T.tool_id != null)
-            return error.toolAlreadyRegistered;
-
-        const id = self.tools.items.len;
-        try self.tools.append(try T.create(self.alloc));
-        T.tool_id = id;
-        try self.name_map.put(alloc_name, id);
-    }
-
-    pub fn getToolId(self: *Self, comptime T: type) !usize {
-        _ = self;
-        assertTool(T);
-        return T.tool_id orelse error.toolNotRegistered;
-    }
-
-    pub fn deinit(self: *Self) void {
-        var it = self.name_map.keyIterator();
-        while (it.next()) |item| {
-            self.alloc.free(item.*);
-        }
-        self.name_map.deinit();
-        for (self.tools.items) |item|
-            item.deinit_fn(item, self.alloc);
-        self.tools.deinit();
-    }
-};
-
 pub const VertexTranslate = struct {
     const Self = @This();
     const Btn = enum {
@@ -381,7 +328,7 @@ pub const VertexTranslate = struct {
         self.gizmo_position = self.gizmo_position.scale(1 / @as(f32, @floatFromInt(count)));
     }
 
-    //TODO make the gizmo have priority over adding/removing vertex
+    //TODO Make this suck less
     pub fn runVertex(self: *Self, td: ToolData, ed: *Editor) !void {
         const draw_nd = &ed.draw_state.ctx;
         const selected_slice = ed.selection.getSlice();
@@ -499,7 +446,6 @@ pub const VertexTranslate = struct {
                                     try offset_index.append(manip_verts.items(.index)[ind]);
                                 }
                             }
-                            std.debug.print("PUTTING THE UNDO\n", .{});
                             try ustack.append(try undo.UndoDisplacmentModify.create(
                                 ed.undoctx.alloc,
                                 id,
@@ -541,7 +487,6 @@ pub const VertexTranslate = struct {
             .mode = .split_on_space,
         }));
 
-        //area_vt.addChildOpt(gui, vt, Wg.Checkbox.build(gui, ly.getArea(), "select one", .{ .bool_ptr = &self. }, null));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Selection mode", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.selection_mode, .{}));
         area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Modify disps", .{ .bool_ptr = &self.do_displacements }, null));
@@ -665,9 +610,6 @@ pub const FastFaceManip = struct {
     pub fn runToolErr(self: *@This(), td: ToolData, editor: *Editor) !void {
         const draw_nd = &editor.draw_state.ctx;
         const selected_slice = editor.selection.getSlice();
-
-        //const id = (editor.selection.single_id) orelse return;
-        //const solid = editor.ecs.getOptPtr(id, .solid) catch return orelse return;
 
         const rm = editor.edit_state.rmouse;
         const lm = editor.edit_state.lmouse;

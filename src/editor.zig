@@ -206,26 +206,12 @@ pub const Context = struct {
         manual_hidden_count: usize = 0,
         default_group_entity: enum { none, func_detail } = .func_detail,
         __tool_index: usize = 0,
-        //tool_index: usize = 0,
-        ///// Set when the currently selected tool is selected again
-        //tool_reinit: bool = false,
-        ///// used to determine if the tool has changed
-        //last_frame_tool_index: usize = 0,
 
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
         mpos: graph.Vec2f = undefined,
-
-        //grid_snap: f32 = 16,
     } = .{},
     grid: grid_stuff.Snap = .{ .s = Vec3.set(16) },
-
-    //TODO this is inspector state
-    misc_gui_state: struct {
-        scroll_a: graph.Vec2f = .{ .x = 0, .y = 0 },
-        inspector_index: usize = 0,
-        selected_index: usize = 0,
-    } = .{},
 
     config: Conf.Config,
     game_conf: Conf.GameEntry,
@@ -244,7 +230,7 @@ pub const Context = struct {
     // just draw normally as the number of drawcalls be amortized with the good gui.
     asset_atlas: graph.Texture,
 
-    /// This arena is reset every frame
+    /// This arena is reset every editor.update()
     frame_arena: std.heap.ArenaAllocator,
     /// basename of map, without extension or path
     loaded_map_name: ?[]const u8 = null,
@@ -419,6 +405,7 @@ pub const Context = struct {
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
         try fgd.loadFgd(&self.fgd_ctx, fgd_dir, args.fgd orelse game_conf.fgd);
 
+        //The order in which these are registered maps to the order 'tool' keybinds are specified in config.vdf
         try self.tools.registerCustom("translate", tool_def.Translate, try tool_def.Translate.create(self.alloc, self));
         try self.tools.register("translate_face", tool_def.TranslateFace);
         try self.tools.register("place_model", tool_def.PlaceEntity);
@@ -654,7 +641,7 @@ pub const Context = struct {
                 if (self.vpkctx.namesFromId(comp)) |name| {
                     return try jw.print("\"{s}/{s}.{s}\"", .{ name.path, name.name, name.ext });
                 }
-                std.debug.print("THIS IS BAD, trying to serialize an id that has not been loaded yet\n", .{});
+                std.debug.print("THIS IS BAD, trying to serialize an id that has not been loaded yet, json will be null\n", .{});
                 return try jw.write(null);
             },
             Vec3 => return jw.print("\"{e} {e} {e}\"", .{ comp.x(), comp.y(), comp.z() }),

@@ -24,16 +24,16 @@ const LoadCtx = struct {
     pub fn addExpected(_: *Self, _: usize) void {}
 };
 
+// all resources in rathammer maps are fully specified.
+// Vmf's expect materials/, decals/, to be omitted.
+// Not models though, Nice one valve.
 fn sanatizeMaterialName(name: []const u8) []const u8 {
-    //materials
     const start = if (std.mem.startsWith(u8, name, "materials/")) "materials/".len else 0;
     const end_offset = if (std.mem.endsWith(u8, name, ".vmt")) ".vmt".len else 0;
     return name[start .. name.len - end_offset];
 }
-//How do we do the thing with disp
-//Rathammer stores disp as seperate entity
 
-//TODO load fgd and prune fields
+/// Does not free memory, use an arena.
 pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8, vpkmapper: anytype, groups: *ecs.Groups) !void {
     const outfile = try std.fs.cwd().createFile("dump.vmf", .{});
     defer outfile.close();
@@ -49,7 +49,7 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
         try vr.writeComment("See: https://github.com/nmalthouse/rathammer\n", .{});
         try vr.writeComment("rathammer_version  {s}\n", .{version.version});
         try vr.writeKv("versioninfo", vmf.VersionInfo{
-            .editorversion = 400, // These numbers are not real.
+            .editorversion = 400, // These numbers are taken from the sourcesdk maps
             .editorbuild = 2987,
             .mapversion = 1,
             .formatversion = 100,
@@ -174,7 +174,6 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
     }
 }
 
-/// We do not free any memory
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();

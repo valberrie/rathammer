@@ -60,11 +60,7 @@ test "classify" {
     try ex(.left, VertKind.classify(n1, w1, Vec3.new(2, -15, 7)));
     try ex(.left, VertKind.classify(n1, w1, Vec3.new(0, 0, 0)));
 }
-//Vector3D Plane::lineIntersection(const Vector3D &start, const Vector3D &end) const {
-//    Vector3D alongLine = end - start;
-//    float t = (w - start.dot(normal)) / alongLine.dot(normal);
-//    return start + alongLine * t;
-//}
+
 fn doesSegmentIntersectPlane(p0: Vec3, pn: Vec3, start: Vec3, end: Vec3) Vec3 {
     const dir = end.sub(start);
     const w = pn.dot(p0);

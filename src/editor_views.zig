@@ -228,14 +228,6 @@ pub fn draw3Dview(
         }
     }
 
-    if (false) { //draw displacment vert
-        var d_it = self.ecs.iterator(.displacement);
-        while (d_it.next()) |disp| {
-            for (disp.verts.items) |v|
-                draw.point3D(v, 0xffffffff);
-        }
-    }
-
     try draw.flush(null, self.draw_state.cam3d);
     const vis_mask = Editor.EcsT.getComponentMask(&.{ .invisible, .deleted });
     {
@@ -433,7 +425,6 @@ pub fn draw3Dview(
         try vt.runTool_fn(vt, td, self);
     }
     if (self.draw_state.tog.skybox) { //sky stuff
-        //const trans = graph.za.Mat4.fromTranslate(self.draw_state.cam3d.pos);
         const c = graph.c;
         c.glDepthMask(c.GL_FALSE);
         c.glDepthFunc(c.GL_LEQUAL);
@@ -472,9 +463,6 @@ pub fn draw3Dview(
     }
 
     try draw.flush(null, self.draw_state.cam3d);
-    //Crosshair
-    //const cw = 4;
-    //const crossp = screen_area.center().sub(.{ .x = cw, .y = cw });
     graph.c.glClear(graph.c.GL_DEPTH_BUFFER_BIT);
 
     try draw_nd.flush(null, self.draw_state.cam3d);

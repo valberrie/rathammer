@@ -8,7 +8,6 @@ threadlocal var error_msg_buffer: [1024]u8 = undefined;
 
 const config = @import("config");
 const vpk_dump_file_t = if (config.dump_vpk) std.fs.File else void;
-//TODO currently all loose files must be lowercase to get read
 
 pub const VpkResId = u64;
 
@@ -32,6 +31,8 @@ pub fn encodeResourceId(extension_index: u64, path_index: u64, entry_index: u64)
     return extension_index << 48 | path_index << 32 | entry_index;
 }
 /// All identifiers within the vpk are lowercased and \ -> /
+/// The same is done to all resources specified in source engine formats (vmf, vmt, mdl)
+/// This means any resources in loose directories must be lower case to get loaded.
 pub fn sanatizeVpkString(str: []u8) void {
     for (str) |*ch| {
         ch.* = switch (ch.*) {
@@ -160,7 +161,7 @@ pub const Context = struct {
 
     /// These map the strings found in vpk to a numeric id.
     /// Ids are not unique between maps. using encodeResourceId they uniquely identify any resource.
-    /// Id's are not shelf stable
+    /// Id's are not derived from the string, but the load order.
     extension_map: IdMap,
     path_map: IdMap,
     res_map: IdMap,

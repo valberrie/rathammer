@@ -1199,8 +1199,6 @@ pub const Displacements = struct {
     }
 };
 
-//TRANSLATE the startposition too
-//TODO make the displacment component an array of Displacment rather than making a seperate entity
 pub const Displacement = struct {
     pub const VectorRow = std.ArrayList(Vec3);
     pub const ScalarRow = std.ArrayList(f32);
@@ -1271,7 +1269,7 @@ pub const Displacement = struct {
     }
 
     pub fn initFromVmf(alloc: std.mem.Allocator, tex_id: vpk.VpkResId, parent_s: usize, dispinfo: *const vmf.DispInfo) !Self {
-        return .{
+        var ret = Displacement{
             ._verts = std.ArrayList(Vec3).init(alloc),
             ._index = std.ArrayList(u32).init(alloc),
             .tex_id = tex_id,
@@ -1287,6 +1285,25 @@ pub const Displacement = struct {
             .alphas = try dispinfo.alphas.clone(alloc),
             //.tri_tags = ScalarRow.init(alloc),
         };
+        const vper_row = vertsPerRow(ret.power);
+        const vcount = vper_row * vper_row;
+        const H = struct {
+            pub fn correctCount(count: usize, array: anytype, default: anytype) !void {
+                if (array.items.len != count) {
+                    std.debug.print("Displacment has invalid length, replacing\n", .{});
+                    array.clearRetainingCapacity();
+                    try array.appendNTimes(default, count);
+                }
+            }
+        };
+
+        try H.correctCount(vcount, &ret.normals, Vec3.new(0, 0, 1));
+        try H.correctCount(vcount, &ret.offsets, Vec3.new(0, 0, 0));
+        try H.correctCount(vcount, &ret.normal_offsets, Vec3.new(0, 0, 0));
+        try H.correctCount(vcount, &ret.dists, 0);
+        try H.correctCount(vcount, &ret.alphas, 0);
+
+        return ret;
     }
 
     pub fn getStartPos(self: *const Self, solid: *const Solid) !Vec3 {
