@@ -484,12 +484,6 @@ pub const Translate = struct {
             area_vt.addChildOpt(gui, win, St.build(gui, hy.getArea(), self.ed.grid.s.yMut(), com_o));
             area_vt.addChildOpt(gui, win, St.build(gui, hy.getArea(), self.ed.grid.s.zMut(), com_o));
         }
-        //if (guis.label(area_vt, gui, win, ly.getArea(), "Grid x", .{})) |ar|
-        //    area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.xMut(), com_o));
-        //if (guis.label(area_vt, gui, win, ly.getArea(), "Grid y", .{})) |ar|
-        //    area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.yMut(), com_o));
-        //if (guis.label(area_vt, gui, win, ly.getArea(), "Grid z", .{})) |ar|
-        //    area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.zMut(), com_o));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Set grid", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
                 .commit_cb = &@This().textbox_cb,
@@ -502,8 +496,6 @@ pub const Translate = struct {
         const CB = Wg.Checkbox.build;
         {
             var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 6 };
-            //ly.pushCount(2);
-            //var hy = guis.TableLayout{ .columns = 4, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
 
             area_vt.addChildOpt(gui, win, Wg.Text.build(gui, hy.getArea(), "Select Mask", .{}));
             const sl = &self.ed.selection.options;
@@ -519,7 +511,14 @@ pub const Translate = struct {
             var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
             area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select nearby", .{ .bool_ptr = &sl.select_nearby }, null));
             if (guis.label(area_vt, gui, win, hy.getArea(), "dist threshold", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &sl.nearby_distance, 0, 256, .{}));
+                area_vt.addChildOpt(gui, win, Wg.StaticSlider.build(gui, ar, &sl.nearby_distance, .{
+                    .min = 0,
+                    .max = 16,
+                    .default = 0,
+                    .display_bounds_while_editing = false,
+                    .clamp_edits = false,
+                }));
+            //area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &sl.nearby_distance, 0, 256, .{}));
         }
     }
 
