@@ -453,20 +453,31 @@ pub const Translate = struct {
         area_vt.addChildOpt(gui, win, Wg.TextView.build(gui, ly.getArea(), &.{doc}, win, .{
             .mode = .split_on_space,
         }));
+        const St = Wg.StaticSlider;
         if (guis.label(area_vt, gui, win, ly.getArea(), "Angle snap", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.angle_snap, 0, 360, .{
-                .nudge = 1,
-                .snap_mod = 15,
-                .snap_thresh = 3,
+            area_vt.addChildOpt(gui, win, St.build(gui, ar, &self.angle_snap, .{
+                .display_bounds_while_editing = false,
+                .min = 0,
+                .max = 360,
+                .default = 15,
+                .unit = "degrees",
+                .slide = .{ .snap = 5 },
             }));
 
-        const com_o = Wg.SliderOptions{ .nudge = 1, .snap_mod = 1, .snap_thresh = 0.5 };
+        const com_o = Wg.StaticSliderOpts{
+            .slide = .{ .snap = 1 },
+            .min = 0,
+            .max = 256,
+            .default = 16,
+            .unit = "hu",
+            .display_bounds_while_editing = false,
+        };
         if (guis.label(area_vt, gui, win, ly.getArea(), "Grid x", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, self.ed.grid.s.xMut(), 0, 1024, com_o));
+            area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.xMut(), com_o));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Grid y", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, self.ed.grid.s.yMut(), 0, 1024, com_o));
+            area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.yMut(), com_o));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Grid z", .{})) |ar|
-            area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, self.ed.grid.s.zMut(), 0, 1024, com_o));
+            area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.zMut(), com_o));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Set grid", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
                 .commit_cb = &@This().textbox_cb,

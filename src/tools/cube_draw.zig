@@ -40,7 +40,7 @@ pub const CubeDraw = struct {
     } = .grid,
 
     primitive_settings: struct {
-        nsegment: u32 = 16,
+        nsegment: f32 = 16,
         axis: prim_gen.Axis = .y,
         invert: bool = false,
         invert_x: bool = false,
@@ -112,6 +112,7 @@ pub const CubeDraw = struct {
             .mode = .split_on_space,
         }));
 
+        const SSlide = Wg.StaticSlider;
         { //All the damn settings
             ly.pushCount(6);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
@@ -126,15 +127,23 @@ pub const CubeDraw = struct {
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive, .{}));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "Segment", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.nsegment, 4, 64, .{ .nudge = 1 }));
+                area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.primitive_settings.nsegment, .{
+                    .min = 4,
+                    .max = 48,
+                    .default = 16,
+                    .display_bounds_while_editing = false,
+                    .display_kind = .integer,
+                }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive_settings.axis, .{}));
             area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invert", .{ .bool_ptr = &self.primitive_settings.invert }, null));
             if (guis.label(area_vt, gui, win, tly.getArea(), "angle", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.angle, 0, 360, .{
-                    .nudge = 0.1,
-                    .snap_mod = 15,
-                    .snap_thresh = 4,
+                area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.primitive_settings.angle, .{
+                    .min = 0,
+                    .max = 360,
+                    .default = 0,
+                    .display_bounds_while_editing = false,
+                    .slide = .{ .snap = 15 },
                 }));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "stair percf", .{})) |ar|
@@ -142,10 +151,12 @@ pub const CubeDraw = struct {
             if (guis.label(area_vt, gui, win, tly.getArea(), "stair percb", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.stairs_setting.back_perc, -1, 1, .{ .nudge = 0.1 }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "theta", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &self.primitive_settings.theta, 0, 360, .{
-                    .nudge = 0.1,
-                    .snap_mod = 15,
-                    .snap_thresh = 4,
+                area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.primitive_settings.theta, .{
+                    .min = 0,
+                    .max = 360,
+                    .default = 0,
+                    .display_bounds_while_editing = false,
+                    .slide = .{ .snap = 15 },
                 }));
             area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "snap ", .{ .bool_ptr = &self.snap_new_verts }, null));
         }
@@ -203,6 +214,7 @@ pub const CubeDraw = struct {
             //tool.start = bounds[0];
             //tool.end = bounds[1];
         }
+        const nsegment: u32 = @intFromFloat(std.math.clamp(tool.primitive_settings.nsegment, 2, 128));
         switch (tool.primitive) {
             .cylinder => {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
@@ -213,7 +225,7 @@ pub const CubeDraw = struct {
                 const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{
                     .r = r,
                     .z = z,
-                    .num_segment = tool.primitive_settings.nsegment,
+                    .num_segment = nsegment,
                     .grid = snap,
                 });
 
@@ -233,7 +245,7 @@ pub const CubeDraw = struct {
                     .r = r - 10,
                     .r2 = r,
                     .z = z,
-                    .num_segment = tool.primitive_settings.nsegment,
+                    .num_segment = nsegment,
                     .grid = snap,
                 });
 
@@ -249,8 +261,8 @@ pub const CubeDraw = struct {
                 const prim = try prim_gen.uvSphere(ed.frame_arena.allocator(), .{
                     .r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2),
                     .phi = tool.primitive_settings.theta,
-                    .phi_seg = set.nsegment,
-                    .theta_seg = set.nsegment,
+                    .phi_seg = nsegment,
+                    .theta_seg = nsegment,
                     .grid = snap,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
