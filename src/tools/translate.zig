@@ -62,6 +62,7 @@ pub const Translate = struct {
         last_selected,
     } = .last_selected,
     cb_vt: iArea = undefined,
+    win_ptr: ?*iWindow = null,
 
     /// Clicking anywhere will move in xy plane
     enable_fast_move: bool = true,
@@ -440,12 +441,17 @@ pub const Translate = struct {
 
     pub fn buildGui(vt: *i3DTool, _: *tools.Inspector, area_vt: *iArea, gui: *RGui, win: *iWindow) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        self.win_ptr = win;
         const doc =
             \\This is the translate tool.
             \\Select objects with 'E'.
             \\Left Click and drag the gizmo.
             \\Right click to commit the translation.
             \\Hold 'Shift' to uncapture the mouse.
+            \\Click the white cube to toggle rotation.
+            \\Clicking on the solid will do a 'smart translate' where: 
+            \\If the mouse raycast is > 30 degrees from the horizon, the solid is moved in the xy plane.
+            \\Otherwise, the solid is moved in the plane you clicked on.
         ;
         var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = area_vt.area };
         area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "translate tool", null));
@@ -472,12 +478,18 @@ pub const Translate = struct {
             .unit = "hu",
             .display_bounds_while_editing = false,
         };
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid x", .{})) |ar|
-            area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.xMut(), com_o));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid y", .{})) |ar|
-            area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.yMut(), com_o));
-        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid z", .{})) |ar|
-            area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.zMut(), com_o));
+        if (guis.label(area_vt, gui, win, ly.getArea(), "Grid", .{})) |ar| {
+            var hy = guis.HorizLayout{ .bounds = ar, .count = 3 };
+            area_vt.addChildOpt(gui, win, St.build(gui, hy.getArea(), self.ed.grid.s.xMut(), com_o));
+            area_vt.addChildOpt(gui, win, St.build(gui, hy.getArea(), self.ed.grid.s.yMut(), com_o));
+            area_vt.addChildOpt(gui, win, St.build(gui, hy.getArea(), self.ed.grid.s.zMut(), com_o));
+        }
+        //if (guis.label(area_vt, gui, win, ly.getArea(), "Grid x", .{})) |ar|
+        //    area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.xMut(), com_o));
+        //if (guis.label(area_vt, gui, win, ly.getArea(), "Grid y", .{})) |ar|
+        //    area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.yMut(), com_o));
+        //if (guis.label(area_vt, gui, win, ly.getArea(), "Grid z", .{})) |ar|
+        //    area_vt.addChildOpt(gui, win, St.build(gui, ar, self.ed.grid.s.zMut(), com_o));
         if (guis.label(area_vt, gui, win, ly.getArea(), "Set grid", .{})) |ar|
             area_vt.addChildOpt(gui, win, Wg.Textbox.buildOpts(gui, ar, .{
                 .commit_cb = &@This().textbox_cb,
@@ -489,15 +501,18 @@ pub const Translate = struct {
 
         const CB = Wg.Checkbox.build;
         {
-            //var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 4 };
-            ly.pushCount(2);
-            var hy = guis.TableLayout{ .columns = 4, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
+            var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 6 };
+            //ly.pushCount(2);
+            //var hy = guis.TableLayout{ .columns = 4, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
+
+            area_vt.addChildOpt(gui, win, Wg.Text.build(gui, hy.getArea(), "Select Mask", .{}));
             const sl = &self.ed.selection.options;
-            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select brush", .{ .bool_ptr = &sl.brushes }, null));
-            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select prop", .{ .bool_ptr = &sl.props }, null));
-            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select ent", .{ .bool_ptr = &sl.entity }, null));
-            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select func", .{ .bool_ptr = &sl.func }, null));
-            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "Select disp", .{ .bool_ptr = &sl.disp }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "brush", .{ .bool_ptr = &sl.brushes }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "prop", .{ .bool_ptr = &sl.props }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "ent", .{ .bool_ptr = &sl.entity }, null));
+
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "func", .{ .bool_ptr = &sl.func }, null));
+            area_vt.addChildOpt(gui, win, CB(gui, hy.getArea(), "disp", .{ .bool_ptr = &sl.disp }, null));
         }
         {
             const sl = &self.ed.selection.options;
@@ -574,11 +589,15 @@ pub const Translate = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
 
         self.ed.grid.setAll(16);
+        if (self.win_ptr) |wp|
+            wp.needs_rebuild = true;
     }
 
     fn textbox_cb(vt: *iArea, _: *RGui, string: []const u8, id: usize) void {
         const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
         self.textboxErr(string, id) catch return;
+        if (self.win_ptr) |wp|
+            wp.needs_rebuild = true;
     }
 
     fn textboxErr(self: *@This(), string: []const u8, id: usize) !void {

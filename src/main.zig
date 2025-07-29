@@ -243,6 +243,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const texture_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .texture, &os9gui));
     const model_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model, &os9gui));
     const model_preview_pane = try editor.panes.add(try OldGuiPane.create(editor.panes.alloc, editor, .model_view, &os9gui));
+    editor.edit_state.inspector_pane_id = inspector_pane;
 
     loadctx.cb("Loading");
 

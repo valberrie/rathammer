@@ -69,6 +69,7 @@ pub const TextureTool = struct {
     // todo, fix the gui stuff
     cb_vt: iArea = undefined,
     win_ptr: ?*iWindow = null,
+    stupid_start: f32 = 0,
 
     line_thickness: f32 = 5,
 
@@ -126,6 +127,20 @@ pub const TextureTool = struct {
                 };
             }
 
+            fn slide(s: *TextureTool, id: GuiTextEnum, snap: f32, min: f32, max: f32, def: f32) Wg.StaticSliderOpts {
+                return .{
+                    .commit_vt = &s.cb_vt,
+                    .display_bounds_while_editing = false,
+                    .slide_cb = TextureTool.slideCb,
+                    .commit_cb = TextureTool.slideCommit,
+                    .user_id = @intFromEnum(id),
+                    .min = min,
+                    .max = max,
+                    .default = def,
+                    .slide = .{ .snap = snap },
+                };
+            }
+
             fn btn(s: *TextureTool, id: GuiBtnEnum) Wg.Button.Opts {
                 return .{
                     .cb_vt = &s.cb_vt,
@@ -167,21 +182,24 @@ pub const TextureTool = struct {
 
         {
             const Tb = Wg.TextboxNumber.build;
+            const St = Wg.StaticSlider;
             ly.pushCount(6);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "X", null));
             area_vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, tly.getArea(), "Y", null));
             if (guis.label(area_vt, gui, win, tly.getArea(), "Scale", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.u.scale, win, H.param(self, .uscale)));
+                //area_vt.addChildOpt(gui, win, Tb(gui, ar, side.u.scale, win, H.param(self, .uscale)));
+                area_vt.addChildOpt(gui, win, St.build(gui, ar, null, H.slide(self, .uscale, 0, 0.125 / 2.0, 1, side.u.scale)));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "Scale ", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Tb(gui, ar, side.v.scale, win, H.param(self, .vscale)));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "Trans ", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.u.trans, win, H.param(self, .utrans)));
+                area_vt.addChildOpt(gui, win, St.build(gui, ar, null, H.slide(self, .utrans, 1, 0, 512, side.u.trans)));
+            //area_vt.addChildOpt(gui, win, Tb(gui, ar, side.u.trans, win, H.param(self, .utrans)));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "Trans ", .{})) |ar|
-                area_vt.addChildOpt(gui, win, Tb(gui, ar, side.v.trans, win, H.param(self, .vtrans)));
+                area_vt.addChildOpt(gui, win, St.build(gui, ar, null, H.slide(self, .vtrans, 1, 0, 512, side.v.trans)));
 
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis ", .{})) |ar| {
                 var hy = guis.HorizLayout{ .bounds = ar, .count = 3 };
@@ -224,11 +242,11 @@ pub const TextureTool = struct {
     fn textbox_cb(vt: *iArea, _: *Gui, string: []const u8, id: usize) void {
         const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
 
-        self.textboxErr(string, id) catch return;
+        const num = std.fmt.parseFloat(f32, string) catch return;
+        self.textboxErr(num, id) catch return;
     }
 
-    fn textboxErr(self: *@This(), string: []const u8, id: usize) !void {
-        const num = std.fmt.parseFloat(f32, string) catch return;
+    fn textboxErr(self: *@This(), num: f32, id: usize) !void {
         const sel = (self.getCurrentlySelected(self.ed) catch null) orelse return;
         const side = sel.side;
         const old = undo.UndoTextureManip.State{ .u = side.u, .v = side.v, .tex_id = side.tex_id, .lightmapscale = side.lightmapscale };
@@ -262,6 +280,36 @@ pub const TextureTool = struct {
             ));
             undo.applyRedo(ustack.items, self.ed);
         }
+    }
+
+    fn slideCb(vt: *iArea, _: *Gui, num: f32, id: usize, state: Wg.StaticSliderOpts.State) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+        const text_k = @as(GuiTextEnum, @enumFromInt(id));
+        const sel = (self.getCurrentlySelected(self.ed) catch null) orelse return;
+        var nn = num;
+        const ptr = switch (text_k) {
+            else => return,
+            .utrans => &sel.side.u.trans,
+            .vtrans => &sel.side.v.trans,
+            .uscale => &sel.side.u.scale,
+            .vscale => &sel.side.v.scale,
+        };
+        switch (state) {
+            .rising => {
+                std.debug.print("SET STUPID {d}\n", .{num});
+                self.stupid_start = ptr.*;
+            },
+            .falling => nn = self.stupid_start,
+            else => {},
+        }
+        ptr.* = nn;
+        sel.solid.translate(self.id orelse return, Vec3.zero(), self.ed, Vec3.zero(), null) catch return;
+    }
+
+    fn slideCommit(vt: *iArea, _: *Gui, num: f32, id: usize) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("cb_vt", vt));
+        std.debug.print("SLIDE COMMIT\n", .{});
+        self.textboxErr(num, id) catch return;
     }
 
     pub fn btn_cb(vt: *iArea, id: usize, gui: *Gui, win: *iWindow) void {

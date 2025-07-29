@@ -37,6 +37,9 @@ pub const Config = struct {
         quit: Keybind = .{ .b = SC(.ESCAPE, mask(&.{.CTRL})) },
         focus_search: Keybind = .{ .b = KC(.f, mask(&.{.CTRL})) },
 
+        focus_prop_tab: Keybind = .{ .b = SC(.G, 0) },
+        focus_tool_tab: Keybind = .{ .b = SC(.T, 0) },
+
         tool: std.ArrayList(Keybind),
         workspace: std.ArrayList(Keybind),
         save: Keybind = .{ .b = KC(.s, mask(&.{.CTRL})) },

@@ -210,6 +210,7 @@ pub const Context = struct {
         lmouse: ButtonState = .low,
         rmouse: ButtonState = .low,
         mpos: graph.Vec2f = undefined,
+        inspector_pane_id: usize = 100000,
     } = .{},
     grid: grid_stuff.Snap = .{ .s = Vec3.set(16) },
 

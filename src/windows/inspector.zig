@@ -78,6 +78,12 @@ pub const InspectorWindow = struct {
         GuiHelp.drawWindowFrame(d, vt.area);
     }
 
+    pub fn setTab(self: *Self, tab_index: usize) void {
+        if (self.tab_index != tab_index)
+            self.vt.needs_rebuild = true;
+        self.tab_index = tab_index;
+    }
+
     fn resetIds(self: *Self) void {
         self.kv_id_map.clearRetainingCapacity();
         self.id_kv_map.clearRetainingCapacity();

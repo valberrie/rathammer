@@ -136,7 +136,11 @@ pub const CubeDraw = struct {
                 }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.primitive_settings.axis, .{}));
-            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "Invert", .{ .bool_ptr = &self.primitive_settings.invert }, null));
+            {
+                var hy = guis.HorizLayout{ .bounds = tly.getArea() orelse return, .count = 2 };
+                area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "Invert", .{ .bool_ptr = &self.primitive_settings.invert }, null));
+                area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, hy.getArea(), "snap ", .{ .bool_ptr = &self.snap_new_verts }, null));
+            }
             if (guis.label(area_vt, gui, win, tly.getArea(), "angle", .{})) |ar|
                 area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.primitive_settings.angle, .{
                     .min = 0,
@@ -158,7 +162,6 @@ pub const CubeDraw = struct {
                     .display_bounds_while_editing = false,
                     .slide = .{ .snap = 15 },
                 }));
-            area_vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, tly.getArea(), "snap ", .{ .bool_ptr = &self.snap_new_verts }, null));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
