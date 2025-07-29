@@ -388,6 +388,14 @@ pub fn doesBBOverlapExclusive(a_min: Vec3, a_max: Vec3, b_min: Vec3, b_max: Vec3
     return true;
 }
 
+pub fn doesBBContainPoint(a_min: Vec3, a_max: Vec3, point: Vec3) bool {
+    for (0..3) |i| {
+        const d = a_min.data[i] < point.data[i] and a_max.data[i] > point.data[i];
+        if (!d) return false;
+    }
+    return true;
+}
+
 //Given a point laying on a bounding box, what's the normal of the face?
 pub fn pointBBIntersectionNormal(bb_min: Vec3, bb_max: Vec3, point: Vec3) ?Vec3 {
     var zero = Vec3.zero();
