@@ -80,8 +80,8 @@ pub const Skybox = struct {
                 std.debug.print("Cant find sky {s}{s}\n", .{ sky_name, end });
                 continue;
             };
-            const tex = vtf.loadTexture(vtf_buf, self.alloc) catch {
-                std.debug.print("Had an oopis\n", .{});
+            const tex = vtf.loadTexture(vtf_buf, self.alloc) catch |err| {
+                std.debug.print("Had an oopis {!}\n", .{err});
                 continue;
             };
             var skybatch = SkyBatch.init(self.alloc);

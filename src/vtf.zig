@@ -92,17 +92,39 @@ const ImageFormat = enum(i32) {
             .IMAGE_FORMAT_DXT3 => graph.c.GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,
             .IMAGE_FORMAT_BGRA8888 => graph.c.GL_BGRA,
             .IMAGE_FORMAT_RGBA8888 => graph.c.GL_RGBA,
-            .IMAGE_FORMAT_ABGR8888 => graph.c.GL_RGBA, //This is wrong but I don't care
             .IMAGE_FORMAT_BGR888 => graph.c.GL_BGR,
             .IMAGE_FORMAT_RGB888 => graph.c.GL_RGB,
             .IMAGE_FORMAT_UV88 => graph.c.GL_RG,
             .IMAGE_FORMAT_I8 => graph.c.GL_RED,
-            else => {
-                std.debug.print("FORMAT {s}\n", .{@tagName(self)});
-                return error.formatNotSupported;
-            }, //Most formats can be supported trivially by adding the correct mapping to gl enums
+            .IMAGE_FORMAT_RGBA16161616F => graph.c.GL_RGBA,
+            .IMAGE_FORMAT_RGBA16161616 => graph.c.GL_RGBA,
+            .IMAGE_FORMAT_A8 => graph.c.GL_RED,
+
+            .IMAGE_FORMAT_ABGR8888 => graph.c.GL_RGBA, //These are wrong but I don't care
+            .IMAGE_FORMAT_ARGB8888 => graph.c.GL_RGBA,
+            .IMAGE_FORMAT_IA88 => graph.c.GL_RG,
+            .IMAGE_FORMAT_RGB888_BLUESCREEN => graph.c.GL_RGB,
+            .IMAGE_FORMAT_BGR888_BLUESCREEN => graph.c.GL_RGB,
+
+            .IMAGE_FORMAT_RGB565 => return error.formatNotSupported,
+            .IMAGE_FORMAT_BGRX8888 => return error.formatNotSupported,
+            .IMAGE_FORMAT_BGR565 => return error.formatNotSupported,
+            .IMAGE_FORMAT_BGRX5551 => return error.formatNotSupported,
+            .IMAGE_FORMAT_BGRA4444 => return error.formatNotSupported,
+            .IMAGE_FORMAT_DXT1_ONEBITALPHA => return error.formatNotSupported,
+            .IMAGE_FORMAT_BGRA5551 => return error.formatNotSupported,
+            .IMAGE_FORMAT_UVWQ8888 => return error.formatNotSupported,
+            .IMAGE_FORMAT_UVLX8888 => return error.formatNotSupported,
+
+            .IMAGE_FORMAT_P8 => return error.formatNotSupported,
+            .IMAGE_FORMAT_NONE => return error.formatNotSupported,
+            //else => {
+            //    std.debug.print("FORMAT {s}\n", .{@tagName(self)});
+            //    return error.formatNotSupported;
+            //}, //Most formats can be supported trivially by adding the correct mapping to gl enums
         };
     }
+
     pub fn isCompressed(self: @This()) bool {
         return switch (self) {
             else => false,
@@ -223,38 +245,89 @@ fn mipResolution(mip_factor: u16, full_size: u32, is_comp: bool) u32 {
     return r;
 }
 
+fn mipResActual(mip_factor: u16, full_size: u32) u32 {
+    if (mip_factor == 0) return 1;
+    return @max(full_size / mip_factor, 1);
+}
+
 pub fn loadTexture(buf: []const u8, alloc: std.mem.Allocator) !graph.Texture {
     var dat = try loadBuffer(buf, alloc);
     return dat.deinitToTexture(alloc);
 }
 
+/// Note: On linux, mesa with both an amdgpu and intel, mipmap generation is around 200x slower than on Windows.
 pub const VtfBuf = struct {
+    pub const MipLevel = struct {
+        w: u32,
+        h: u32,
+        buf: []const u8,
+    };
+
     width: u32,
     height: u32,
     pixel_format: graph.c.GLenum,
     compressed: bool,
     pixel_type: graph.c.GLenum,
 
-    //header: VtfHeader01,
-    buffer: []const u8, //Caller must free
+    /// Caller must free, mip levels, smallest to largest
+    /// When (width or height)  / buffers.len != 1, only the last MipLevel is used and mipmaps are generated
+    buffers: std.ArrayList(MipLevel),
 
     pub fn deinitToTexture(self: *@This(), alloc: std.mem.Allocator) !graph.Texture {
-        defer alloc.free(self.buffer);
-        if (self.buffer.len == 0 or self.width > 0x1000 or self.height > 0x1000) {
+        _ = alloc;
+        defer self.deinit();
+        const last = if (self.buffers.items.len > 0) self.buffers.items[self.buffers.items.len - 1] else return error.brokentexture;
+        if (last.buf.len == 0 or self.width > 0x1000 or self.height > 0x1000) {
             std.debug.print("broken texture\n", .{});
             return error.brokentexture;
         }
-        const tex = graph.Texture.initFromBuffer(self.buffer, @intCast(self.width), @intCast(self.height), .{
+        // setMipLevel(self: *const Texture, w: i32, h: i32, buffer: ?[]const u8, o: Options, level: c.GLint) void {
+
+        const tex = graph.Texture.initMipped(@intCast(self.width), @intCast(self.height), .{
             .pixel_format = self.pixel_format,
             .is_compressed = self.compressed,
             .pixel_type = self.pixel_type,
-            .generate_mipmaps = true,
             .min_filter = graph.c.GL_LINEAR_MIPMAP_LINEAR,
-            // .pixel_format = try self.header.highres_fmt.toOpenGLFormat(),
-            // .is_compressed = self.header.highres_fmt.isCompressed(),
-            // .pixel_type = try self.header.highres_fmt.toOpenGLType(),
         });
+        const mip_count: u64 = @intCast(self.buffers.items.len);
+        if (mip_count == 0 or mip_count > 64) return error.noTexture;
+
+        const mip_factor = std.math.pow(u64, 2, mip_count - 1);
+
+        // All mip levels must be specified to 1x1, otherwise mips are generated by opengl
+        if ((self.width / mip_factor != 1 and self.height / mip_factor != 1)) {
+            tex.setMipLevel(@intCast(last.w), @intCast(last.h), last.buf, .{
+                .generate_mipmaps = false,
+                .pixel_format = self.pixel_format,
+                .is_compressed = self.compressed,
+                .pixel_type = self.pixel_type,
+                .min_filter = graph.c.GL_LINEAR_MIPMAP_LINEAR,
+            }, @intCast(0));
+            graph.c.glBindTexture(graph.c.GL_TEXTURE_2D, tex.id);
+            graph.c.glGenerateMipmap(graph.c.GL_TEXTURE_2D);
+            std.debug.print("Fallback texture\n", .{});
+        } else {
+            for (self.buffers.items, 0..) |buf, mi| {
+                const level = mip_count - mi - 1;
+
+                //std.debug.print("{d} {d}    {d}\n", .{ buf.w, buf.h, level });
+                tex.setMipLevel(@intCast(buf.w), @intCast(buf.h), buf.buf, .{
+                    .generate_mipmaps = false,
+                    .pixel_format = self.pixel_format,
+                    .is_compressed = self.compressed,
+                    .pixel_type = self.pixel_type,
+                    .min_filter = graph.c.GL_LINEAR,
+                    //.min_filter = graph.c.GL_LINEAR_MIPMAP_LINEAR,
+                }, @intCast(level));
+            }
+        }
         return tex;
+    }
+
+    pub fn deinit(self: *VtfBuf) void {
+        for (self.buffers.items) |buf|
+            self.buffers.allocator.free(buf.buf);
+        self.buffers.deinit();
     }
 };
 
@@ -282,6 +355,7 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
     //}
 
     errdefer log.err("TOKEN POS {d} {d}", .{ fbs.pos, buffer.len });
+    errdefer log.err("Version {d}.{d}", .{ version_maj, version_min });
     if (version_min > 5) { // versions 3, 4, 5 are bitwise equiv
         log.err("Vtf version {d}.{d}, not supported", .{ version_maj, version_min });
         return error.unsupportedVersion;
@@ -312,6 +386,19 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
         const ac = if (count % 8 != 0) 8 else @divExact(count, 8);
         try r.skipBytes(ac, .{});
     }
+
+    var ret = VtfBuf{
+        .width = h1.width,
+        .height = h1.height,
+        .buffers = std.ArrayList(VtfBuf.MipLevel).init(alloc),
+        .pixel_format = try h1.highres_fmt.toOpenGLFormat(),
+        .compressed = h1.highres_fmt.isCompressed(),
+        .pixel_type = try h1.highres_fmt.toOpenGLType(),
+    };
+    errdefer {
+        ret.deinit();
+    }
+
     const bpp: u32 = @intCast(h1.highres_fmt.bitPerPixel());
     for (0..h1.mipmap_count) |mi| {
         for (0..h1.frames) |fi| {
@@ -323,38 +410,28 @@ pub fn loadBuffer(buffer: []const u8, alloc: std.mem.Allocator) !VtfBuf {
             const bytes = blk: {
                 if (bpp * mw * mw % 8 != 0) {
                     if (is_comp)
-                        break :blk 1;
+                        break :blk 0;
                     break :blk 4;
                 }
                 break :blk @divExact(bpp * mw * mh, 8);
             };
-            //const bytes = if (bpp * mw * mw % 8 != 0) 4 else @divExact(bpp * mw * mh, 8);
-            if (mi == h1.mipmap_count - 1) {
-                const imgdata = try alloc.alloc(u8, bytes);
-                //defer alloc.free(imgdata);
-                try r.readNoEof(imgdata);
-                //GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-                return .{
-                    .width = h1.width,
-                    .height = h1.height,
-                    .buffer = imgdata,
-                    .pixel_format = try h1.highres_fmt.toOpenGLFormat(),
-                    .compressed = h1.highres_fmt.isCompressed(),
-                    .pixel_type = try h1.highres_fmt.toOpenGLType(),
-                };
-                //return graph.Texture.initFromBuffer(imgdata, @intCast(mw), @intCast(mh), .{
-                //    .pixel_format = try h1.highres_fmt.toOpenGLFormat(),
-                //    //.pixel_format = graph.c.GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,
-                //    .is_compressed = h1.highres_fmt.isCompressed(),
-                //});
-            } else {
-                try r.skipBytes(bytes, .{});
-            }
+
             if (fi > 0) {
-                //This should never be reached
-                break;
+                //Skip the remaining frames
+                try r.skipBytes(bytes, .{});
+            } else {
+                const am_w = mipResActual(mip_factor, h1.width);
+                const am_h = mipResActual(mip_factor, h1.height);
+                const imgdata = try alloc.alloc(u8, bytes);
+                try r.readNoEof(imgdata);
+                try ret.buffers.append(.{
+                    .buf = imgdata,
+                    .w = am_w,
+                    .h = am_h,
+                });
             }
         }
     }
-    return error.broken;
+
+    return ret;
 }
