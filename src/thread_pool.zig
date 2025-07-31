@@ -212,7 +212,7 @@ pub const Context = struct {
                 //TODO is spng thread safe?
 
                 var bmp = graph.Bitmap.initFromPngBuffer(self.alloc, tt) catch |err| {
-                    std.debug.print("the png had an aerro {!}\n", .{err});
+                    std.debug.print("the png failed with {!}\n", .{err});
                     return err;
                 };
                 var mipLevels = std.ArrayList(vtf.VtfBuf.MipLevel).init(self.alloc);
@@ -244,7 +244,7 @@ pub const Context = struct {
                         "materials",
                     };
                     const fallback_keys = [_][]const u8{
-                        "$basetexture", "%tooltexture", "$bumpmap", "$normalmap", "$bottommaterial",
+                        "$basetexture", "%tooltexture", "$bumpmap", "$normalmap", "$bottommaterial", "$iris",
                     };
                     outer: for (obj.value.list.items) |obj_val| {
                         switch (obj_val.val) {
@@ -253,18 +253,26 @@ pub const Context = struct {
                                     fallback_loop: for (fallback_keys) |fbkey| {
                                         if (o.getFirst(fbkey)) |base| {
                                             if (base == .literal) {
+                                                const base_name = blk: {
+                                                    if (base.literal.len == 0) break :blk base.literal;
+                                                    const a = base.literal[0];
+                                                    const start: usize = if (a == '\\' or a == '/') 1 else 0;
+                                                    if (start != 0) {
+                                                        std.debug.print("vmt specifies an absolute path, attempting to load relative: {s}/{s}\n", .{ names.path, names.name });
+                                                        std.debug.print("ABSOLUTE PATHS ARE NOT RELATIVE!\n", .{});
+                                                        std.debug.print("FIX YOUR FILES\n", .{});
+                                                    }
+                                                    break :blk base.literal[start..];
+                                                };
                                                 const buf = try vtf.loadBuffer(
                                                     try vpkctx.getFileTempFmtBuf(
                                                         "vtf",
                                                         "{s}/{s}",
-                                                        .{ exten, base.literal },
+                                                        .{ exten, base_name },
                                                         &thread_state.vtf_file_buffer,
                                                         true,
                                                     ) orelse {
-                                                        //std.debug.print("Not found: {s} \n", .{base.literal});
-                                                        //std.debug.print("{s}\n", .{tt});
                                                         continue :fallback_loop;
-                                                        //return error.notfound;
                                                     },
                                                     self.alloc,
                                                 );
@@ -277,7 +285,7 @@ pub const Context = struct {
                                                 break :outer;
                                             }
                                         } else {
-                                            std.debug.print("!{s}\n", .{fbkey});
+                                            //std.debug.print("!{s}\n", .{fbkey});
                                         }
                                     }
                                 }
@@ -287,17 +295,19 @@ pub const Context = struct {
                     }
                     if (!was_found) {
                         std.debug.print("A texture was not found\n", .{});
-                        std.debug.print("{s}\n", .{tt});
+                        //std.debug.print("{s}\n", .{tt});
                         std.debug.print("{s}/{s}\n", .{ names.path, names.name });
                         //std.debug.print("{s}\n", .{tt});
                     }
                 }
             }
         } else {
-            log.warn("can't find vtf", .{});
             const names = vpkctx.namesFromId(vpk_res_id);
-            if (names) |n|
+            if (names) |n| {
                 log.warn("Can't find vtf for {s}/{s}", .{ n.path, n.name });
+            } else {
+                log.warn("Can't find vtf", .{});
+            }
         }
     }
 };

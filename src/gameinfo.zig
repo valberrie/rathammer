@@ -47,7 +47,6 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
     for (fs.obj.list.items) |entry| {
         if (!shouldAdd(entry.key)) {
             log.info("IGNORING gameinfo searchpath with key: {s}", .{entry.key});
-            log.info("please lowercase your keys", .{});
             continue;
         }
         if (entry.val != .literal)
@@ -89,7 +88,6 @@ pub fn loadGameinfo(alloc: std.mem.Allocator, base_dir: Dir, game_dir: Dir, vpkc
     try vpkctx.slowIndexOfLooseDirSubPath("materials");
 }
 
-//TODO lowercase keys, or tell user to lowercase them.
 fn shouldAdd(gameinfo_key: []const u8) bool {
     const supported = [_][]const u8{ "game", "platform", "mod", "root_mod" };
     var tk = std.mem.tokenizeScalar(u8, gameinfo_key, '+');
