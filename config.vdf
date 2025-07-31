@@ -136,7 +136,10 @@ games {
         
         mapbuilder {
             game_dir    "Team Fortress 2"
-            exe_dir    "/mnt/flash/steam_games/tf_bin"
+            // For linux, install the game with proton, copy the bin folder somewhere,
+            // Disable proton and update, copy bin to BIN 
+            // On linux bin and BIN are different, to wine they are the same
+            exe_dir    "Team Fortress 2/BIN"
             game_name   "tf"
             output_dir  "tf/maps"
         }
@@ -144,6 +147,7 @@ games {
         asset_browser_exclude {
             prefix "materials/"
             entry "models"
+            entry "effects"
             entry "gamepadui"
             entry "skybox"
             entry "vgui"
@@ -209,10 +213,14 @@ games {
     }
 
     black_mesa {
-        base_dir    "Black Mesa"
-        game_dir    "Black Mesa/bms"
+
         fgd_dir     "Black Mesa/bin"
         fgd         "bms.fgd"
+
+        gameinfo {
+            base_dir    "Black Mesa"
+            game_dir    "Black Mesa/bms"
+        }
 
         asset_browser_exclude {
             prefix "materials/"

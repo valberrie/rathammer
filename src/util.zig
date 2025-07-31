@@ -45,3 +45,14 @@ pub fn nearest(comptime T: type, items: []const T, context: anytype, comptime di
     }
     return nearest_i;
 }
+
+pub fn ensurePathRelative(string: []const u8, should_bitch: bool) []const u8 {
+    if (string.len == 0) return string;
+
+    if (string[0] == '/' or string[0] == '\\') {
+        if (should_bitch)
+            std.debug.print("RELATIVE PATH IS SPECIFIED AS ABSOLUTE. PLEASE FIX {s} \n", .{string});
+        return string[1..];
+    }
+    return string;
+}

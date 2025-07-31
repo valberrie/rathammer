@@ -4,6 +4,7 @@ const parseStruct = com.parseStruct;
 const graph = @import("graph");
 const Vec3 = graph.za.Vec3;
 const vpk = @import("vpk.zig");
+const util = @import("util.zig");
 
 const MdlVector = struct {
     x: f32,
@@ -296,7 +297,10 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
         const start = fbs.pos;
         const tex = try parseStruct(StudioTexture, .little, r);
         const name: [*c]const u8 = &slice[start + tex.name_offset];
-        const duped_name = try alloc.dupe(u8, std.mem.span(name));
+
+        const name_fixed = util.ensurePathRelative(std.mem.span(name), true);
+
+        const duped_name = try alloc.dupe(u8, name_fixed);
         vpk.sanatizeVpkString(duped_name);
 
         try info.texture_names.append(duped_name);
@@ -307,7 +311,8 @@ pub fn doItCrappy(alloc: std.mem.Allocator, slice: []const u8, print: anytype) !
     for (0..h3.texturedir_count) |_| {
         const int = try r.readInt(u32, .little);
         const name: [*c]const u8 = &slice[int];
-        const duped_name = try alloc.dupe(u8, std.mem.span(name));
+        const name_fixed = util.ensurePathRelative(std.mem.span(name), true);
+        const duped_name = try alloc.dupe(u8, name_fixed);
         vpk.sanatizeVpkString(duped_name);
         try info.texture_paths.append(duped_name);
         print("NAME {s}\n", .{name});
