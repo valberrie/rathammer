@@ -50,6 +50,7 @@ pub fn main() !void {
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("vmf", .string, "vmf to load"),
+        Arg("exedir", .string, "directory of vbsp etc"),
         Arg("gamedir", .string, "directory to game, 'Half-Life 2'"),
         Arg("gamename", .string, "name of game 'hl2_complete'"),
         Arg("outputdir", .string, "dir relative to gamedir where bsp is put, 'hl2/maps'"),
@@ -57,6 +58,7 @@ pub fn main() !void {
     }, &arg_it);
     try buildmap(alloc, .{
         .cwd = std.fs.cwd(),
+        .exedir_pre = args.exedir orelse "Half-Life 2/bin",
         .gamename = args.gamename orelse "hl2_complete",
         .gamedir_pre = args.gamedir orelse "Half-Life 2",
         .tmpdir = args.tmpdir orelse "/tmp/mapcompile",
@@ -71,6 +73,7 @@ pub const Paths = struct {
     cwd: std.fs.Dir,
     gamename: []const u8,
     gamedir_pre: []const u8,
+    exedir_pre: []const u8,
     tmpdir: []const u8,
     outputdir: []const u8,
     vmf: []const u8,
@@ -86,6 +89,11 @@ pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
         return err;
     };
     std.debug.print("found gamedir: {s}\n", .{gamedir});
+
+    const exedir = game_cwd.realpathAlloc(alloc, args.exedir_pre) catch |err| {
+        log.err("realpath failed of {s} {!}", .{ args.exedir_pre, err });
+        return err;
+    };
 
     const working_dir = args.tmpdir;
     const outputdir = try catString(alloc, &.{ gamedir, "/", args.outputdir });
@@ -110,9 +118,9 @@ pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
 
     const game_path = try catString(alloc, &.{ gamedir, "/", args.gamename });
     const start_i = if (DO_WINE) 0 else 1;
-    const vbsp = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension };
-    const vvis = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
-    const vrad = [_][]const u8{ "wine", try catString(alloc, &.{ gamedir, "/bin/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
+    const vbsp = [_][]const u8{ "wine", try catString(alloc, &.{ exedir, "/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension };
+    const vvis = [_][]const u8{ "wine", try catString(alloc, &.{ exedir, "/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
+    const vrad = [_][]const u8{ "wine", try catString(alloc, &.{ exedir, "/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
     try runCommand(alloc, vbsp[start_i..], working_dir);
     try runCommand(alloc, vvis[start_i..], working_dir);
     try runCommand(alloc, vrad[start_i..], working_dir);

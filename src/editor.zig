@@ -1185,6 +1185,7 @@ pub const Context = struct {
                 try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
                     .vmf = "dump.vmf",
                     .gamedir_pre = self.game_conf.mapbuilder.game_dir,
+                    .exedir_pre = self.game_conf.mapbuilder.exe_dir,
                     .gamename = self.game_conf.mapbuilder.game_name,
 
                     .outputdir = self.game_conf.mapbuilder.output_dir,

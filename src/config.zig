@@ -111,6 +111,7 @@ pub const GameEntry = struct {
     };
     pub const MapBuilder = struct {
         game_dir: []const u8 = "",
+        exe_dir: []const u8 = "",
         game_name: []const u8 = "",
         output_dir: []const u8 = "",
     };

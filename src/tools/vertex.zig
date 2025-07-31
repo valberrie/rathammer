@@ -69,6 +69,7 @@ pub const VertexTranslate = struct {
 
     dist: Vec3 = Vec3.zero(),
 
+    snap_absolute: bool = true,
     state_2d: struct {
         marquee_start: Vec3 = Vec3.zero(),
         marquee_end: Vec3 = Vec3.zero(),
@@ -222,10 +223,17 @@ pub const VertexTranslate = struct {
                     if (st.move_start) |start| {
                         delta = r[0].sub(start);
                     }
-                    const dist = ed.grid.snapV3(delta);
-                    self.dist = dist;
+                    self.dist = ed.grid.snapV3(delta);
+                    if (self.selected.count() == 1) {
+                        var it = self.selected.iterator();
+                        const item = it.next() orelse return;
+                        if (item.value_ptr.items(.vert).len == 1) {
+                            self.dist = self.snapVertDist(item.value_ptr.items(.vert)[0], delta, &ed.grid);
+                        }
+                    }
+
                     if (ed.edit_state.rmouse == .rising) {
-                        try self.commitDist(dist, ed);
+                        try self.commitDist(self.dist, ed);
                     }
                 },
                 .falling, .low => {
@@ -393,6 +401,14 @@ pub const VertexTranslate = struct {
             .index = vert_index,
             .disp_i = disp_i,
         });
+    }
+
+    fn snapVertDist(self: *Self, v: Vec3, dist: Vec3, grid: anytype) Vec3 {
+        if (self.snap_absolute) {
+            const new = grid.snapV3(v.add(dist));
+            return new.sub(v);
+        }
+        return dist;
     }
 
     fn setGizmoPositionToMean(self: *Self) void {

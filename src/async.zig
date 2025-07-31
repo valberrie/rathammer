@@ -126,6 +126,7 @@ pub const MapCompile = struct {
             .cwd = paths.cwd,
             .gamename = try aa.dupe(u8, paths.gamename),
             .gamedir_pre = try aa.dupe(u8, paths.gamedir_pre),
+            .exedir_pre = try aa.dupe(u8, paths.exedir_pre),
             .tmpdir = try aa.dupe(u8, paths.tmpdir),
             .outputdir = try aa.dupe(u8, paths.outputdir),
             .vmf = try aa.dupe(u8, paths.vmf),

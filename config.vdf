@@ -96,6 +96,7 @@ games {
         // To do a more specific compile. Write a shell or bat script and run it.
         mapbuilder {
             game_dir    "Half-Life 2"
+            exe_dir    "Half-Life 2/bin"
             game_name   "hl2_complete"
             output_dir  "hl2/maps"
         }
@@ -114,7 +115,7 @@ games {
             
             entry "models" //This becomes "materials/models"
             entry "gamepadui"
-            entry "skybox"
+            //entry "skybox"
             entry "vgui"
             entry "particle"
             entry "console"
@@ -130,8 +131,15 @@ games {
         }
 
 
-        fgd_dir     "Half-Life 2/bin"
-        fgd         "halflife2.fgd"
+        fgd_dir     "/mnt/flash/steam_games/tf_bin"
+        fgd         "tf.fgd"
+        
+        mapbuilder {
+            game_dir    "Team Fortress 2"
+            exe_dir    "/mnt/flash/steam_games/tf_bin"
+            game_name   "tf"
+            output_dir  "tf/maps"
+        }
 
         asset_browser_exclude {
             prefix "materials/"
