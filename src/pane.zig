@@ -43,7 +43,7 @@ pub const Grab = struct {
     }
 
     pub fn owns(self: *const @This(), owner: ?PaneId) bool {
-        if (owner == null or self.owner == null) return false;
+        if (owner == null or self.owner == null or self.overridden) return false;
         return self.owner.? == owner.?;
     }
 

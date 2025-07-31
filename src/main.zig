@@ -387,9 +387,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         try gui.pre_update(gui.windows.items);
         if (win.isBindState(config.keys.toggle_console.b, .rising)) {
             console_active = !console_active;
-            if (console_active) {
-                console_win.area.dirty(&gui);
-            }
         }
         ws.doTheSliders(win.mouse.pos, win.mouse.delta, win.mouse.left);
         try ws.setWorkspaceAndArea(editor.draw_state.tab_index, winrect);
@@ -416,6 +413,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
         if (console_active) {
+            console_win.focus(&gui);
+            console_win.area.dirty(&gui);
             try gui.update(&.{&console_win.vt});
             try gui.window_collector.append(&console_win.vt);
         }

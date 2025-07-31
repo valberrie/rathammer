@@ -83,6 +83,8 @@ pub const Console = struct {
             .commit_vt = &self.area,
             .user_id = 0,
             .clear_on_commit = true,
+            .restricted_charset = "`",
+            .invert_restriction = true,
         }));
         if (self.area.children.items.len > 0) {
             gui.grabFocus(self.area.children.items[0], vt);
@@ -92,6 +94,12 @@ pub const Console = struct {
             .mode = .split_on_space,
             .force_scroll = true,
         }));
+    }
+
+    pub fn focus(self: *@This(), gui: *Gui) void {
+        if (self.area.children.items.len > 0) {
+            gui.grabFocus(self.area.children.items[0], &self.vt);
+        }
     }
 
     pub fn execCommand(self: *@This(), command: []const u8, gui: *Gui) void {
