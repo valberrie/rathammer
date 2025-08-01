@@ -370,7 +370,7 @@ pub const Entity = struct {
             try kvs.putStringNoNotify("angles", try editor.printScratch("{d} {d} {d}", .{ angle.x(), angle.y(), angle.z() }));
             if (kvs.getString("pitch") != null) {
                 //Workaround to valve's shitty fgd
-                try kvs.putStringNoNotify("pitch", try editor.printScratch("{d}", .{-angle.x()}));
+                //try kvs.putStringNoNotify("pitch", try editor.printScratch("{d}", .{-angle.x()}));
             }
         }
         self.updateModelbb(editor, self_id);

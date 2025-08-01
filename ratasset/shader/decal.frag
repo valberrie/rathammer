@@ -37,6 +37,6 @@ void main(){
 
 //if(length(abs(obj_pos)) > 1 )
         //discard;
-    FragColor = vec4(depth,0,0,1);
+    FragColor = vec4(1,1,1,1);
 }
 

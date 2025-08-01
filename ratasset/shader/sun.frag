@@ -1,4 +1,5 @@
 #version 460 core
+#define NUM_LS 4
 out vec4 FragColor;
 
 in vec2 TexCoords;
@@ -10,26 +11,23 @@ layout(binding = 2) uniform sampler2D g_albedo;
 layout(binding = 3) uniform sampler2DArray shadow_map;
 
 layout (std140, binding = 0) uniform LightSpaceMatrices {
-    mat4 lightSpaceMatrices[16];
+    mat4 lightSpaceMatrices[NUM_LS];
 };
 
-uniform float cascadePlaneDistances[16];
+uniform float cascadePlaneDistances[NUM_LS];
 uniform mat4 cam_view;
 uniform vec3 view_pos;
 uniform vec3 light_dir;
 uniform vec4 light_color;
 uniform vec4 ambient_color;
 uniform vec2 screenSize;
-uniform float exposure;
-uniform float gamma = 2.2;
 uniform vec2 the_fucking_window_offset;
-int CASCADE_COUNT = 4;
 
 float shadowCalculation(vec3 fp, vec3 norm){
     vec4 fp_vs = cam_view * vec4(fp, 1.0);
     float depth = abs(fp_vs.z);
-    int layer = CASCADE_COUNT - 1;
-    for(int i = 0; i < CASCADE_COUNT; i++){
+    int layer = NUM_LS - 1;
+    for(int i = 0; i < NUM_LS; i++){
         if(depth < cascadePlaneDistances[i]){
             layer = i;
             break;
@@ -90,9 +88,10 @@ void main(){
     vec3 result =  lights * diffuse;
 
 
-    vec3 mapped = vec3(1.0) - exp(-result * exposure);
-    mapped = pow(mapped, vec3(1.0/gamma));
-    FragColor = vec4(mapped, 1.0);
+    FragColor = vec4(result, 1.0);
+    //vec3 mapped = vec3(1.0) - exp(-result * exposure);
+    //mapped = pow(mapped, vec3(1.0/gamma));
+    //FragColor = vec4(mapped, 1.0);
 
 }
 

@@ -45,8 +45,8 @@ pub const Renderer = struct {
 
     ambient: [4]f32 = [4]f32{ 1, 1, 1, 255 },
     ambient_scale: f32 = 1,
-    exposure: f32 = 0.92,
-    gamma: f32 = 1.03,
+    exposure: f32 = 3.5,
+    gamma: f32 = 1.45,
     pitch: f32 = 35,
     yaw: f32 = 165,
     sun_color: [4]f32 = [4]f32{ 1, 1, 1, 255 },
@@ -211,6 +211,9 @@ pub const Renderer = struct {
                         c.glDrawElements(@intFromEnum(dc.prim), dc.num_elements, dc.element_type, null);
                     }
                 }
+                if (self.do_decals) {
+                    self.drawDecal(cam, graph.Vec2i{ .x = self.gbuffer.scr_w, .y = self.gbuffer.scr_h }, view, .{ .x = 0, .y = 0 }, far);
+                }
                 const y_: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
                 if (self.do_hdr_buffer) {
                     c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.hdrbuffer.fb);
@@ -239,8 +242,6 @@ pub const Renderer = struct {
                     var ambient_scaled = self.ambient;
                     ambient_scaled[3] *= self.ambient_scale;
                     graph.GL.passUniform(sh1, "view_pos", cam.pos);
-                    graph.GL.passUniform(sh1, "exposure", self.exposure);
-                    graph.GL.passUniform(sh1, "gamma", self.gamma);
                     graph.GL.passUniform(sh1, "light_dir", light_dir);
                     graph.GL.passUniform(sh1, "screenSize", scrsz);
                     graph.GL.passUniform(sh1, "the_fucking_window_offset", win_offset);
@@ -265,9 +266,6 @@ pub const Renderer = struct {
                         self.drawLighting(cam, scrsz, view, win_offset);
                     }
                 }
-                if (self.do_decals) {
-                    self.drawDecal(cam, scrsz, view, .{ .x = 0, .y = 0 }, far);
-                }
 
                 if (self.do_hdr_buffer) {
                     self.bindMainFramebufferAndVp(screen_area, screen_dim);
@@ -277,8 +275,6 @@ pub const Renderer = struct {
                     c.glBindVertexArray(self.sun_batch.vao);
                     graph.GL.passUniform(sh1, "exposure", self.exposure);
                     graph.GL.passUniform(sh1, "gamma", self.gamma);
-                    graph.GL.passUniform(sh1, "screenSize", scrsz);
-                    graph.GL.passUniform(sh1, "the_fucking_window_offset", win_offset);
                     c.glBindTextureUnit(0, self.hdrbuffer.color);
                     c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.sun_batch.vertices.items.len)));
                 }
@@ -513,12 +509,13 @@ const Csm = struct {
             std.debug.print("Framebuffer is broken\n", .{});
 
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+        const NUM_LS = 4;
 
         var lmu: c_uint = 0;
         {
             c.glGenBuffers(1, &lmu);
             c.glBindBuffer(c.GL_UNIFORM_BUFFER, lmu);
-            c.glBufferData(c.GL_UNIFORM_BUFFER, @sizeOf([4][4]f32) * 16, null, c.GL_DYNAMIC_DRAW);
+            c.glBufferData(c.GL_UNIFORM_BUFFER, @sizeOf([4][4]f32) * NUM_LS, null, c.GL_DYNAMIC_DRAW);
             c.glBindBufferBase(c.GL_UNIFORM_BUFFER, 0, lmu);
             c.glBindBuffer(c.GL_UNIFORM_BUFFER, 0);
 

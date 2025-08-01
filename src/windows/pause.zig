@@ -195,7 +195,13 @@ pub const PauseWindow = struct {
             if (guis.label(vt, gui, win, ly.getArea(), "gamma", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.gamma, 0.1, 3, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "exposure", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.exposure, 0.1, 3, .{}));
+                vt.addChildOpt(gui, win, Wg.StaticSlider.build(gui, ar, &ed.renderer.exposure, .{
+                    .min = 0.1,
+                    .max = 10,
+                    .default = 1,
+                    .display_bounds_while_editing = false,
+                    .slide = .{ .snap = 0.1 },
+                }));
             if (guis.label(vt, gui, win, ly.getArea(), "pitch", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.pitch, 0, 90, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "yaw", .{})) |ar|

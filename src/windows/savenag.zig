@@ -89,7 +89,11 @@ pub const NagWindow = struct {
             .quit => self.should_exit = true,
             .save => {
                 self.vt.needs_rebuild = true;
-                async_util.SdlFileData.spawn(self.editor.alloc, &self.editor.async_asset_load, .save_map) catch return;
+                if (self.editor.loaded_map_name) |basename| {
+                    self.editor.saveAndNotify(basename, self.editor.loaded_map_path orelse "") catch return;
+                } else {
+                    async_util.SdlFileData.spawn(self.editor.alloc, &self.editor.async_asset_load, .save_map) catch return;
+                }
             },
         }
     }
