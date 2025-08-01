@@ -141,19 +141,27 @@ fn runCommand(alloc: std.mem.Allocator, argv: []const []const u8, working_dir: [
     child.stderr_behavior = .Pipe;
     try child.spawn();
 
-    if (child.stdout) |file| {
-        var line_buf: [512]u8 = undefined;
-        const r = file.reader();
-        while (true) {
-            const line = r.readUntilDelimiter(&line_buf, '\n') catch |err| switch (err) {
-                error.StreamTooLong => continue,
-                error.EndOfStream => break,
-                else => break,
-            };
-            std.debug.print("{s}\n", .{line});
+    {
+        std.debug.assert(child.stdout_behavior == .Pipe);
+        std.debug.assert(child.stderr_behavior == .Pipe);
+
+        var poller = std.io.poll(alloc, enum { stdout, stderr }, .{
+            .stdout = child.stdout.?,
+            .stderr = child.stderr.?,
+        });
+        defer poller.deinit();
+
+        var stdout_buf: [128]u8 = undefined;
+
+        while (try poller.poll()) {
+            std.Thread.sleep(std.time.ns_per_ms * 16);
+            var count = poller.fifo(.stdout).read(&stdout_buf);
+            std.debug.print("{s}", .{stdout_buf[0..count]});
+            count = poller.fifo(.stderr).read(&stdout_buf);
+            std.debug.print("{s}", .{stdout_buf[0..count]});
         }
     }
-    try getAllTheStuff(child.stderr);
+    //try getAllTheStuff(child.stderr);
 
     switch (try child.wait()) {
         .Exited => |e| {

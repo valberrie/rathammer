@@ -448,6 +448,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             }
         }
     }
+
+    std.process.cleanExit();
 }
 
 pub fn main() !void {
