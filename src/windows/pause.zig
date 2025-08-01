@@ -206,12 +206,27 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.const_add, -1, 1, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "ambient scale", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.ambient_scale, -10, 100, .{}));
+            if (guis.label(vt, gui, win, ly.getArea(), "res scale", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.StaticSlider.build(gui, ar, &ed.renderer.res_scale, .{
+                    .min = 0.1,
+                    .max = 1,
+                    .default = 1,
+                    .display_bounds_while_editing = false,
+                    .slide = .{ .snap = 0.1 },
+                }));
             if (guis.label(vt, gui, win, ly.getArea(), "light render dist", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.light_render_dist, 64, 1024 * 40, .{}));
+                vt.addChildOpt(gui, win, Wg.StaticSlider.build(gui, ar, &ed.renderer.light_render_dist, .{
+                    .min = 16,
+                    .max = 4096,
+                    .default = 1024,
+                    .display_bounds_while_editing = false,
+                    .slide = .{ .snap = 64 },
+                }));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "draw skybox", .{ .bool_ptr = &ed.draw_state.tog.skybox }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "lighting", .{ .bool_ptr = &ed.renderer.do_lighting }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "copy depth", .{ .bool_ptr = &ed.renderer.copy_depth }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "light debug", .{ .bool_ptr = &ed.renderer.debug_light_coverage }, null));
+            vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "do hdr", .{ .bool_ptr = &ed.renderer.do_hdr_buffer }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw outline", .{ .bool_ptr = &ed.draw_state.draw_outlines }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw displacement solid", .{ .bool_ptr = &ed.draw_state.draw_displacment_solid }, null));
         }

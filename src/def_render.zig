@@ -29,9 +29,11 @@ pub const Renderer = struct {
         spot: glID,
         sun: glID,
         decal: glID,
+        hdr: glID,
     },
     mode: enum { forward, def } = .forward,
     gbuffer: GBuffer,
+    hdrbuffer: HdrBuffer,
     csm: Csm,
 
     draw_calls: std.ArrayList(DrawCall),
@@ -53,6 +55,10 @@ pub const Renderer = struct {
     debug_light_coverage: bool = false,
     copy_depth: bool = true,
     light_render_dist: f32 = 1024 * 2,
+
+    res_scale: f32 = 0.5,
+
+    do_hdr_buffer: bool = true,
 
     pub fn init(alloc: std.mem.Allocator, shader_dir: std.fs.Dir) !Self {
         const shadow_shader = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{
@@ -84,6 +90,16 @@ pub const Renderer = struct {
             .{ .path = "decal.vert", .t = .vert },
             .{ .path = "decal.frag", .t = .frag },
         });
+        const hdr_shad = try graph.Shader.loadFromFilesystem(alloc, shader_dir, &.{ .{ .path = "hdr.vert", .t = .vert }, .{ .path = "hdr.frag", .t = .frag } });
+        var sun_batch = SunQuadBatch.init(alloc);
+        try sun_batch.clear();
+        try sun_batch.vertices.appendSlice(&.{
+            .{ .pos = graph.Vec3f.new(-1, 1, 0), .uv = graph.Vec2f.new(0, 1) },
+            .{ .pos = graph.Vec3f.new(-1, -1, 0), .uv = graph.Vec2f.new(0, 0) },
+            .{ .pos = graph.Vec3f.new(1, 1, 0), .uv = graph.Vec2f.new(1, 1) },
+            .{ .pos = graph.Vec3f.new(1, -1, 0), .uv = graph.Vec2f.new(1, 0) },
+        });
+        sun_batch.pushVertexData();
         return Self{
             .shader = .{
                 .csm = shadow_shader,
@@ -93,14 +109,16 @@ pub const Renderer = struct {
                 .spot = spot_light_shader,
                 .decal = decal_shad,
                 .sun = def_sun_shad,
+                .hdr = hdr_shad,
             },
             .point_light_batch = try PointLightInstanceBatch.init(alloc, shader_dir, "icosphere.obj"),
             .spot_light_batch = try SpotLightInstanceBatch.init(alloc, shader_dir, "cone.obj"),
             .decal_batch = try DecalBatch.init(alloc, shader_dir, "cube.obj"),
-            .sun_batch = SunQuadBatch.init(alloc),
+            .sun_batch = sun_batch,
             .draw_calls = std.ArrayList(DrawCall).init(alloc),
             .csm = Csm.createCsm(2048, Csm.CSM_COUNT, def_sun_shad),
             .gbuffer = GBuffer.create(100, 100),
+            .hdrbuffer = HdrBuffer.create(100, 100),
         };
     }
 
@@ -172,7 +190,9 @@ pub const Renderer = struct {
                 const last_plane = pl[3];
                 self.csm.calcMats(cam.fov, screen_area.w / screen_area.h, param.near, far, self.last_frame_view_mat, light_dir, planes);
                 self.csm.draw(self);
-                self.gbuffer.updateResolution(@intFromFloat(screen_area.w), @intFromFloat(screen_area.h));
+                self.gbuffer.updateResolution(@intFromFloat(screen_area.w * self.res_scale), @intFromFloat(screen_area.h * self.res_scale));
+                if (self.do_hdr_buffer)
+                    self.hdrbuffer.updateResolution(@intFromFloat(screen_area.w * self.res_scale), @intFromFloat(screen_area.h * self.res_scale));
                 c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.gbuffer.buffer);
                 c.glViewport(0, 0, self.gbuffer.scr_w, self.gbuffer.scr_h);
                 c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
@@ -191,94 +211,98 @@ pub const Renderer = struct {
                         c.glDrawElements(@intFromEnum(dc.prim), dc.num_elements, dc.element_type, null);
                     }
                 }
-                const scrsz = graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
-                c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
                 const y_: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
-                c.glViewport(
-                    @intFromFloat(screen_area.x),
-                    y_,
-                    @intFromFloat(screen_area.w),
-                    @intFromFloat(screen_area.h),
-                );
-
-                const win_offset = graph.Vec2i{ .x = @intFromFloat(screen_area.x), .y = y_ };
-                if (true) {
-                    { //Draw sun
-                        c.glDepthMask(c.GL_FALSE);
-                        defer c.glDepthMask(c.GL_TRUE);
-                        //defer c.glDisable(c.GL_BLEND);
-                        c.glClear(c.GL_DEPTH_BUFFER_BIT);
-
-                        try self.sun_batch.clear();
-                        try self.sun_batch.vertices.appendSlice(&.{
-                            .{ .pos = graph.Vec3f.new(-1, 1, 0), .uv = graph.Vec2f.new(0, 1) },
-                            .{ .pos = graph.Vec3f.new(-1, -1, 0), .uv = graph.Vec2f.new(0, 0) },
-                            .{ .pos = graph.Vec3f.new(1, 1, 0), .uv = graph.Vec2f.new(1, 1) },
-                            .{ .pos = graph.Vec3f.new(1, -1, 0), .uv = graph.Vec2f.new(1, 0) },
-                        });
-                        self.sun_batch.pushVertexData();
-                        const sh1 = self.shader.sun;
-                        c.glUseProgram(sh1);
-                        c.glBindVertexArray(self.sun_batch.vao);
-                        c.glBindBufferBase(c.GL_UNIFORM_BUFFER, 0, self.csm.mat_ubo);
-                        c.glBindTextureUnit(0, self.gbuffer.pos);
-                        c.glBindTextureUnit(1, self.gbuffer.normal);
-                        c.glBindTextureUnit(2, self.gbuffer.albedo);
-                        c.glBindTextureUnit(3, self.csm.textures);
-                        var ambient_scaled = self.ambient;
-                        ambient_scaled[3] *= self.ambient_scale;
-                        graph.GL.passUniform(sh1, "view_pos", cam.pos);
-                        graph.GL.passUniform(sh1, "exposure", self.exposure);
-                        graph.GL.passUniform(sh1, "gamma", self.gamma);
-                        graph.GL.passUniform(sh1, "light_dir", light_dir);
-                        graph.GL.passUniform(sh1, "screenSize", scrsz);
-                        graph.GL.passUniform(sh1, "the_fucking_window_offset", win_offset);
-                        graph.GL.passUniform(sh1, "ambient_color", ambient_scaled);
-                        graph.GL.passUniform(sh1, "light_color", self.sun_color);
-                        graph.GL.passUniform(sh1, "cascadePlaneDistances[0]", @as(f32, planes[0]));
-                        graph.GL.passUniform(sh1, "cascadePlaneDistances[1]", @as(f32, planes[1]));
-                        graph.GL.passUniform(sh1, "cascadePlaneDistances[2]", @as(f32, planes[2]));
-                        graph.GL.passUniform(sh1, "cascadePlaneDistances[3]", @as(f32, last_plane));
-                        const cam_mat = cam.getViewMatrix();
-                        graph.GL.passUniform(sh1, "cam_view", cam_mat);
-                        graph.GL.passUniform(sh1, "cam_view_inv", cam_mat.inv());
-
-                        c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.sun_batch.vertices.items.len)));
-
-                        c.glEnable(c.GL_BLEND);
-                        c.glBlendFunc(c.GL_ONE, c.GL_ONE);
-                        defer c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
-                        c.glBlendEquation(c.GL_FUNC_ADD);
-
-                        if (self.do_lighting) {
-                            self.drawLighting(cam, scrsz, view, win_offset);
-                        }
-                    }
-                    if (self.do_decals) {
-                        self.drawDecal(cam, scrsz, view, .{ .x = 0, .y = 0 }, far);
-                    }
-                    if (self.copy_depth) {
-                        const y: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
-                        const x: i32 = @intFromFloat(screen_area.x);
-                        c.glBindFramebuffer(c.GL_READ_FRAMEBUFFER, self.gbuffer.buffer);
-                        c.glBindFramebuffer(c.GL_DRAW_FRAMEBUFFER, 0);
-                        c.glBlitFramebuffer(
-                            0,
-                            0,
-                            self.gbuffer.scr_w,
-                            self.gbuffer.scr_h,
-                            x,
-                            y,
-                            x + self.gbuffer.scr_w,
-                            y + self.gbuffer.scr_h,
-                            c.GL_DEPTH_BUFFER_BIT,
-                            c.GL_NEAREST,
-                        );
-                        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
-                    }
-                    _ = dctx;
-                    //dctx.rectTex(screen_area, graph.Rec(0, 0, screen_area.w, screen_area.h), .{ .id = self.gbuffer.depth, .w = scrsz.x, .h = scrsz.y });
+                if (self.do_hdr_buffer) {
+                    c.glBindFramebuffer(c.GL_FRAMEBUFFER, self.hdrbuffer.fb);
+                    c.glClear(c.GL_COLOR_BUFFER_BIT);
+                    c.glClearColor(0, 0, 0, 0);
+                } else {
+                    self.bindMainFramebufferAndVp(screen_area, screen_dim);
                 }
+
+                const scrsz = if (self.do_hdr_buffer) graph.Vec2i{ .x = self.gbuffer.scr_w, .y = self.gbuffer.scr_h } else graph.Vec2i{ .x = @intFromFloat(screen_area.w), .y = @intFromFloat(screen_area.h) };
+                const win_offset = if (self.do_hdr_buffer) graph.Vec2i{ .x = 0, .y = 0 } else graph.Vec2i{ .x = @intFromFloat(screen_area.x), .y = y_ };
+                { //Draw sun
+                    c.glDepthMask(c.GL_FALSE);
+                    defer c.glDepthMask(c.GL_TRUE);
+                    //defer c.glDisable(c.GL_BLEND);
+                    c.glClear(c.GL_DEPTH_BUFFER_BIT);
+
+                    const sh1 = self.shader.sun;
+                    c.glUseProgram(sh1);
+                    c.glBindVertexArray(self.sun_batch.vao);
+                    c.glBindBufferBase(c.GL_UNIFORM_BUFFER, 0, self.csm.mat_ubo);
+                    c.glBindTextureUnit(0, self.gbuffer.pos);
+                    c.glBindTextureUnit(1, self.gbuffer.normal);
+                    c.glBindTextureUnit(2, self.gbuffer.albedo);
+                    c.glBindTextureUnit(3, self.csm.textures);
+                    var ambient_scaled = self.ambient;
+                    ambient_scaled[3] *= self.ambient_scale;
+                    graph.GL.passUniform(sh1, "view_pos", cam.pos);
+                    graph.GL.passUniform(sh1, "exposure", self.exposure);
+                    graph.GL.passUniform(sh1, "gamma", self.gamma);
+                    graph.GL.passUniform(sh1, "light_dir", light_dir);
+                    graph.GL.passUniform(sh1, "screenSize", scrsz);
+                    graph.GL.passUniform(sh1, "the_fucking_window_offset", win_offset);
+                    graph.GL.passUniform(sh1, "ambient_color", ambient_scaled);
+                    graph.GL.passUniform(sh1, "light_color", self.sun_color);
+                    graph.GL.passUniform(sh1, "cascadePlaneDistances[0]", @as(f32, planes[0]));
+                    graph.GL.passUniform(sh1, "cascadePlaneDistances[1]", @as(f32, planes[1]));
+                    graph.GL.passUniform(sh1, "cascadePlaneDistances[2]", @as(f32, planes[2]));
+                    graph.GL.passUniform(sh1, "cascadePlaneDistances[3]", @as(f32, last_plane));
+                    const cam_mat = cam.getViewMatrix();
+                    graph.GL.passUniform(sh1, "cam_view", cam_mat);
+                    graph.GL.passUniform(sh1, "cam_view_inv", cam_mat.inv());
+
+                    c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.sun_batch.vertices.items.len)));
+
+                    c.glEnable(c.GL_BLEND);
+                    c.glBlendFunc(c.GL_ONE, c.GL_ONE);
+                    defer c.glBlendFunc(c.GL_SRC_ALPHA, c.GL_ONE_MINUS_SRC_ALPHA);
+                    c.glBlendEquation(c.GL_FUNC_ADD);
+
+                    if (self.do_lighting) {
+                        self.drawLighting(cam, scrsz, view, win_offset);
+                    }
+                }
+                if (self.do_decals) {
+                    self.drawDecal(cam, scrsz, view, .{ .x = 0, .y = 0 }, far);
+                }
+
+                if (self.do_hdr_buffer) {
+                    self.bindMainFramebufferAndVp(screen_area, screen_dim);
+
+                    const sh1 = self.shader.hdr;
+                    c.glUseProgram(sh1);
+                    c.glBindVertexArray(self.sun_batch.vao);
+                    graph.GL.passUniform(sh1, "exposure", self.exposure);
+                    graph.GL.passUniform(sh1, "gamma", self.gamma);
+                    graph.GL.passUniform(sh1, "screenSize", scrsz);
+                    graph.GL.passUniform(sh1, "the_fucking_window_offset", win_offset);
+                    c.glBindTextureUnit(0, self.hdrbuffer.color);
+                    c.glDrawArrays(c.GL_TRIANGLE_STRIP, 0, @as(c_int, @intCast(self.sun_batch.vertices.items.len)));
+                }
+
+                if (self.copy_depth) {
+                    const y: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
+                    const x: i32 = @intFromFloat(screen_area.x);
+                    c.glBindFramebuffer(c.GL_READ_FRAMEBUFFER, self.gbuffer.buffer);
+                    c.glBindFramebuffer(c.GL_DRAW_FRAMEBUFFER, 0);
+                    c.glBlitFramebuffer(
+                        0,
+                        0,
+                        self.gbuffer.scr_w,
+                        self.gbuffer.scr_h,
+                        x,
+                        y,
+                        x + @as(i32, @intFromFloat(screen_area.w)),
+                        y + @as(i32, @intFromFloat(screen_area.h)),
+                        c.GL_DEPTH_BUFFER_BIT,
+                        c.GL_NEAREST,
+                    );
+                    c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+                }
+                _ = dctx;
             },
         }
         self.last_frame_view_mat = cam.getViewMatrix();
@@ -359,6 +383,17 @@ pub const Renderer = struct {
         self.point_light_batch.deinit();
         self.spot_light_batch.deinit();
         self.decal_batch.deinit();
+    }
+
+    fn bindMainFramebufferAndVp(_: *Self, screen_area: graph.Rect, screen_dim: graph.Vec2f) void {
+        const y_: i32 = @intFromFloat(screen_dim.y - (screen_area.y + screen_area.h));
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+        c.glViewport(
+            @intFromFloat(screen_area.x),
+            y_,
+            @intFromFloat(screen_area.w),
+            @intFromFloat(screen_area.h),
+        );
     }
 };
 //In forward, we just do the draw call
@@ -680,6 +715,46 @@ pub fn LightBatchGeneric(comptime vertT: type) type {
         }
     };
 }
+
+const HdrBuffer = struct {
+    fb: c_uint = 0,
+    color: c_uint = 0,
+
+    scr_w: i32 = 0,
+    scr_h: i32 = 0,
+
+    pub fn updateResolution(self: *@This(), new_w: i32, new_h: i32) void {
+        if (new_w != self.scr_w or new_h != self.scr_h) {
+            c.glDeleteTextures(1, &self.color);
+            c.glDeleteFramebuffers(1, &self.fb);
+            self.* = create(new_w, new_h);
+        }
+    }
+
+    pub fn create(scrw: i32, scrh: i32) @This() {
+        var ret: HdrBuffer = .{};
+        ret.scr_w = scrw;
+        ret.scr_h = scrh;
+
+        c.glGenFramebuffers(1, &ret.fb);
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, ret.fb);
+
+        c.glGenTextures(1, &ret.color);
+        c.glBindTexture(c.GL_TEXTURE_2D, ret.color);
+        c.glTexImage2D(c.GL_TEXTURE_2D, 0, c.GL_RGBA16F, scrw, scrh, 0, c.GL_RGBA, c.GL_HALF_FLOAT, null);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MIN_FILTER, c.GL_NEAREST);
+        c.glTexParameteri(c.GL_TEXTURE_2D, c.GL_TEXTURE_MAG_FILTER, c.GL_NEAREST);
+        c.glFramebufferTexture2D(c.GL_FRAMEBUFFER, c.GL_COLOR_ATTACHMENT0, c.GL_TEXTURE_2D, ret.color, 0);
+
+        const attachments = [_]c_int{ c.GL_COLOR_ATTACHMENT0, 0 };
+        c.glDrawBuffers(1, @ptrCast(&attachments[0]));
+
+        if (c.glCheckFramebufferStatus(c.GL_FRAMEBUFFER) != c.GL_FRAMEBUFFER_COMPLETE)
+            std.debug.print("gbuffer FBO not complete\n", .{});
+        c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
+        return ret;
+    }
+};
 
 pub const PointLightVertex = packed struct {
     light_pos: graph.Vec3f,
