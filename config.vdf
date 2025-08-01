@@ -61,7 +61,7 @@ dot_size 16
 
 paths {
     //Set the directory rathammer searchs for games. if unset, searches default steam directory
-    //steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"
+    steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"
 }
 
 autosave {
@@ -85,6 +85,22 @@ window {
 
 //All directory paths are relative to paths.steam_path or the default steam path on your platform
 games {
+    mycustom {
+
+        gameinfo {
+            base_dir "rat_custom"
+            game_dir "rat_custom"
+        }
+
+        fgd_dir     "rat_custom"
+        fgd         "base.fgd" 
+
+        asset_browser_exclude {
+            
+        }
+    }
+
+
     basic_hl2 {
         // Each game can mount multiple game infos
         gameinfo {
