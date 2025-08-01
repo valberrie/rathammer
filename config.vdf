@@ -78,6 +78,8 @@ window {
     width_px    1920
     height_px   1080
     cam_fov     85
+    sensitivity_3d  1
+    sensitivity_2d  1
 }
 
 

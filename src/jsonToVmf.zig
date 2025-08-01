@@ -33,6 +33,26 @@ fn sanatizeMaterialName(name: []const u8) []const u8 {
     return name[start .. name.len - end_offset];
 }
 
+fn sanatizePrefixPath(name: []const u8, prefix: []const u8, suffix: []const u8) []const u8 {
+    const start = if (std.mem.startsWith(u8, name, prefix)) prefix.len else 0;
+    const end_offset = if (std.mem.endsWith(u8, name, suffix)) suffix.len else 0;
+    return name[start .. name.len - end_offset];
+}
+
+fn fixupValue(key: []const u8, value: []const u8, ent_class: []const u8) []const u8 {
+    const h = std.hash.Wyhash.hash;
+    switch (h(0, ent_class)) {
+        h(0, "infodecal") => {
+            switch (h(0, key)) {
+                h(0, "texture") => return sanatizeMaterialName(value),
+                else => return value,
+            }
+        },
+        else => return value,
+    }
+    return value;
+}
+
 /// Does not free memory, use an arena.
 pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8, vpkmapper: anytype, groups: *ecs.Groups) !void {
     const outfile = try std.fs.cwd().createFile("dump.vmf", .{});
@@ -129,9 +149,10 @@ pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8
                         //because some class's don't specify it even though they need it.
                         if (std.mem.eql(u8, "origin", kv.key_ptr.*))
                             continue;
-                        const slice = kv.value_ptr.slice();
+                        const slice_pre = kv.value_ptr.slice();
+                        const slice = fixupValue(kv.key_ptr.*, slice_pre, ent.class);
                         if (slice.len > 0 and kv.key_ptr.*.len > 0)
-                            try vr.writeKv(kv.key_ptr.*, kv.value_ptr.slice());
+                            try vr.writeKv(kv.key_ptr.*, slice);
                     }
                 }
 

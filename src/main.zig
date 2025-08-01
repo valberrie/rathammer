@@ -362,7 +362,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             .right = win.bindHigh(config.keys.cam_strafe_r.b),
             .fwd = win.bindHigh(config.keys.cam_forward.b),
             .bwd = win.bindHigh(config.keys.cam_back.b),
-            .mouse_delta = if (editor.panes.grab.was_grabbed) win.mouse.delta else .{ .x = 0, .y = 0 },
+            .mouse_delta = if (editor.panes.grab.was_grabbed) win.mouse.delta.scale(editor.config.window.sensitivity_3d) else .{ .x = 0, .y = 0 },
             .scroll_delta = win.mouse.wheel_delta.y,
             .speed_perc = @as(f32, if (win.bindHigh(config.keys.cam_slow.b)) 0.1 else 1) * perc_of_60fps,
         };

@@ -81,6 +81,9 @@ pub const Config = struct {
         height_px: i32 = 600,
         width_px: i32 = 800,
         cam_fov: f32 = 90,
+
+        sensitivity_3d: f32 = 1,
+        sensitivity_2d: f32 = 1,
     },
     default_game: []const u8 = "",
     games: struct {

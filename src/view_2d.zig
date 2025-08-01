@@ -60,7 +60,7 @@ pub const Ctx2dView = struct {
         //draw.rect(screen_area, 0xffff);
         if (mouse.middle == .high or ed.isBindState(ed.config.keys.cam_pan.b, .high)) {
             _ = ed.panes.grab.trySetGrab(pane_id, true);
-            self.cam.pan(mouse.delta);
+            self.cam.pan(mouse.delta.scale(ed.config.window.sensitivity_2d));
         }
         const zoom_bounds = graph.Vec2f{ .x = 16, .y = 1 << 16 };
         if (mouse.wheel_delta.y != 0) {
