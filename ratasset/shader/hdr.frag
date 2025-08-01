@@ -36,10 +36,4 @@ void main(){
 
 
     FragColor = vec4(doGamma(reinhard(result, exposure), gamma), 1);
-    //FragColor = vec4(result * exposure / lum, 1);
-    //FragColor = vec4(result / (1.0 + result) ,1);
-
-    //vec3 mapped = vec3(1.0) - exp(-result * exposure);
-    //mapped = pow(mapped, vec3(1.0/gamma));
-    //FragColor = vec4(mapped, 1.0);
 }

@@ -48,7 +48,7 @@ pub const PauseWindow = struct {
 
     tab_index: usize = 0,
 
-    pub fn create(gui: *Gui, editor: *Context) !*PauseWindow {
+    pub fn create(gui: *Gui, editor: *Context, app_cwd: std.fs.Dir) !*PauseWindow {
         const self = gui.create(@This());
         self.* = .{
             .area = iArea.init(gui, Rec(0, 0, 0, 0)),
@@ -59,7 +59,7 @@ pub const PauseWindow = struct {
         self.area.draw_fn = &draw;
         self.area.deinit_fn = &area_deinit;
 
-        if (std.fs.cwd().openDir("doc/en", .{ .iterate = true })) |doc_dir| {
+        if (app_cwd.openDir("doc/en", .{ .iterate = true })) |doc_dir| {
             var dd = doc_dir;
             defer dd.close();
             var walker = try dd.walk(gui.alloc);

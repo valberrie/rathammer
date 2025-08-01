@@ -224,7 +224,8 @@ pub const Context = struct {
     game_conf: Conf.GameEntry,
     dirs: struct {
         const Dir = std.fs.Dir;
-        cwd: Dir,
+        cwd: Dir, //Should really be named, game cwd
+        app_cwd: Dir,
         fgd: Dir,
         pref: Dir,
         autosave: Dir,
@@ -286,8 +287,9 @@ pub const Context = struct {
         win_ptr: *graph.SDL.Window,
         loadctx: *LoadCtx,
         env: *std.process.EnvMap,
+        app_cwd: std.fs.Dir,
     ) !*Self {
-        const shader_dir = try std.fs.cwd().openDir("ratasset/shader", .{});
+        const shader_dir = try app_cwd.openDir("ratasset/shader", .{});
         var ret = try alloc.create(Context);
         ret.* = .{
             //These are initilized in editor.postInit
@@ -339,12 +341,12 @@ pub const Context = struct {
         };
         //If an error occurs during initilization it is fatal so there is no reason to clean up resources.
         //Thus we call, defer editor.deinit(); after all is initialized..
-        try ret.postInit(args, loadctx, env);
+        try ret.postInit(args, loadctx, env, app_cwd);
         return ret;
     }
 
     /// Called by init
-    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx, env: *std.process.EnvMap) !void {
+    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx, env: *std.process.EnvMap, app_cwd: std.fs.Dir) !void {
         if (self.config.default_game.len == 0) {
             std.debug.print("config.vdf must specify a default_game!\n", .{});
             return error.incompleteConfig;
@@ -385,7 +387,7 @@ pub const Context = struct {
         const pref = try std.fs.cwd().makeOpenPath(std.mem.span(path), .{});
         const autosave = try pref.makeOpenPath("autosave", .{});
 
-        try graph.AssetBake.assetBake(self.alloc, std.fs.cwd(), "ratasset", pref, "packed", .{});
+        try graph.AssetBake.assetBake(self.alloc, app_cwd, "ratasset", pref, "packed", .{});
         loadctx.cb("Asset's baked");
 
         self.asset = try graph.AssetBake.AssetMap.initFromManifest(self.alloc, pref, "packed");
@@ -406,7 +408,7 @@ pub const Context = struct {
             }
         }
 
-        self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave };
+        self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave, .app_cwd = app_cwd };
 
         //try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx, loadctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);

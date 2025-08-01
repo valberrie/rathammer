@@ -94,9 +94,10 @@ pub fn dpiDetect(win: *graph.SDL.Window) !f32 {
     return sc;
 }
 
-var font_ptr: *graph.OnlineFont = undefined;
+var font_ptr: ?*graph.OnlineFont = null;
 fn flush_cb() void {
-    font_ptr.syncBitmapToGL();
+    if (font_ptr) |fp|
+        fp.syncBitmapToGL();
 }
 
 pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, win_vt: *G.iWindow, gui: *G.Gui, gui_dstate: G.DrawState, loadctx: *edit.LoadCtx, editor: *Editor, should_exit: bool) !enum { cont, exit, unpause } {
@@ -133,8 +134,53 @@ pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, w
 
 const log = std.log.scoped(.app);
 pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
+    var env = try std.process.getEnvMap(alloc);
+    defer env.deinit();
+
+    const app_cwd = blk: {
+        switch (builtin.target.os.tag) {
+            .linux => if (env.get("APPDIR")) |appdir| { //For appimage
+                break :blk std.fs.cwd().openDir(appdir, .{}) catch {
+                    log.err("Unable to open $APPDIR {s}", .{appdir});
+                    break :blk std.fs.cwd();
+                };
+            },
+            else => {},
+        }
+        break :blk std.fs.cwd();
+    };
+    //Relative to app_cwd
+    const xdg_dir = (env.get("XDG_CONFIG_DIR"));
+
+    const config_dir: std.fs.Dir = blk: {
+        var config_path = std.ArrayList(u8).init(alloc);
+        defer config_path.deinit();
+        if (xdg_dir) |x| {
+            try config_path.writer().print("{s}/rathammer", .{x});
+        } else {
+            switch (builtin.target.os.tag) {
+                .windows => break :blk app_cwd,
+                else => {
+                    if (env.get("HOME")) |home| {
+                        try config_path.writer().print("{s}/.config/rathammer", .{home});
+                    } else {
+                        log.info("XDG_CONFIG_HOME and $HOME not defined, using config in app dir", .{});
+                        break :blk app_cwd;
+                    }
+                },
+            }
+        }
+        break :blk app_cwd.makeOpenPath(config_path.items, .{}) catch break :blk app_cwd;
+    };
+    if (config_dir.openFile("config.vdf", .{})) |f| {
+        f.close();
+    } else |_| {
+        log.info("config.vdf not found in config dir, copying default", .{});
+        try app_cwd.copyFile("config.vdf", config_dir, "config.vdf", .{});
+    }
+
     const load_timer = try std.time.Timer.start();
-    var loaded_config = Conf.loadConfigFromFile(alloc, std.fs.cwd(), "config.vdf") catch |err| {
+    var loaded_config = Conf.loadConfigFromFile(alloc, config_dir, "config.vdf") catch |err| {
         log.err("User config failed to load with error {!}", .{err});
         log.info("fix your config!", .{});
         return error.failedConfig;
@@ -184,11 +230,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
     var draw = graph.ImmediateDrawingContext.init(alloc);
     defer draw.deinit();
-    var font = try graph.Font.init(alloc, std.fs.cwd(), args.fontfile orelse "ratgraph/asset/fonts/roboto.ttf", scaled_text_height, .{
+    var font = try graph.Font.init(alloc, app_cwd, args.fontfile orelse "ratasset/roboto.ttf", scaled_text_height, .{
         .codepoints_to_load = &(graph.Font.CharMaps.Default),
     });
     defer font.deinit();
-    const splash = graph.Texture.initFromImgFile(alloc, std.fs.cwd(), "small.png", .{}) catch edit.missingTexture();
+    const splash = graph.Texture.initFromImgFile(alloc, app_cwd, "ratasset/small.png", .{}) catch edit.missingTexture();
 
     var loadctx = edit.LoadCtx{
         .draw = &draw,
@@ -199,23 +245,22 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .gtimer = load_timer,
         .expected_cb = 100,
     };
-    var env = try std.process.getEnvMap(alloc);
-    defer env.deinit();
 
-    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx, &env);
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx, &env, app_cwd);
     defer editor.deinit();
 
-    var os9gui = try Os9Gui.init(alloc, try std.fs.cwd().openDir("ratgraph", .{}), gui_scale, .{
+    var os9gui = try Os9Gui.init(alloc, try app_cwd.openDir("ratgraph", .{}), gui_scale, .{
         .cache_dir = editor.dirs.pref,
         .font_size_px = scaled_text_height,
         .item_height = scaled_item_height,
+        .font = &font.font,
     });
     defer os9gui.deinit();
     draw.preflush_cb = &flush_cb;
     font_ptr = os9gui.ofont;
 
     loadctx.cb("Loading gui");
-    var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try std.fs.cwd().openDir("ratgraph", .{}), &font.font);
+    var gui = try G.Gui.init(alloc, &win, editor.dirs.pref, try app_cwd.openDir("ratgraph", .{}), &font.font);
     defer gui.deinit();
     gui.style.config.default_item_h = scaled_item_height;
     gui.style.config.text_h = scaled_text_height;
@@ -228,7 +273,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .scale = gui_scale,
     };
     const inspector_win = InspectorWindow.create(&gui, editor);
-    const pause_win = try PauseWindow.create(&gui, editor);
+    const pause_win = try PauseWindow.create(&gui, editor, app_cwd);
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
     try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
     const nag_win = try NagWindow.create(&gui, editor);
@@ -257,7 +302,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     editor.draw_state.cam3d.fov = config.window.cam_fov;
 
     if (args.vmf) |mapname| {
-        try editor.loadMap(std.fs.cwd(), mapname, &loadctx);
+        try editor.loadMap(app_cwd, mapname, &loadctx);
     } else {
         while (!win.should_exit) {
             switch (try pauseLoop(&win, &draw, &pause_win.vt, &gui, gui_dstate, &loadctx, editor, pause_win.should_exit)) {

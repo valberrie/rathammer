@@ -509,13 +509,12 @@ const Csm = struct {
             std.debug.print("Framebuffer is broken\n", .{});
 
         c.glBindFramebuffer(c.GL_FRAMEBUFFER, 0);
-        const NUM_LS = 4;
 
         var lmu: c_uint = 0;
         {
             c.glGenBuffers(1, &lmu);
             c.glBindBuffer(c.GL_UNIFORM_BUFFER, lmu);
-            c.glBufferData(c.GL_UNIFORM_BUFFER, @sizeOf([4][4]f32) * NUM_LS, null, c.GL_DYNAMIC_DRAW);
+            c.glBufferData(c.GL_UNIFORM_BUFFER, @sizeOf([4][4]f32) * CSM_COUNT, null, c.GL_DYNAMIC_DRAW);
             c.glBindBufferBase(c.GL_UNIFORM_BUFFER, 0, lmu);
             c.glBindBuffer(c.GL_UNIFORM_BUFFER, 0);
 
