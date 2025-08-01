@@ -56,12 +56,23 @@ pub const UndoContext = struct {
 
     alloc: std.mem.Allocator,
 
+    delta_counter: u64 = 0,
+    last_delta_timestamp: i64 = 0,
+
     pub fn init(alloc: std.mem.Allocator) Self {
         return .{
             .stack_pointer = 0,
             .stack = std.ArrayList(UndoGroup).init(alloc),
             .alloc = alloc,
         };
+    }
+
+    pub fn markDelta(self: *Self) void {
+        if (self.delta_counter == std.math.maxInt(@TypeOf(self.delta_counter))) {
+            self.delta_counter = 0;
+        }
+        self.delta_counter += 1;
+        self.last_delta_timestamp = std.time.timestamp();
     }
 
     /// The returned array list should be treated as a stack.
@@ -79,9 +90,6 @@ pub const UndoContext = struct {
 
         for (self.stack.items[self.stack_pointer..]) |*item| {
             item.deinit(self.alloc);
-            //for (item.items) |it|
-            //    it.deinit(self.alloc);
-            //item.deinit();
         }
         try self.stack.resize(self.stack_pointer); //Discard any
         self.stack_pointer += 1;
@@ -91,6 +99,7 @@ pub const UndoContext = struct {
             .description = try desc.toOwnedSlice(),
         };
         try self.stack.append(new_group);
+        self.markDelta();
         return &self.stack.items[self.stack.items.len - 1].items;
     }
 
@@ -104,6 +113,7 @@ pub const UndoContext = struct {
             ar.items.items[i - 1].undo(editor);
         }
         editor.notify("undo: {s}", .{ar.description}, 0xFF8C00ff) catch return;
+        self.markDelta();
     }
 
     pub fn redo(self: *Self, editor: *Editor) void {
@@ -113,6 +123,7 @@ pub const UndoContext = struct {
         const th = self.stack.items[self.stack_pointer];
         applyRedo(th.items.items, editor);
         editor.notify("redo: {s}", .{th.description}, 0x8FBC_8F_ff) catch return;
+        self.markDelta();
     }
 
     pub fn deinit(self: *Self) void {

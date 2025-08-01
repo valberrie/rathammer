@@ -48,6 +48,8 @@ const util3d = @import("util_3d.zig");
 const pointfile = @import("pointfile.zig");
 const def_render = @import("def_render.zig");
 
+const MAPFMT = " {s}{s} - RatHammer";
+
 const builtin = @import("builtin");
 const WINDOZE = builtin.target.os.tag == .windows;
 pub const TMP_DIR = if (WINDOZE) "C:/rathammer_tmp" else "/tmp/mapcompile";
@@ -203,6 +205,10 @@ pub const Context = struct {
     } = .{},
 
     edit_state: struct {
+        autosaved_at_delta: u64 = 0, // Don't keep autosaving the same thing
+        saved_at_delta: u64 = 0,
+        was_saved: bool = false, //Used to set window title
+
         manual_hidden_count: usize = 0,
         default_group_entity: enum { none, func_detail } = .func_detail,
         __tool_index: usize = 0,
@@ -1116,6 +1122,12 @@ pub const Context = struct {
         return self.scratch_buf.items;
     }
 
+    pub fn printScratchZ(self: *Self, comptime str: []const u8, args: anytype) ![]const u8 {
+        _ = try self.printScratch(str, args);
+        try self.scratch_buf.append(0);
+        return self.scratch_buf.items;
+    }
+
     pub fn saveAndNotify(self: *Self, basename: []const u8, path: []const u8) !void {
         var timer = try std.time.Timer.start();
         try self.notify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
@@ -1125,6 +1137,10 @@ pub const Context = struct {
         defer out_file.close();
         if (self.writeToJson(out_file)) {
             try self.notify(" saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
+            self.edit_state.saved_at_delta = self.undoctx.delta_counter;
+            self.edit_state.was_saved = true;
+            const win_name = try self.printScratchZ(MAPFMT, .{ "", self.loaded_map_name orelse "unnamed_map" });
+            _ = graph.c.SDL_SetWindowTitle(self.win.win, &win_name[0]);
         } else |err| {
             log.err("writeToJson failed ! {}", .{err});
             try self.notify("save failed!: {}", .{err}, 0xff0000ff);
@@ -1138,7 +1154,17 @@ pub const Context = struct {
 
     pub fn update(self: *Self, win: *graph.SDL.Window) !void {
         //TODO in the future, set app state to 'autosaving' and send saving to worker thread
+        if (self.edit_state.saved_at_delta == self.undoctx.delta_counter or self.edit_state.autosaved_at_delta == self.undoctx.delta_counter) {
+            self.autosaver.resetTimer(); //Don't autosave if the map is already saved
+        } else {
+            if (self.edit_state.was_saved) {
+                self.edit_state.was_saved = false;
+                const win_name = try self.printScratchZ(MAPFMT, .{ "*", self.loaded_map_name orelse "unnamed_map" });
+                _ = graph.c.SDL_SetWindowTitle(win.win, &win_name[0]);
+            }
+        }
         if (self.autosaver.shouldSave()) {
+            self.edit_state.autosaved_at_delta = self.undoctx.delta_counter;
             const basename = self.loaded_map_name orelse "unnamed_map";
             log.info("Autosaving {s}", .{basename});
             self.autosaver.resetTimer();

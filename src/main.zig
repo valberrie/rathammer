@@ -16,6 +16,7 @@ const Gui = graph.Gui;
 const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
 const G = graph.RGui;
+const NagWindow = @import("windows/savenag.zig").NagWindow;
 const PauseWindow = @import("windows/pause.zig").PauseWindow;
 const ConsoleWindow = @import("windows/console.zig").Console;
 const InspectorWindow = @import("windows/inspector.zig").InspectorWindow;
@@ -98,10 +99,10 @@ fn flush_cb() void {
     font_ptr.syncBitmapToGL();
 }
 
-pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, pause_win: *PauseWindow, gui: *G.Gui, gui_dstate: G.DrawState, loadctx: *edit.LoadCtx, editor: *Editor) !enum { cont, exit, unpause } {
+pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, win_vt: *G.iWindow, gui: *G.Gui, gui_dstate: G.DrawState, loadctx: *edit.LoadCtx, editor: *Editor, should_exit: bool) !enum { cont, exit, unpause } {
     if (!editor.paused)
         return .unpause;
-    if (win.isBindState(editor.config.keys.quit.b, .rising) or pause_win.should_exit)
+    if (win.isBindState(editor.config.keys.quit.b, .rising) or should_exit)
         return .exit;
     win.pumpEvents(.wait);
     win.grabMouse(false);
@@ -115,9 +116,9 @@ pub fn pauseLoop(win: *graph.SDL.Window, draw: *graph.ImmediateDrawingContext, p
         const w = @min(max_w, area.w);
         const side_l = (area.w - w);
         const winrect = area.replace(side_l, null, w, null);
-        const wins = &.{&pause_win.vt};
+        const wins = &.{win_vt};
         try gui.pre_update(wins);
-        try gui.updateWindowSize(&pause_win.vt, winrect);
+        try gui.updateWindowSize(win_vt, winrect);
         try gui.update(wins);
         try gui.draw(gui_dstate, false, wins);
         gui.drawFbos(draw, wins);
@@ -230,6 +231,8 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const pause_win = try PauseWindow.create(&gui, editor);
     try gui.addWindow(&pause_win.vt, Rec(0, 300, 1000, 1000));
     try gui.addWindow(&inspector_win.vt, Rec(0, 300, 1000, 1000));
+    const nag_win = try NagWindow.create(&gui, editor);
+    try gui.addWindow(&nag_win.vt, Rec(0, 300, 1000, 1000));
 
     var console_active = false;
     const console_win = try ConsoleWindow.create(&gui, editor, &editor.shell.cb_vt);
@@ -257,7 +260,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         try editor.loadMap(std.fs.cwd(), mapname, &loadctx);
     } else {
         while (!win.should_exit) {
-            switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
+            switch (try pauseLoop(&win, &draw, &pause_win.vt, &gui, gui_dstate, &loadctx, editor, pause_win.should_exit)) {
                 .exit => break,
                 .unpause => break,
                 .cont => continue,
@@ -331,7 +334,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             editor.panes.grab.override();
 
         if (editor.paused) {
-            switch (try pauseLoop(&win, &draw, pause_win, &gui, gui_dstate, &loadctx, editor)) {
+            switch (try pauseLoop(&win, &draw, &pause_win.vt, &gui, gui_dstate, &loadctx, editor, pause_win.should_exit)) {
                 .cont => continue :main_loop,
                 .exit => break :main_loop,
                 .unpause => editor.paused = false,
@@ -394,7 +397,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         for (ws.getTab()) |out| {
             const pane_area = out[0];
             const pane = out[1] orelse continue;
-            //const pane_area = areas[p_i].inset(10);
             if (editor.panes.get(pane)) |pane_vt| {
                 //TODO put this in the places that should have it 2
                 editor.handleMisc3DKeys(ws.workspaces.items);
@@ -430,6 +432,21 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         try loadctx.loadedSplash(win.keys.len > 0);
         try draw.end(editor.draw_state.cam3d);
         win.swap();
+    }
+    if (editor.edit_state.saved_at_delta != editor.undoctx.delta_counter) {
+        win.should_exit = false;
+        win.pumpEvents(.poll); //Clear quit keys
+        editor.paused = true; //Needed for pause loop, hacky
+        while (!win.should_exit) {
+            if (editor.edit_state.saved_at_delta == editor.undoctx.delta_counter) {
+                break; //The map has been saved async
+            }
+            switch (try pauseLoop(&win, &draw, &nag_win.vt, &gui, gui_dstate, &loadctx, editor, nag_win.should_exit)) {
+                .exit => break,
+                .unpause => break,
+                .cont => continue,
+            }
+        }
     }
 }
 
