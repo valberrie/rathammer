@@ -191,6 +191,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     var win = try graph.SDL.Window.createWindow("Rat Hammer", .{
         .window_size = .{ .x = config.window.width_px, .y = config.window.height_px },
         .frame_sync = .adaptive_vsync,
+        .stencil_buffer_depth = null,
+        .gl_major_version = 4,
+        .gl_minor_version = 0,
     });
     defer win.destroyWindow();
 
