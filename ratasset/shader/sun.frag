@@ -1,4 +1,4 @@
-#version 460 core
+#version 420 core
 #define NUM_LS 4
 out vec4 FragColor;
 

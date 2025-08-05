@@ -1,4 +1,4 @@
-#version 460 core
+#version 420 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 texcoord;
 layout (location = 2) in vec3 normal;
@@ -11,7 +11,7 @@ layout (location = 1) out vec2 out_texcoord;
 layout (location = 2) out vec3 out_normal;
 layout (location = 3) out vec3 frag_pos;
 layout (location = 4) out vec3 out_tangent;
-layout (location = 5) out uint tex_index;
+layout (location = 5) flat  out uint tex_index;
 
 uniform mat4 model = mat4(1.0f);
 uniform mat4 view = mat4(1.0f);

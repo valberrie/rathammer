@@ -193,7 +193,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .frame_sync = .adaptive_vsync,
         .stencil_buffer_depth = null,
         .gl_major_version = 4,
-        .gl_minor_version = 0,
+        .gl_minor_version = 2,
     });
     defer win.destroyWindow();
 

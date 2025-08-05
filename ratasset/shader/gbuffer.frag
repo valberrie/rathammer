@@ -1,4 +1,4 @@
-#version 460 core
+#version 420 core
 layout (location = 0) out vec4 g_pos;
 layout (location = 1) out vec4 g_norm;
 layout (location = 2) out vec4 g_albedo;
