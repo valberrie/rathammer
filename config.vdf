@@ -65,6 +65,10 @@ mouse_grab_when     key_low
 
 dot_size 16
 
+// Tint the gui. Less useful once we have a dark mode. rgba value. 
+//Hex values must be prefixed with '0x', not '#'
+gui_tint 0xffff_ffff
+
 paths {
     //Set the directory rathammer searchs for games. if unset, searches default steam directory
     //steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"

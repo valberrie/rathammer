@@ -16,6 +16,7 @@ pub const Config = struct {
         max: u32 = 5,
     } = .{},
     dot_size: f32 = 16,
+    gui_tint: u32 = 0xffff_ffff,
     mouse_grab_when: enum { key_low, key_high, toggle } = .key_low,
     keys: struct {
         const SC = graph.SDL.NewBind.Scancode;

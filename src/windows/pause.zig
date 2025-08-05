@@ -238,6 +238,12 @@ pub const PauseWindow = struct {
                     .default = 1024,
                     .slide = .{ .snap = 64 },
                 }));
+            if (guis.label(vt, gui, win, ly.getArea(), "Gui Tint", .{})) |ar|
+                vt.addChildOpt(gui, win, Wg.Colorpicker.build(gui, ar, gui.tint, .{
+                    .commit_vt = &self.area,
+                    .commit_cb = &commitColor,
+                }));
+
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "draw skybox", .{ .bool_ptr = &ed.draw_state.tog.skybox }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "lighting", .{ .bool_ptr = &ed.renderer.do_lighting }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "copy depth", .{ .bool_ptr = &ed.renderer.copy_depth }, null));
@@ -358,6 +364,11 @@ pub const PauseWindow = struct {
                 .user_1 = if (self.selected_text_i == i) 1 else 0,
             }));
         }
+    }
+
+    pub fn commitColor(window_area: *iArea, gui: *Gui, color: u32, _: usize) void {
+        _ = window_area;
+        gui.tint = color;
     }
 };
 
