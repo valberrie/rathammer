@@ -34,6 +34,8 @@ cp libwinpthread-1.dll $RATOUT
 cp libiconv-2.dll $RATOUT
 cp libpcre2-8-0.dll $RATOUT
 
+cp -r rat_custom "$RATOUT"
+
 cd distrib
 zip -r win.zip rathammer-windows
 cd ..

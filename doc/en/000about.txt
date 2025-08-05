@@ -1,19 +1,9 @@
-This is RatHammer, a new editor for source engine maps.
-ラットハンマー
-Written by Niklas Malthouse.
-For bug reports, feature requests, etc: 
 https://github.com/nmalthouse/rathammer
-
-The column to the left has help text for various things.
-Click on a topic for more information.
-<--
-Open and close this menu with 'Escape'
-
-Basics:
+Open and close this pause menu with 'Escape'
+To uncapture the mouse in the 3d view, hold 'Shift'
 Selections are made by pressing 'E'.
 To deselect everything press 'ctrl+E'
 Pressing 'Tab' toggles between multi select and single select.
-Access the tools on the bar below by pressing the number keys.
 Tool controls are manipulated by mouse left and right.
 
 There are different workspaces:
@@ -22,7 +12,6 @@ alt+2 -> 2d
 alt+t -> texture selection
 alt+m -> model selection
 
-To uncapture the mouse in the 3d view, hold 'Shift'
 ctrl+s saves the map.
 F9 will attempt to build it using Valves vbsp, vvis, vrad
 

@@ -149,7 +149,7 @@ games {
         }
 
 
-        fgd_dir     "/mnt/flash/steam_games/tf_bin"
+        fgd_dir     "Team Fortress 2/BIN"
         fgd         "tf.fgd"
         
         mapbuilder {

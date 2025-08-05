@@ -174,20 +174,19 @@ pub const PauseWindow = struct {
                 }));
         }
         if (eql(u8, tab, "graphics")) {
+            const St = Wg.StaticSlider.build;
             var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area };
             const ps = &self.editor.draw_state.planes;
             const ed = self.editor;
             const max = 512 * 64;
             if (guis.label(vt, gui, win, ly.getArea(), "p0", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[0], 0.1, max, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ps[0], .{ .min = 0.1, .max = max, .default = 462 }));
             if (guis.label(vt, gui, win, ly.getArea(), "p1", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[1], 0.1, max, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ps[1], .{ .min = 0.1, .max = max, .default = 1300 }));
             if (guis.label(vt, gui, win, ly.getArea(), "p2", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[2], 0.1, max, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ps[2], .{ .min = 0.1, .max = max, .default = 4200 }));
             if (guis.label(vt, gui, win, ly.getArea(), "p3", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ps[3], 4096, max, .{}));
-            if (guis.label(vt, gui, win, ly.getArea(), "far", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.far, 4096, 512 * 64, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ps[3], .{ .min = 4096, .max = max, .default = 16400 }));
             if (guis.label(vt, gui, win, ly.getArea(), "pad", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.pad, 1, 4096, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "index", .{})) |ar|
@@ -195,29 +194,27 @@ pub const PauseWindow = struct {
             if (guis.label(vt, gui, win, ly.getArea(), "gamma", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.gamma, 0.1, 3, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "exposure", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.StaticSlider.build(gui, ar, &ed.renderer.exposure, .{
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.exposure, .{
                     .min = 0.1,
                     .max = 10,
                     .default = 1,
-                    .display_bounds_while_editing = false,
                     .slide = .{ .snap = 0.1 },
                 }));
             if (guis.label(vt, gui, win, ly.getArea(), "pitch", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.pitch, 0, 90, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.pitch, .{ .min = 0, .max = 90, .default = -30 }));
             if (guis.label(vt, gui, win, ly.getArea(), "yaw", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.yaw, 0, 360, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.yaw, .{ .min = 0, .max = 360, .default = 0 }));
             if (guis.label(vt, gui, win, ly.getArea(), "lightMul", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.light_mul, 0.01, 1, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.draw_state.light_mul, .{ .min = 0.01, .max = 1, .default = 0.11 }));
             if (guis.label(vt, gui, win, ly.getArea(), "const add", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.const_add, -1, 1, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.draw_state.const_add, .{ .min = -1, .max = 1, .default = 0 }));
             if (guis.label(vt, gui, win, ly.getArea(), "ambient scale", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.ambient_scale, -10, 100, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.ambient_scale, .{ .min = -10, .max = 100, .default = 1 }));
             if (guis.label(vt, gui, win, ly.getArea(), "res scale", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.StaticSlider.build(gui, ar, &ed.renderer.res_scale, .{
                     .min = 0.1,
                     .max = 1,
                     .default = 1,
-                    .display_bounds_while_editing = false,
                     .slide = .{ .snap = 0.1 },
                 }));
             if (guis.label(vt, gui, win, ly.getArea(), "light render dist", .{})) |ar|
@@ -225,7 +222,6 @@ pub const PauseWindow = struct {
                     .min = 16,
                     .max = 4096,
                     .default = 1024,
-                    .display_bounds_while_editing = false,
                     .slide = .{ .snap = 64 },
                 }));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "draw skybox", .{ .bool_ptr = &ed.draw_state.tog.skybox }, null));
