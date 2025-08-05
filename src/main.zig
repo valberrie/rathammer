@@ -268,6 +268,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     gui.style.config.default_item_h = scaled_item_height;
     gui.style.config.text_h = scaled_text_height;
     gui.scale = gui_scale;
+    gui.tint = 0xffff_ffff;
     const gui_dstate = G.DrawState{
         .ctx = &draw,
         .font = &font.font,

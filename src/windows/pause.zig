@@ -13,6 +13,7 @@ const Context = @import("../editor.zig").Context;
 const label = guis.label;
 const async_util = @import("../async.zig");
 const VisGroup = @import("../visgroup.zig");
+const Config = @import("../config.zig");
 pub const PauseWindow = struct {
     const Buttons = enum {
         unpause,
@@ -162,6 +163,19 @@ pub const PauseWindow = struct {
 
             //var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
             //vt.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome to visgroup", null));
+        }
+        if (eql(u8, tab, "keybinds")) {
+            const info = @typeInfo(@TypeOf(self.editor.config.keys));
+            var ly = guis.VerticalLayout{ .item_height = gui.style.config.default_item_h, .bounds = vt.area };
+            inline for (info.@"struct".fields) |field| {
+                const key = @field(self.editor.config.keys, field.name);
+                if (@TypeOf(key) == Config.Keybind) {
+                    vt.addChildOpt(gui, win, Wg.Text.build(gui, ly.getArea(), "{s}: {s}", .{
+                        field.name,
+                        key.b.name(),
+                    }));
+                }
+            }
         }
         if (eql(u8, tab, "mapprops")) {
             var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = vt.area };
