@@ -1,30 +1,33 @@
+# Intro
 RatHammer is an editor for Valve's Source engine maps, though it can also be used standalone as well.
 
 I started developing RatHammer without the intention of it becoming a fully fledged editor, I initially wanted to create a sort of sandbox game I was calling 2x4 simulator, where players could build graybox style environments. In other words, the goal of rathammer is to make the creation of 3d environments enjoyable. 
 The style of building the world out of many convex polyhedra is a core part of this.
-Supporting arbitrary mesh editing, for example, is out of scope.
 
 I occasionally get the urge to make some 3D environments and Half Life 2, with its asset library and its 'easy' way of making level geometry make it a default.
 The issue is that Hammer does not run on Linux, and the ergonomics are terrible.
 You can't rebind keys for example, and if you use a keyboard layout other than Qwerty you will have to constantly switch layouts. Every operation requires you to move your left hand over to the enter key. And most editing requires you to orient yourself in 4 different views at once. In its current state RatHammer does not have full feature parity with Hammer, but it can do a lot of editing in a way that is much nicer.
 
 I recommend starting RatHammer from a terminal so you can see error messages. If you use the built in Vbsp runner, the compile output of Vbsp, Vvis and Vrad is printed to this console as well.
-'''
+```
 rathammer --help # Show all the flags you can set
-'''
+```
 # Games
 By Default RatHammer will search for Half Life 2 in your OS's default steam directory
+```
 On Windows "/Program Files (x86)/Steam/steamapps/common"
 On Linux "$HOME/.local/share/Steam/steamapps/common"
+```
 
-All games are defined inside of 'config.vdf' 
+All games are defined inside of 'config.vdf'.
+
 To map for a different Source game or use it for custom levels, you must edit config.vdf and set the default_game appropriately
 All paths for game configuration can be temporarily overridden with command line flags, use --help to see these.
 If Rathammer fails to start, read through the console output and look for lines like this:
-'''
+```
 Failed to open directory Half-Life 2 in /tmp with error: error.FileNotFound
 Set a custom cwd with --custom_cwd flag
-'''
+```
 Unless something horribly wrong happened (Windows builds can be finicky), RatHammer will usually give you good idea of why it can't start.
 
 To load a vmf or json map you can use the --vmf flag, or you can select a map to load once the editor is started.
