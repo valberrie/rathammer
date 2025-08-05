@@ -30,7 +30,7 @@ sudo pacman -S zig libepoxy freetype2 sdl3 zenity
 sudo pacman -S wine
 ```
 
-### Debian based distro (untested)
+### Debian based distro 
 ```
 sudo apt install libepoxy-dev libfreetype-dev
 # Download the correct zig 0.14.1 tar from https://ziglang.org/download/
@@ -67,6 +67,16 @@ hl2 will be suspended and not use cpu/gpu while you map. unsuspend with 'fg' com
 You will need to manually edit this script so the paths are correct.
 
 Second, wine is very slow to startup by default, 'running wineserver --persistent' will speed up compile times significantly.
+
+## Getting vbsp.exe on Linux
+* Install the game you want to map for using proton. I will use tf2 as an example
+* Navigate to it's steam folder "steamapps/common/Team Fortress 2"
+* Copy the "bin" folder somewhere. 'cp -r bin /mnt/flash/tf2_bin'
+* Turn off proton for the game and let it update.
+* Copy the bin folder back to the game folder but name it BIN. 'cp -r /mnt/flash/tf2_bin BIN'
+* See the 'tf2' config in config.vdf for how to configure everything.
+Vbsp etc require some steam dlls to run properly. On linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not linux.
+
 
 
 ### Building and running
