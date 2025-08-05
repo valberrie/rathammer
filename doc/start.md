@@ -70,10 +70,29 @@ Clicking on any part of the selected brushes will let you do a "smart move" If y
 A Specialized tool for moving the faces of a single solid in an arbitrary direction. If more than one entity is selected it will draw a bounding box around all selected and allow you to scale them proportionally. 
 
 
-# Using RatHammer as a generic level editor.
+## Using RatHammer as a generic level editor.
 See the folder rat_custom in the git repository for a minimal example.
 
-# The json map format
+## The console
+Press the tilda key to toggle the console.
+
+The help command shows a list of commands.
+
+Use the console to: load pointfile, load portalfile, select all entities with a specific class "select_class prop_static"
+
+
+## Lighting Preview
+Rathammer has deferred renderer that can be used to preview light_environment (sunlight), light, and light_spot.
+
+In the pause menu, change the "renderer" to "def". If you don't have a light_environment entity, the world will be bright white! If a map has more than one light_environment, rathammer uses the last one that was set. Change the class of the one you want to use to something else and change it back to light_environment, the values will not be lost, but it will then be the controller of the sunlight.
+
+The renderer is far from perfect currently, and may need manual tuning to make the lighting match Source's.
+
+Under the graphics tab in the pause menu, there are lots of parameters to tune.
+
+If you are on an iGPU and have lots of lights on screen, the framerate may drop. You can increase performance significantly by lowering the resolution of the 3d viewport using the "res scale" slider under graphics. 
+
+## The json map format
 For up to date documentation, look at the src/json_map.JsonMap struct.
 Every map object (brush, light, prop_static, etc) is given a numeric id. Each of these id's can optionally have some components attached to it. Some of the serialized components include: [solid, entity, displacements, key_values, connections ].
 The "objects" key in the json map stores a list of these id's and the attached components for each.

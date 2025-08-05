@@ -56,7 +56,7 @@ pub const Renderer = struct {
     copy_depth: bool = true,
     light_render_dist: f32 = 1024 * 2,
 
-    res_scale: f32 = 0.5,
+    res_scale: f32 = 1,
 
     do_hdr_buffer: bool = true,
 
