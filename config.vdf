@@ -55,13 +55,19 @@ keys {
 
     cube_draw_plane_up      scancode:x
     cube_draw_plane_down    scancode:z
+
+
+    mouse_capture   scancode:left_shift
 }
+// Determines how the mouse cursor is captured in 3d view. key is keys.mouse_capture
+// valid values are: key_low, key_high, toggle
+mouse_grab_when     key_low
 
 dot_size 16
 
 paths {
     //Set the directory rathammer searchs for games. if unset, searches default steam directory
-    steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"
+    //steam_dir   "/mnt/flash/SteamLibrary/steamapps/common"
 }
 
 autosave {

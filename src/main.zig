@@ -153,6 +153,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const xdg_dir = (env.get("XDG_CONFIG_DIR"));
 
     const config_dir: std.fs.Dir = blk: {
+        if (args.config != null)
+            break :blk std.fs.cwd();
+
         var config_path = std.ArrayList(u8).init(alloc);
         defer config_path.deinit();
         if (xdg_dir) |x| {
@@ -172,11 +175,15 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         }
         break :blk app_cwd.makeOpenPath(config_path.items, .{}) catch break :blk app_cwd;
     };
-    if (config_dir.openFile("config.vdf", .{})) |f| {
+    // if user has specified a config, don't copy
+    const copy_default_config = args.config == null;
+    if (config_dir.openFile(args.config orelse "config.vdf", .{})) |f| {
         f.close();
     } else |_| {
-        log.info("config.vdf not found in config dir, copying default", .{});
-        try app_cwd.copyFile("config.vdf", config_dir, "config.vdf", .{});
+        if (copy_default_config) {
+            log.info("config.vdf not found in config dir, copying default", .{});
+            try app_cwd.copyFile("config.vdf", config_dir, "config.vdf", .{});
+        }
     }
 
     const load_timer = try std.time.Timer.start();
@@ -510,7 +517,7 @@ pub fn main() !void {
 
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
-        Arg("vmf", .string, "vmf to load"),
+        Arg("vmf", .string, "vmf or json to load"),
         Arg("basedir", .string, "base directory of the game, \"Half-Life 2\""),
         Arg("gamedir", .string, "directory of gameinfo.txt, \"Half-Life 2/hl2\""),
         Arg("fgddir", .string, "directory of fgd file"),
@@ -523,6 +530,7 @@ pub fn main() !void {
         Arg("custom_cwd", .string, "override the directory used for game"),
         Arg("fontfile", .string, "load custom font"),
         Arg("display_scale", .number, "override detected display scale, should be ~ 0.2-3"),
+        Arg("config", .string, "load custom config, relative to cwd"),
     }, &arg_it);
     try wrappedMain(alloc, args);
 
