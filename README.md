@@ -6,30 +6,35 @@
 
 ![Screenshot of the editor](doc/screen.jpg)
 
-## Info for linux
-When installing source engine games on Linux, the version using proton must be used in order to get the 
-development tools such as vvis, vbsp etc. The fgd files are also only available in the windows builds.
-
-## Getting vbsp.exe etc on Linux
-* You may have to install the sourceSdk or authoring tools using proton.
-* Install the game you want to map for using proton. I will use tf2 as an example. Right click -> properties -> compatibility -> check and select proton
-* Navigate to it's steam folder "steamapps/common/Team Fortress 2"
+## Getting vbsp.exe, fgd files, etc on Linux
+* You may have to install the SourceSdk or game authoring tools using Proton.
+* Install the game you want to map for using proton. I will use tf2 as an example. Right click -> properties -> compatibility -> check and select Proton
+* Navigate to the game's steam folder "steamapps/common/Team Fortress 2"
 * Copy the "bin" folder somewhere. 'cp -r bin /mnt/flash/tf2_bin'
 * Turn off proton for the game and let it update.
 * Copy the bin folder back to the game folder but name it BIN. 'cp -r /mnt/flash/tf2_bin BIN'
 * See the 'tf2' config in config.vdf for how to configure everything.
-Vbsp etc require some steam dlls to run properly. On linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not linux.
+Vbsp etc require some steam dlls to run properly. On Linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not Linux.
 
-If running on linux a few helpful tips.
+If you are mapping for Half-Life 2, there is a trick.
+* Check 'show tools' in Steam. 
+* Install Half-Life 2 Episode 2 (only shows up with tools) using Proton.
+* Install the regular Half-Life 2 as a native Linux game.
+* Install the SourceSdk using Proton.
+* Check that steamapps/common/Half-Life 2/ contains both a hl2.exe and hl2_linux. There should also be a halflife2.fgd file in the bin folder
+
+If running on Linux a few helpful tips.
 In the ./scripts directory there is a script named run_hl2.sh.
 This script will launch hl2 without needing steam open. If you send suspend signal 'ctrl-z in terminal', 
+
 hl2 will be suspended and not use cpu/gpu while you map. unsuspend with 'fg' command
+
 You will need to manually edit this script so the paths are correct.
 
 Second, wine is very slow to startup by default, 'running wineserver --persistent' will speed up compile times significantly.
 
 ## Building from source
-### Arch linux based distro
+### Arch Linux based distro (The easiest)
 ```
 # install dependencies zig 0.14.1
 sudo pacman -S zig libepoxy freetype2 sdl3 zenity
@@ -41,19 +46,17 @@ sudo pacman -S wine
 ### Debian based distro 
 ```
 sudo apt install libepoxy-dev libfreetype-dev
-# Download the correct zig 0.14.1 tar from https://ziglang.org/download/
-# Install the dependencies listed under https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md
-# Build SDL from source https://github.com/libsdl-org/SDL/blob/main/docs/INTRO-cmake.md
-# Set the sdl install prefix to /usr
-# Follow the instructions below for building
 ```
+* Download the correct zig 0.14.1 tar from [zig](https://ziglang.org/download/)
+* Install the dependencies listed under [sdl linux](https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md)
+* Build SDL from source [sdl cmake](https://github.com/libsdl-org/SDL/blob/main/docs/INTRO-cmake.md)
+* Set the sdl install prefix to /usr
+* Follow the instructions below for building
 
 ### Windows
-```
-I don't fully remember. Download msys2 and mingw, install a bunch of packages like sdl, freetype, libz etc.
-Download zig from https://ziglang.org/download/
-Keep running zig build and installing missing packages with msys until it builds lol.
-```
+* I don't fully remember. Download msys2 and mingw, install a bunch of packages like sdl, freetype, libz etc.
+* Download zig from [zig](https://ziglang.org/download/)
+* Keep running zig build and installing missing packages with msys until it builds.
 
 ### Building and running
 ```
@@ -77,10 +80,11 @@ See config.vdf for defining other game configs.
 ```
 
 ### Planned
-* gui dark mode.
-* displacement tool.
-* multi map tabs.
-* editing multiple faces or entities at once in the inspector.
+* Gui dark mode.
+* Displacement tool.
+* Multi map tabs.
+* Editing multiple faces or entities at once in the inspector.
+* Drawing decals.
 
 
 ### Style stuff.
