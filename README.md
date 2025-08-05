@@ -1,4 +1,4 @@
-# Hammer editor.
+# An alternative to the Hammer editor.
 [Download Alpha Build](https://github.com/nmalthouse/rathammer/releases)
 
 [Documentation](doc/start.md)
