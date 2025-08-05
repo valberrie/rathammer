@@ -70,6 +70,15 @@ Clicking on any part of the selected brushes will let you do a "smart move" If y
 A Specialized tool for moving the faces of a single solid in an arbitrary direction. If more than one entity is selected it will draw a bounding box around all selected and allow you to scale them proportionally. 
 
 
+## Workspaces
+RatHammer has a few different workspaces.
+
+* alt + 1       main 3d view
+* alt + 2       main 2d view
+* alt + t       texture browser
+* alt + m       model browser
+
+
 ## Using RatHammer as a generic level editor.
 See the folder rat_custom in the git repository for a minimal example.
 
@@ -107,4 +116,10 @@ entity: lights, props, etc.
 key_values: Stores a list of arbitrary key value pairs for entities.
 
 connections: Used for source engine style entity input-output. See [valve developer wiki](https://developer.valvesoftware.com/wiki/VMF_(Valve_Map_Format)#Connections)
+
+
+### func_useableladder
+This entity is really annoying, it is only used by hl2 and portal. 
+When you translate a func_useableladder entity, the origin of the entity is synced with the point0 field (the start of the ladder)
+The point1 field (end of the ladder) must be set manually. An orange helper outlining the ladders bounds is drawn, but the second part of the hull (point1) can not be manipulated in 3d.
 

@@ -34,10 +34,10 @@ keys {
     grab_far        scancode:q
 
 
-    workspace      alt+1
+    workspace      alt+1 // Main 3d
     workspace      alt+scancode:t //texture browser
     workspace      alt+scancode:m //Model browser
-    workspace      alt+2
+    workspace      alt+2 // Main 2d
     workspace      alt+3
     workspace      alt+4
 
