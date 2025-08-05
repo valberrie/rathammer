@@ -1,7 +1,10 @@
 # Hammer editor.
 [Download Alpha Build](https://github.com/nmalthouse/rathammer/releases)
 
-[Documentation](https://github.com/nmalthouse/rathammer/blob/master/doc/start.md)
+[Documentation](doc/start.md)
+
+
+![Screenshot of the editor](doc/screen.jpg)
 
 ## Info for linux
 When installing source engine games on Linux, the version using proton must be used in order to get the 
