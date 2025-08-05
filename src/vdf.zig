@@ -1,6 +1,12 @@
 const std = @import("std");
 const graph = @import("graph");
 const StringStorage = @import("string.zig").StringStorage;
+
+//TODO Specify a strict version of vdf where:
+// space and tab are only valid whitespace
+// newline is only valid line seperator.
+// key and value must be on the same line. Only one kv pair per line.
+
 const track_visited = false;
 pub const Vec3 = graph.za.Vec3_f64;
 pub const KV = struct {
@@ -151,7 +157,10 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
                                 if (track_visited)
                                     item.debug_visited = true;
                                 //A regular struct field
-                                @field(ret, f.name) = try fromValue(f.type, &item.val, alloc, strings);
+                                @field(ret, f.name) = fromValue(f.type, &item.val, alloc, strings) catch |err| {
+                                    std.debug.print("KEY: {s}\n", .{f.name});
+                                    return err;
+                                };
                                 if (DO_REST)
                                     from_value_visit_tracker.set(vi);
                                 break;
@@ -175,6 +184,17 @@ pub fn fromValue(comptime T: type, value: *const KV.Value, alloc: std.mem.Alloca
             }
 
             return ret;
+        },
+        .@"enum" => |en| {
+            return std.meta.stringToEnum(T, value.literal) orelse {
+                std.debug.print("Not a value for enum {s}\n", .{value.literal});
+                std.debug.print("Possible values:\n", .{});
+                inline for (en.fields) |fi| {
+                    std.debug.print("    {s}\n", .{fi.name});
+                }
+
+                return error.invalidEnumValue;
+            };
         },
         .int => return try std.fmt.parseInt(T, value.literal, 0),
         .float => return try std.fmt.parseFloat(T, value.literal),

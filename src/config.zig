@@ -16,6 +16,7 @@ pub const Config = struct {
         max: u32 = 5,
     } = .{},
     dot_size: f32 = 16,
+    mouse_grab_when: enum { key_low, key_high, toggle } = .key_low,
     keys: struct {
         const SC = graph.SDL.NewBind.Scancode;
         const KC = graph.SDL.NewBind.Keycode;
@@ -26,6 +27,8 @@ pub const Config = struct {
         cam_down: Keybind = .{ .b = SC(.C, 0) },
         cam_up: Keybind = .{ .b = SC(.SPACE, 0) },
         cam_pan: Keybind = .{ .b = SC(.SPACE, 0) },
+
+        mouse_capture: Keybind = .{ .b = SC(.LSHIFT, 0) },
 
         cam_slow: Keybind = .{ .b = SC(.LCTRL, 0) },
 

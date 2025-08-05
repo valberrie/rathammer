@@ -182,7 +182,6 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const load_timer = try std.time.Timer.start();
     var loaded_config = Conf.loadConfigFromFile(alloc, config_dir, "config.vdf") catch |err| {
         log.err("User config failed to load with error {!}", .{err});
-        log.info("fix your config!", .{});
         return error.failedConfig;
     };
     defer loaded_config.deinit();

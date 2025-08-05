@@ -100,6 +100,12 @@ See config.vdf for defining other game configs.
 /zig-out/bin/mapbuilder --vmf dump.vmf --gamedir Team\ Fortress\ 2 --gamename tf --outputdir tf/maps
 ```
 
+### Planned
+* gui dark mode.
+* displacement tool.
+* multi map tabs.
+* editing multiple faces or entities at once in the inspector.
+
 
 ### Style stuff.
 Fields beginning with an underscore are private fields and should not be modified or read directly

@@ -28,9 +28,31 @@ pub const Main3DView = struct {
     font: *graph.FontUtil.PublicFontInterface,
     fh: f32,
 
+    grab_when: enum {
+        shift_low,
+        shift_high,
+        toggle,
+    } = .toggle,
+    // only used when grab_when == .toggle
+    grab_toggled: bool = false,
+
     pub fn draw_fn(vt: *panereg.iPane, screen_area: graph.Rect, editor: *Context, d: panereg.ViewDrawState, pane_id: panereg.PaneId) void {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
-        switch (editor.panes.grab.trySetGrab(pane_id, !d.win.keyHigh(.LSHIFT))) {
+        const grab_when = editor.config.mouse_grab_when;
+        switch (grab_when) {
+            .toggle => {
+                if (editor.isBindState(editor.config.keys.mouse_capture.b, .rising)) {
+                    self.grab_toggled = !self.grab_toggled;
+                }
+            },
+            else => {},
+        }
+        const shift_high = switch (grab_when) {
+            .key_low => !editor.isBindState(editor.config.keys.mouse_capture.b, .high),
+            .key_high => editor.isBindState(editor.config.keys.mouse_capture.b, .high),
+            .toggle => self.grab_toggled,
+        };
+        switch (editor.panes.grab.trySetGrab(pane_id, shift_high)) {
             else => {},
             .ungrabbed => {
                 const center = screen_area.center();
