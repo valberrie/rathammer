@@ -235,7 +235,7 @@ pub fn buildMappingFromVmf(self: *Self, vmf_visgroups: []const vmf.VisGroup, par
                 .id = @intCast(index),
                 .children = std.ArrayList(VisGroupId).init(self.alloc),
             });
-            std.debug.print("PUtting visgroup {s}\n", .{gr.name});
+            //std.debug.print("PUtting visgroup {s}\n", .{gr.name});
             if (parent_i) |p| {
                 try self.groups.items[p].children.append(index);
             }

@@ -17,7 +17,7 @@ By Default RatHammer will search for Half Life 2 in your OS's default steam dire
 On Windows "/Program Files (x86)/Steam/steamapps/common"
 On Linux "$HOME/.local/share/Steam/steamapps/common"
 
-All games are defined inside of 'config.vdf' ##TODO INFO ON WHERE CONFIG IS
+All games are defined inside of 'config.vdf' 
 To map for a different Source game or use it for custom levels, you must edit config.vdf and set the default_game appropriately
 All paths for game configuration can be temporarily overridden with command line flags, use --help to see these.
 If Rathammer fails to start, read through the console output and look for lines like this:
@@ -59,25 +59,33 @@ RatHammer stores and edits polygon meshes, more specifically, each brush is comp
 At the bottom of the 3d view there is a row of tools, the active tool has a green border around it. Above each icon is the keybinding used to activate that tool.
 Some tools may perform an action when you 'activate' that tool again.
 On the right of the screen is the inspector. In the 'tools' tab you will find settings and documentation for the current tool.
+Most tools require you to "commit" the action. This is done by right clicking. So if you drag a gizmo, you must right click, before letting go of left click, to commit that translation.
 
 ### Translate tool
 Click and drag the gizmo to translate.
 Clicking the white cube above the gizmo will toggle between and translation and rotation gizmo.
-#TODO ADD THIS. Clicking on any part of the selected brushes will let you move the solid in the xy plane. Holding alt allows movement in the z. This is similar to how Trenchbroom does it.
+Clicking on any part of the selected brushes will let you do a "smart move" If your cursor is > 30 degrees from the horizon, the solid is moved in the xy plane. Otherwise, the solid is moved in the plane of the face you clicked on. 
 
 ### Face translate tool.
 A Specialized tool for moving the faces of a single solid in an arbitrary direction. If more than one entity is selected it will draw a bounding box around all selected and allow you to scale them proportionally. 
 
 
 # Using RatHammer as a generic level editor.
-These are all the files required to start rathammer:
-'''
-A directory containing all the things. This is specified by 'base_dir' lets call ours my_custom.
-A fgd file defining entities RatHammer can create. #TODO WHAT IS THE MOST MINIMAL FGD
-A gameinfo.txt # SAME AS ABOVE
-Directory of materials and models
-supports png and OBJ TODO
-'''
-
+See the folder rat_custom in the git repository for a minimal example.
 
 # The json map format
+For up to date documentation, look at the src/json_map.JsonMap struct.
+Every map object (brush, light, prop_static, etc) is given a numeric id. Each of these id's can optionally have some components attached to it. Some of the serialized components include: [solid, entity, displacements, key_values, connections ].
+The "objects" key in the json map stores a list of these id's and the attached components for each.
+Most data is serialized directly from rathammer, with little transformation, so if you are puzzled about the purpose of a field look at src/ecs.zig to see what it does.
+Components:
+
+
+solid: defines a brush. Has a set of verticies (Vec3) and a set of sides which each contain indexes into the set of verticies.
+
+entity: lights, props, etc.
+
+key_values: Stores a list of arbitrary key value pairs for entities.
+
+connections: Used for source engine style entity input-output. See [valve developer wiki](https://developer.valvesoftware.com/wiki/VMF_(Valve_Map_Format)#Connections)
+

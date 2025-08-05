@@ -1,5 +1,28 @@
 # Hammer editor.
 [Download Alpha Build](https://github.com/nmalthouse/rathammer/releases)
+[Documentation](https://github.com/nmalthouse/rathammer/blob/master/doc/start.md)
+
+## Info for linux
+When installing source engine games on Linux, the version using proton must be used in order to get the 
+development tools such as vvis, vbsp etc. The fgd files are also only available in the windows builds.
+
+## Getting vbsp.exe etc on Linux
+* You may have to install the sourceSdk or authoring tools using proton.
+* Install the game you want to map for using proton. I will use tf2 as an example. Right click -> properties -> compatibility -> check and select proton
+* Navigate to it's steam folder "steamapps/common/Team Fortress 2"
+* Copy the "bin" folder somewhere. 'cp -r bin /mnt/flash/tf2_bin'
+* Turn off proton for the game and let it update.
+* Copy the bin folder back to the game folder but name it BIN. 'cp -r /mnt/flash/tf2_bin BIN'
+* See the 'tf2' config in config.vdf for how to configure everything.
+Vbsp etc require some steam dlls to run properly. On linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not linux.
+
+If running on linux a few helpful tips.
+In the ./scripts directory there is a script named run_hl2.sh.
+This script will launch hl2 without needing steam open. If you send suspend signal 'ctrl-z in terminal', 
+hl2 will be suspended and not use cpu/gpu while you map. unsuspend with 'fg' command
+You will need to manually edit this script so the paths are correct.
+
+Second, wine is very slow to startup by default, 'running wineserver --persistent' will speed up compile times significantly.
 
 ## Building from source
 ### Arch linux based distro
@@ -27,29 +50,6 @@ I don't fully remember. Download msys2 and mingw, install a bunch of packages li
 Download zig from https://ziglang.org/download/
 Keep running zig build and installing missing packages with msys until it builds lol.
 ```
-
-## Info for linux
-When installing source engine games on Linux, the version using proton must be used in order to get the 
-development tools such as vvis, vbsp etc. The fgd files are also only available in the windows builds.
-
-## Getting vbsp.exe etc on Linux
-* You may have to install the sourceSdk or authoring tools using proton.
-* Install the game you want to map for using proton. I will use tf2 as an example. Right click -> properties -> compatibility -> check and select proton
-* Navigate to it's steam folder "steamapps/common/Team Fortress 2"
-* Copy the "bin" folder somewhere. 'cp -r bin /mnt/flash/tf2_bin'
-* Turn off proton for the game and let it update.
-* Copy the bin folder back to the game folder but name it BIN. 'cp -r /mnt/flash/tf2_bin BIN'
-* See the 'tf2' config in config.vdf for how to configure everything.
-Vbsp etc require some steam dlls to run properly. On linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not linux.
-
-If running on linux a few helpful tips.
-In the ./scripts directory there is a script named run_hl2.sh.
-This script will launch hl2 without needing steam open. If you send suspend signal 'ctrl-z in terminal', 
-hl2 will be suspended and not use cpu/gpu while you map. unsuspend with 'fg' command
-You will need to manually edit this script so the paths are correct.
-
-Second, wine is very slow to startup by default, 'running wineserver --persistent' will speed up compile times significantly.
-
 
 ### Building and running
 ```
