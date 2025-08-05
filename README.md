@@ -1,5 +1,6 @@
 # Hammer editor.
 [Download Alpha Build](https://github.com/nmalthouse/rathammer/releases)
+
 [Documentation](https://github.com/nmalthouse/rathammer/blob/master/doc/start.md)
 
 ## Info for linux
