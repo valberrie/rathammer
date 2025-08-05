@@ -1,26 +1,7 @@
 # Hammer editor.
-Wip
+[Download Alpha Build](https://github.com/nmalthouse/rathammer/releases)
 
-## Implemented: 
-* loading of vmf, vpk, vmt, vtf, mdl, vvd, gameinfo, fgd 
-* rendering of csg, models, point entities, skybox
-* translation of solids and entities
-* basic inspection
-* Texture and model browsing
-* undo/redo
-* serializing to json
-* model placement
-* asset browsing
-* Writing vmf files.
-
-## TODO
-* Writing obj files
-* alpha sorting
-* Translation and rotation about arbitrary axis
-* Write documentation
-
-![d1_trainstation_01](doc/photo1.jpg)
-
+## Building from source
 ### Arch linux based distro
 ```
 # install dependencies zig 0.14.1
@@ -47,18 +28,19 @@ Download zig from https://ziglang.org/download/
 Keep running zig build and installing missing packages with msys until it builds lol.
 ```
 
-
 ## Info for linux
 When installing source engine games on Linux, the version using proton must be used in order to get the 
 development tools such as vvis, vbsp etc. The fgd files are also only available in the windows builds.
-For half-life 2 do the following:
-* Own half-life 2 and the episodes
-* Enable 'tools' checkbox in your steam library, this will show both the sourcesdk and Half-life 2 episodes
-* Install Half-life 2 as a native Linux game
-* Install Half-life 2:Episode 2 with proton. Right click -> properties -> compatibility -> check and select latest stable proton (9.0-4 as of writing)
-* Instal source sdk using proton as well.
-If you cd into your steamapps/common/Half-Life 2/ directory, you should see both a hl2_linux and hl2.exe binary
 
+## Getting vbsp.exe etc on Linux
+* You may have to install the sourceSdk or authoring tools using proton.
+* Install the game you want to map for using proton. I will use tf2 as an example. Right click -> properties -> compatibility -> check and select proton
+* Navigate to it's steam folder "steamapps/common/Team Fortress 2"
+* Copy the "bin" folder somewhere. 'cp -r bin /mnt/flash/tf2_bin'
+* Turn off proton for the game and let it update.
+* Copy the bin folder back to the game folder but name it BIN. 'cp -r /mnt/flash/tf2_bin BIN'
+* See the 'tf2' config in config.vdf for how to configure everything.
+Vbsp etc require some steam dlls to run properly. On linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not linux.
 
 If running on linux a few helpful tips.
 In the ./scripts directory there is a script named run_hl2.sh.
@@ -67,16 +49,6 @@ hl2 will be suspended and not use cpu/gpu while you map. unsuspend with 'fg' com
 You will need to manually edit this script so the paths are correct.
 
 Second, wine is very slow to startup by default, 'running wineserver --persistent' will speed up compile times significantly.
-
-## Getting vbsp.exe on Linux
-* Install the game you want to map for using proton. I will use tf2 as an example
-* Navigate to it's steam folder "steamapps/common/Team Fortress 2"
-* Copy the "bin" folder somewhere. 'cp -r bin /mnt/flash/tf2_bin'
-* Turn off proton for the game and let it update.
-* Copy the bin folder back to the game folder but name it BIN. 'cp -r /mnt/flash/tf2_bin BIN'
-* See the 'tf2' config in config.vdf for how to configure everything.
-Vbsp etc require some steam dlls to run properly. On linux all paths are case sensitive, on Windows/wine they are not. So BIN and bin look the same to Windows but not linux.
-
 
 
 ### Building and running
