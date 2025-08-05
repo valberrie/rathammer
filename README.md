@@ -32,8 +32,11 @@ sudo pacman -S wine
 
 ### Debian based distro (untested)
 ```
-sudo apt-get install libsdl3-dev libepoxy-dev
+sudo apt install libepoxy-dev libfreetype-dev
 # Download the correct zig 0.14.1 tar from https://ziglang.org/download/
+# Install the dependencies listed under https://github.com/libsdl-org/SDL/blob/main/docs/README-linux.md
+# Build SDL from source https://github.com/libsdl-org/SDL/blob/main/docs/INTRO-cmake.md
+# Set the sdl install prefix to /usr
 # Follow the instructions below for building
 ```
 
