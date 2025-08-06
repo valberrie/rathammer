@@ -17,6 +17,7 @@ rm "$RATOUT"/ratgraph/asset/fonts/*
 
 LOUT="$RATOUT"
 
+# TODO unsure of the legality of distributing these binaries
 cp libfreetype-6.dll $RATOUT
 cp SDL3.dll        $RATOUT
 cp libbz2-1.dll $RATOUT
@@ -35,6 +36,10 @@ cp libiconv-2.dll $RATOUT
 cp libpcre2-8-0.dll $RATOUT
 
 cp -r rat_custom "$RATOUT"
+
+# Copyright stuff
+cp ratgraph/c_libs/libspng/LICENSE "$RATOUT"/SPNG_LICENSE
+cp LICENSE "$RATOUT"/LICENSE
 
 cd distrib
 zip -r win.zip rathammer-windows

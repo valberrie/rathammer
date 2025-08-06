@@ -46,4 +46,8 @@ cp "$LIBPATH"/libgraphite2.so.3 $LOUT
 cp "$LIBPATH"/libbrotlicommon.so.1 $LOUT
 cp "$LIBPATH"/libpcre2-8.so.0 $LOUT
 
+# Copyright stuff
+cp ratgraph/c_libs/libspng/LICENSE "$RATOUT"/SPNG_LICENSE
+cp LICENSE "$RATOUT"/LICENSE
+
 #cp -r rat_custom "$RATOUT"
