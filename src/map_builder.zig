@@ -102,12 +102,17 @@ pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
 
     const stripped = splitPath(mapname);
     const map_no_extension = stripExtension(stripped[1]);
-    const working = std.fs.cwd().makeOpenPath(working_dir, .{}) catch |err| {
+    const working = game_cwd.makeOpenPath(working_dir, .{}) catch |err| {
         log.err("working dir failed {s} {!}", .{ working_dir, err });
+        return err;
+    };
+    const working_abs = game_cwd.realpathAlloc(alloc, working_dir) catch |err| {
+        log.err("unable to realpath workingdir {s} {!}", .{ working_dir, err });
         return err;
     };
 
     std.fs.cwd().copyFile(mapname, working, stripped[1], .{}) catch |err| {
+        log.err("failed to copy vmf {s} {!}", .{ mapname, err });
         return err;
     };
 
@@ -121,9 +126,9 @@ pub fn buildmap(alloc: std.mem.Allocator, args: Paths) !void {
     const vbsp = [_][]const u8{ "wine", try catString(alloc, &.{ exedir, "/vbsp.exe" }), "-game", game_path, "-novconfig", map_no_extension };
     const vvis = [_][]const u8{ "wine", try catString(alloc, &.{ exedir, "/vvis.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
     const vrad = [_][]const u8{ "wine", try catString(alloc, &.{ exedir, "/vrad.exe" }), "-game", game_path, "-novconfig", "-fast", map_no_extension };
-    try runCommand(alloc, vbsp[start_i..], working_dir);
-    try runCommand(alloc, vvis[start_i..], working_dir);
-    try runCommand(alloc, vrad[start_i..], working_dir);
+    try runCommand(alloc, vbsp[start_i..], working_abs);
+    try runCommand(alloc, vvis[start_i..], working_abs);
+    try runCommand(alloc, vrad[start_i..], working_abs);
 
     const bsp_name = try printString(alloc, "{s}.bsp", .{map_no_extension});
     try working.copyFile(bsp_name, output_dir, bsp_name, .{});

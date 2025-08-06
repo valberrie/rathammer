@@ -110,6 +110,10 @@ pub const Config = struct {
     },
 };
 
+const builtin = @import("builtin");
+const WINDOZE = builtin.target.os.tag == .windows;
+pub const TMP_DIR = if (WINDOZE) "C:/rathammer_tmp" else "/tmp/mapcompile";
+
 pub const GameEntry = struct {
     pub const GameInfo = struct {
         base_dir: []const u8,
@@ -121,6 +125,7 @@ pub const GameEntry = struct {
         exe_dir: []const u8 = "",
         game_name: []const u8 = "",
         output_dir: []const u8 = "",
+        tmp_dir: []const u8 = TMP_DIR,
     };
     gameinfo: std.ArrayList(GameInfo),
 

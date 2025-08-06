@@ -1218,7 +1218,7 @@ pub const Context = struct {
 
                     .outputdir = self.game_conf.mapbuilder.output_dir,
                     .cwd = self.dirs.cwd,
-                    .tmpdir = TMP_DIR,
+                    .tmpdir = self.game_conf.mapbuilder.tmp_dir,
                 });
             }
         }

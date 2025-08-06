@@ -261,6 +261,7 @@ games {
             exe_dir     "Portal 2/BIN"
             game_name   "portal2"
             output_dir  "portal2/maps"
+            tmp_dir     "Portal 2/map_build" //Portal2 vbsp can't write elsewhere
         }
 
         asset_browser_exclude {
