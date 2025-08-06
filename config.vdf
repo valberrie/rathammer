@@ -145,7 +145,6 @@ games {
             
             entry "models" //This becomes "materials/models"
             entry "gamepadui"
-            //entry "skybox"
             entry "vgui"
             entry "particle"
             entry "console"
@@ -189,10 +188,20 @@ games {
     }
 
     cstrike {
-        base_dir    "Counter-Strike Source"
-        game_dir    "Counter-Strike Source/cstrike"
-        fgd_dir     "Counter-Strike Source/bin"
+        gameinfo {
+            base_dir    "Counter-Strike Source"
+            game_dir    "Counter-Strike Source/cstrike"
+        }
+
+        fgd_dir     "Counter-Strike Source/BIN"
         fgd         "cstrike.fgd"
+
+        mapbuilder {
+            game_dir    "Counter-Strike Source"
+            exe_dir     "Counter-Strike Source/BIN"
+            game_name   "cstrike"
+            output_dir  "cstrike/maps"
+        }
 
         asset_browser_exclude {
             prefix "materials/"
@@ -207,9 +216,19 @@ games {
     }
 
     portal {
-        base_dir    "Portal"
-        game_dir    "Portal/portal"
-        fgd_dir     "Portal/bin"
+        gameinfo {
+            base_dir    "Portal"
+            game_dir    "Portal/portal"
+        }
+
+        mapbuilder {
+            game_dir    "Portal"
+            exe_dir     "Portal/BIN"
+            game_name   "portal"
+            output_dir  "portal/maps"
+        }
+
+        fgd_dir     "Portal/BIN"
         fgd         "portal.fgd"
 
         asset_browser_exclude {
@@ -239,7 +258,7 @@ games {
 
         mapbuilder {
             game_dir    "Portal 2"
-            exe_dir    "Portal 2/BIN"
+            exe_dir     "Portal 2/BIN"
             game_name   "portal2"
             output_dir  "portal2/maps"
         }
@@ -266,22 +285,46 @@ games {
             game_dir    "Black Mesa/bms"
         }
 
+        mapbuilder {
+            game_dir    "Black Mesa"
+            exe_dir     "Black Mesa/BIN"
+            game_name   "bms"
+            output_dir  "bms/maps"
+        }
+
         asset_browser_exclude {
             prefix "materials/"
-            entry "models"
-            entry "gamepadui"
-            entry "skybox"
-            entry "vgui"
-            entry "particle"
-            entry "console"
-            entry "sprites"
+            entry   "models"
+            entry   "gamepadui"
+            entry   "skybox"
+            entry   "vgui"
+            entry   "particle"
+            entry   "console"
+            entry   "sprites"
         }
     }
     
     gmod {
-        base_dir    "GarrysMod"
-        game_dir    "GarrysMod/garrysmod"
-        fgd_dir     "GarrysMod/bin"
+        gameinfo {
+            base_dir    "GarrysMod"
+            game_dir    "GarrysMod/garrysmod"
+        }
+
+        // RatHammer does not support gmod's method of mounting additional games. 
+        // Specify them using additional gameinfo {} instead
+        gameinfo {
+            base_dir    "Counter-Strike Source"
+            game_dir    "Counter-Strike Source/cstrike"
+        }
+        
+        mapbuilder {
+            game_dir    "GarrysMod"
+            exe_dir     "GarrysMod/BIN"
+            game_name   "garrysmod"
+            output_dir  "garrysmod/maps"
+        }
+
+        fgd_dir     "GarrysMod/BIN"
         fgd         "garrysmod.fgd"
 
         asset_browser_exclude {

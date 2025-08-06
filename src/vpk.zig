@@ -590,7 +590,6 @@ fn parseVpkDirCommon(self: *Context, loadctx: anytype, fbs: *std.io.FixedBufferS
 
                 _ = try r.readInt(u32, .little); //CRC
                 const preload_count = try r.readInt(u16, .little); //preload bytes
-                std.debug.print("{d}\n", .{preload_count});
                 var arch_index = try r.readInt(u16, .little); //archive index
                 var offset = try r.readInt(u32, .little);
                 var entry_len = try r.readInt(u32, .little);
@@ -602,7 +601,7 @@ fn parseVpkDirCommon(self: *Context, loadctx: anytype, fbs: *std.io.FixedBufferS
                     offset += tree_size + header_size;
                 }
 
-                if (entry_len == 0) {
+                if (entry_len == 0) { //Hack to support preload
                     offset = @intCast(fbs.pos);
                     arch_index = 0x7fff;
                     entry_len = preload_count;
