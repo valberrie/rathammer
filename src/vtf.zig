@@ -220,19 +220,6 @@ const VtfResource = struct {
     offset: u32,
 };
 
-//fn decodeDx1(in: []const u8, width: u32, height: u32, out: *std.ArrayList(u8))!void{
-//    try out.resize(width * height * 4);
-//    const h4 = height / 4;
-//    const w4 = width / 4;
-//    var offset = 0;
-//    for(0..h4)|h|{
-//        for(0..w4)|w|{
-//        }
-//    }
-//}
-//
-//fn interpColor()
-
 fn mipResolution(mip_factor: u16, full_size: u32, is_comp: bool) u32 {
     if (full_size % mip_factor != 0) {
         if (!is_comp)
