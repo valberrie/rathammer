@@ -395,7 +395,11 @@ pub const Context = struct {
             else => return error.unsupportedVpkVersion,
         };
         switch (version) {
-            //1 => {},
+            1 => {
+                const tree_size = try r.readInt(u32, .little);
+                loadctx.addExpected(10);
+                try parseVpkDirCommon(self, loadctx, &fbs, &r, tree_size, header_size, dir_index, true);
+            },
             2 => {
                 const tree_size = try r.readInt(u32, .little);
                 const filedata_section_size = try r.readInt(u32, .little);
@@ -409,68 +413,7 @@ pub const Context = struct {
                 if (other_md5_sec_size != 48) return error.invalidMd5Size;
 
                 loadctx.addExpected(10);
-                while (true) {
-                    loadctx.printCb("Dir mounted {d:.2}%", .{@as(f32, @floatFromInt(fbs.pos)) / @as(f32, @floatFromInt(self.filebuf.items.len + 1)) * 100});
-                    const ext = try readString(r, &strbuf);
-                    if (ext.len == 0)
-                        break;
-                    sanatizeVpkString(ext);
-                    self.writeDump("{s}\n", .{ext});
-                    const ext_stored = try self.string_storage.store(ext);
-                    const ext_id = try self.extension_map.getPut(ext_stored);
-                    while (true) {
-                        const path = try readString(r, &strbuf);
-                        self.writeDump("    {s}\n", .{path});
-                        if (path.len == 0)
-                            break;
-                        sanatizeVpkString(path);
-                        const path_stored = try self.string_storage.store(path);
-                        const path_id = try self.path_map.getPut(path_stored);
-
-                        while (true) {
-                            const fname = try readString(r, &strbuf);
-                            self.writeDump("        {s}\n", .{fname});
-                            if (fname.len == 0)
-                                break;
-
-                            _ = try r.readInt(u32, .little); //CRC
-                            _ = try r.readInt(u16, .little); //preload bytes
-                            const arch_index = try r.readInt(u16, .little); //archive index
-                            var offset = try r.readInt(u32, .little);
-                            const entry_len = try r.readInt(u32, .little);
-
-                            const term = try r.readInt(u16, .little);
-                            if (term != 0xffff) return error.badBytes;
-                            //std.debug.print("\t\t{s}: {d}bytes, i:{d}\n", .{ fname, entry_len, arch_index });
-                            if (arch_index == 0x7fff) {
-                                //TODO put a dir with arch_index 0x7ff do it .
-                                offset += tree_size + header_size;
-                            }
-
-                            sanatizeVpkString(fname);
-                            const fname_stored = try self.string_storage.store(fname);
-                            const fname_id = try self.res_map.getPut(fname_stored);
-                            const res_id = encodeResourceId(ext_id, path_id, fname_id);
-                            const entry = try self.entries.getOrPut(res_id);
-                            if (!entry.found_existing) {
-                                entry.value_ptr.* = Entry{
-                                    .res_id = res_id,
-                                    .path = path_stored,
-                                    .name = fname_stored,
-                                    .location = .{ .vpk = .{
-                                        .dir_index = @intCast(dir_index),
-                                        .archive_index = arch_index,
-                                        .offset = offset,
-                                        .length = entry_len,
-                                    } },
-                                };
-                            } else {
-                                //log.err("Duplicate resource is named: {s}", .{fname});
-                                //    //return error.duplicateResource;
-                            }
-                        }
-                    }
-                }
+                try parseVpkDirCommon(self, loadctx, &fbs, &r, tree_size, header_size, dir_index, false);
             },
             else => {
                 log.err("Unsupported vpk version {d}, file: {s}", .{ version, file_name });
@@ -613,6 +556,87 @@ pub const Context = struct {
         return null;
     }
 };
+
+fn parseVpkDirCommon(self: *Context, loadctx: anytype, fbs: *std.io.FixedBufferStream([]const u8), r: anytype, tree_size: u32, header_size: u32, dir_index: usize, do_null_skipping: bool) !void {
+    var pathbuf = std.ArrayList(u8).init(self.alloc);
+    defer pathbuf.deinit();
+    var extbuf = std.ArrayList(u8).init(self.alloc);
+    defer extbuf.deinit();
+    var namebuf = std.ArrayList(u8).init(self.alloc);
+    defer namebuf.deinit();
+    while (true) {
+        loadctx.printCb("Dir mounted {d:.2}%", .{@as(f32, @floatFromInt(fbs.pos)) / @as(f32, @floatFromInt(self.filebuf.items.len + 1)) * 100});
+        const ext = try readString(r, &extbuf);
+        if (ext.len == 0)
+            break;
+        sanatizeVpkString(ext);
+        self.writeDump("{s}\n", .{ext});
+        const ext_stored = try self.string_storage.store(ext);
+        const ext_id = try self.extension_map.getPut(ext_stored);
+        while (true) {
+            const path = try readString(r, &pathbuf);
+            self.writeDump("    {s}\n", .{path});
+            if (path.len == 0)
+                break;
+            sanatizeVpkString(path);
+            const path_stored = try self.string_storage.store(path);
+            const path_id = try self.path_map.getPut(path_stored);
+
+            while (true) {
+                const fname = try readString(r, &namebuf);
+                self.writeDump("        {s}\n", .{fname});
+                if (fname.len == 0)
+                    break;
+
+                _ = try r.readInt(u32, .little); //CRC
+                const preload_count = try r.readInt(u16, .little); //preload bytes
+                std.debug.print("{d}\n", .{preload_count});
+                var arch_index = try r.readInt(u16, .little); //archive index
+                var offset = try r.readInt(u32, .little);
+                var entry_len = try r.readInt(u32, .little);
+
+                const term = try r.readInt(u16, .little);
+                if (term != 0xffff) return error.badBytes;
+                if (arch_index == 0x7fff) {
+                    //TODO put a dir with arch_index 0x7ff do it .
+                    offset += tree_size + header_size;
+                }
+
+                if (entry_len == 0) {
+                    offset = @intCast(fbs.pos);
+                    arch_index = 0x7fff;
+                    entry_len = preload_count;
+                }
+
+                try r.skipBytes(preload_count, .{});
+
+                sanatizeVpkString(fname);
+                const fname_stored = try self.string_storage.store(fname);
+                const fname_id = try self.res_map.getPut(fname_stored);
+                const res_id = encodeResourceId(ext_id, path_id, fname_id);
+                const entry = try self.entries.getOrPut(res_id);
+                if (!entry.found_existing) {
+                    entry.value_ptr.* = Context.Entry{
+                        .res_id = res_id,
+                        .path = path_stored,
+                        .name = fname_stored,
+                        .location = .{ .vpk = .{
+                            .dir_index = @intCast(dir_index),
+                            .archive_index = arch_index,
+                            .offset = offset,
+                            .length = entry_len,
+                        } },
+                    };
+                } else {
+                    //log.err("Duplicate resource is named: {s}", .{fname});
+                    //    //return error.duplicateResource;
+                }
+
+                if (do_null_skipping) {}
+            }
+        }
+    }
+}
 
 fn splitPath(sl: []const u8) struct { ext: []const u8, path: []const u8, name: []const u8 } {
     const slash = std.mem.lastIndexOfScalar(u8, sl, '/') orelse 0;

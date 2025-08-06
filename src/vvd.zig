@@ -373,6 +373,9 @@ pub fn loadModelCrappy(
                                 try w.print("o mod_{d}_{d}_{d}\n", .{ mi, si, sii });
                                 const hh = try parseStruct(Vtx.StripHeader, .little, r1);
                                 print("{}\n", .{hh});
+                                const index_pos = hh.index_offset;
+                                if (index_pos >= indices.items.len or index_pos + hh.num_index > indices.items.len)
+                                    return error.invalidIndex;
                                 const sl = indices.items[hh.index_offset .. hh.num_index + hh.index_offset];
                                 const vttt = vtt;
                                 //const vttt = vtt[hh.vert_offset .. hh.vert_offset + hh.num_verts];
