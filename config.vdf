@@ -13,7 +13,7 @@ keys {
 
     select          scancode:E
     clear_selection ctrl+scancode:E
-    delete_selected ctrl+scancode:X
+    delete_selected ctrl+scancode:D
 
     grid_inc        scancode:R
     grid_dec        scancode:F
@@ -278,7 +278,7 @@ games {
 
     black_mesa {
 
-        fgd_dir     "Black Mesa/bin"
+        fgd_dir     "Black Mesa/BIN"
         fgd         "bms.fgd"
 
         gameinfo {

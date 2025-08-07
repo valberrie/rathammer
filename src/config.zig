@@ -50,7 +50,7 @@ pub const Config = struct {
         save_new: Keybind = .{ .b = KC(.s, mask(&.{ .CTRL, .SHIFT })) },
 
         select: Keybind = .{ .b = SC(.E, 0) },
-        delete_selected: Keybind = .{ .b = SC(.X, 0) },
+        delete_selected: Keybind = .{ .b = SC(.D, 0) },
         toggle_select_mode: Keybind = .{ .b = SC(.TAB, 0) },
         clear_selection: Keybind = .{ .b = SC(.E, mask(&.{.CTRL})) },
         marquee: Keybind = .{ .b = SC(.M, 0) },
