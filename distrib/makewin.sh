@@ -6,6 +6,8 @@ mkdir "$RATOUT"
 
 zig build -Doptimize=ReleaseSafe
 cp zig-out/bin/rathammer "$RATOUT"
+cp zig-out/bin/jsonmaptovmf "$RATOUT"
+cp zig-out/bin/mapbuilder "$RATOUT"
 cp -r ratasset "$RATOUT"
 cp  config.vdf "$RATOUT"
 cp -r doc "$RATOUT"
@@ -42,5 +44,5 @@ cp ratgraph/c_libs/libspng/LICENSE "$RATOUT"/SPNG_LICENSE
 cp LICENSE "$RATOUT"/LICENSE
 
 cd distrib
-zip -r win.zip rathammer-windows
+zip -r rathammer_windows.zip rathammer-windows
 cd ..

@@ -11,6 +11,8 @@ mkdir "$RATOUT"
 zig build -Doptimize=ReleaseSafe
 
 cp zig-out/bin/rathammer "$RATOUT"
+cp zig-out/bin/jsonmaptovmf "$RATOUT"
+cp zig-out/bin/mapbuilder "$RATOUT"
 cp -r ratasset "$RATOUT"
 cp  config.vdf "$RATOUT"
 cp -r doc "$RATOUT"
@@ -50,4 +52,6 @@ cp "$LIBPATH"/libpcre2-8.so.0 $LOUT
 cp ratgraph/c_libs/libspng/LICENSE "$RATOUT"/SPNG_LICENSE
 cp LICENSE "$RATOUT"/LICENSE
 
-#cp -r rat_custom "$RATOUT"
+cd distrib
+zip -r rathammer_linux_x86_x64.zip appimagebuild
+cd ..
