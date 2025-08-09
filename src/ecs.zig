@@ -791,10 +791,10 @@ pub const Solid = struct {
                 ind.* = try vmap.put(self.verts.items[ind.*]);
         }
         if (vmap.verts.items.len < self.verts.items.len) {
-            std.debug.print("OPTIMIZED {d} {d} \n", .{
-                self.verts.items.len - vmap.verts.items.len,
-                vmap.verts.items.len / self.verts.items.len * 100,
-            });
+            //std.debug.print("OPTIMIZED {d} {d} \n", .{
+            //    self.verts.items.len - vmap.verts.items.len,
+            //    vmap.verts.items.len / self.verts.items.len * 100,
+            //});
             self.verts.shrinkAndFree(vmap.verts.items.len);
         }
         try self.verts.resize(vmap.verts.items.len);

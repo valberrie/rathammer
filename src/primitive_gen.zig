@@ -162,6 +162,10 @@ pub const Axis = enum {
     }
 };
 
+fn sign(n: f32) f32 {
+    return if (n < 0) -1 else 1;
+}
+
 pub fn arch(
     alloc: std.mem.Allocator,
     param: struct {
@@ -172,6 +176,7 @@ pub fn arch(
         grid: gridutil.Snap,
         z: f32,
         theta_deg: f32 = 180,
+        snap_to_box: bool = false, // the Arch will be square on the outside, arch inside.
     },
 ) !Primitive {
     var prim = Primitive.init(alloc);
@@ -184,6 +189,7 @@ pub fn arch(
     const z = param.grid.swiz1(param.z, "z");
     try prim.verts.resize(num_segment * 4);
     const dtheta: f32 = std.math.degreesToRadians(param.theta_deg) / @as(f32, @floatFromInt(num_segment - 1)); //Do half only
+    const dtheta_deg: f32 = std.math.radiansToDegrees(dtheta);
     for (0..num_segment) |ni| {
         const fi: f32 = @floatFromInt(ni);
 
@@ -191,8 +197,32 @@ pub fn arch(
         const x1_f = @cos(thet) * a;
         const y1_f = @sin(thet) * b;
 
-        const x2_f = @cos(thet) * a2;
-        const y2_f = @sin(thet) * b2;
+        const x2_f, const y2_f = blk: {
+            const x = @cos(thet) * a2;
+            const y = @sin(thet) * b2;
+            if (param.snap_to_box) {
+                const quad = @mod(std.math.radiansToDegrees(thet), 90);
+                if (quad >= 45 and quad - dtheta_deg < 45)
+                    break :blk .{ sign(x) * a2, sign(y) * b2 };
+                const quadrant: i32 = @intFromFloat(@trunc(std.math.radiansToDegrees(thet) / 45.0));
+                switch (quadrant) {
+                    0 => break :blk .{ a2, y },
+                    1 => break :blk .{ x, b2 },
+                    2 => break :blk .{ x, b2 },
+                    3 => break :blk .{ -a2, y },
+
+                    4 => break :blk .{ -a2, y },
+                    5 => break :blk .{ x, -b2 },
+                    6 => break :blk .{ x, -b2 },
+                    7 => break :blk .{ a2, y },
+                    else => {},
+                }
+            }
+            break :blk .{ x, y };
+        };
+
+        //const x2_f = @cos(thet) * a2;
+        //const y2_f = @sin(thet) * b2;
 
         const x1 = param.grid.swiz1(x1_f, "x");
         const y1 = param.grid.swiz1(y1_f, "y");
