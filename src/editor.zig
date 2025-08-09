@@ -205,6 +205,7 @@ pub const Context = struct {
     } = .{},
 
     edit_state: struct {
+        map_version: u64 = 0, //Incremented every save
         autosaved_at_delta: u64 = 0, // Don't keep autosaving the same thing
         saved_at_delta: u64 = 0,
         was_saved: bool = false, //Used to set window title
@@ -586,7 +587,8 @@ pub const Context = struct {
             try jwr.objectField("editor");
             try jwr.write(json_map.JsonEditor{
                 .cam = json_map.JsonCamera.fromCam(self.draw_state.cam3d),
-                .map_json_version = "0.0.1",
+                .map_json_version = json_map.CURRENT_MAP_VERSION,
+                .map_version = self.edit_state.map_version,
                 .editor_version = version,
             });
 
@@ -906,6 +908,7 @@ pub const Context = struct {
 
         try self.skybox.loadSky(try self.storeString(parsed.value.sky_name), &self.vpkctx);
         parsed.value.editor.cam.setCam(&self.draw_state.cam3d);
+        self.edit_state.map_version = parsed.value.editor.map_version;
         if (parsed.value.extra == .object) {
             const ex = &parsed.value.extra;
             if (std.json.parseFromValue(struct { recent_mat: [][]const u8 }, self.alloc, ex.*, .{})) |v| {
@@ -1131,6 +1134,7 @@ pub const Context = struct {
     }
 
     pub fn saveAndNotify(self: *Self, basename: []const u8, path: []const u8) !void {
+        self.edit_state.map_version += 1;
         var timer = try std.time.Timer.start();
         try self.notify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
         const name = try self.printScratch("{s}{s}.json", .{ path, basename });

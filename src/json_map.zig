@@ -4,6 +4,7 @@ const Vec3 = graph.za.Vec3;
 const ecs = @import("ecs.zig");
 const vdf = @import("vdf.zig");
 const vpk = @import("vpk.zig");
+const util = @import("util.zig");
 const StringStorage = @import("string.zig").StringStorage;
 
 /// Dummy vpkctx that provides enough of the interface to parse json files.
@@ -75,8 +76,10 @@ pub const JsonCamera = struct {
     }
 };
 
+pub const CURRENT_MAP_VERSION = "0.0.2";
 pub const JsonEditor = struct {
     map_json_version: []const u8 = "0.0.0",
+    map_version: u64 = 0,
     editor_version: []const u8 = "0.0.0",
     cam: JsonCamera,
 };
@@ -88,6 +91,7 @@ pub const JsonMap = struct {
     objects: []const std.json.Value,
     visgroup: ?VisGroup = null,
     /// Random crap that might change format and is not vital to parse the map is put in extra
+    /// Currently holds recently used textures
     extra: std.json.Value = .{ .null = {} },
 };
 
@@ -109,6 +113,15 @@ pub fn loadJson(
     defer aa.deinit();
     const parsed = try std.json.parseFromSlice(JsonMap, ctx.alloc, slice, .{ .ignore_unknown_fields = true });
     loadctx.cb("json parsed");
+
+    const cv = try util.parseSemver(CURRENT_MAP_VERSION);
+    const this_v = try util.parseSemver(parsed.value.editor.map_json_version);
+    if (cv[0] != this_v[0]) {
+        log.err("Incompatible map json major version current: {s} map: {s}", .{
+            CURRENT_MAP_VERSION, parsed.value.editor.map_json_version,
+        });
+        return error.versionMismatch;
+    }
 
     const obj_o = parsed.value.objects;
 
