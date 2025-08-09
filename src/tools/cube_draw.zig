@@ -53,6 +53,8 @@ pub const CubeDraw = struct {
     stairs_setting: struct {
         front_perc: f32 = 0,
         back_perc: f32 = 0,
+        rise: f32 = 8,
+        run: f32 = 12,
     } = .{},
 
     min_volume: f32 = 1,
@@ -174,6 +176,20 @@ pub const CubeDraw = struct {
                     .display_bounds_while_editing = false,
                     .slide = .{ .snap = 15 },
                 }));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "rise", .{})) |ar|
+                area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.stairs_setting.rise, .{
+                    .min = 1,
+                    .max = 16,
+                    .default = 8,
+                    .display_bounds_while_editing = false,
+                }));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "run", .{})) |ar|
+                area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.stairs_setting.run, .{
+                    .min = 1,
+                    .max = 64,
+                    .default = 12,
+                    .display_bounds_while_editing = false,
+                }));
         }
         const tex_w = area_vt.area.w / 2;
         ly.pushHeight(tex_w);
@@ -235,10 +251,14 @@ pub const CubeDraw = struct {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
                 const z = @abs(cc[1].dot(norm));
 
-                const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
+                const a = @abs(xx[0].dot(cc[1]) / 2);
+                const b = @abs(xx[1].dot(cc[1]) / 2);
+
+                //const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
 
                 const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{
-                    .r = r,
+                    .a = a,
+                    .b = b,
                     .z = z,
                     .num_segment = nsegment,
                     .grid = snap,
@@ -276,6 +296,8 @@ pub const CubeDraw = struct {
                 tool.state = .start;
                 try tool.commitPrimitive(ed, center, &cyl, .{ .select = true, .rot = rot });
             },
+            //TODO fix the dome.
+            //TODO dome, arch, cylinder, ensure bb changes are rotated
             .dome => {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
                 const prim = try prim_gen.uvSphere(ed.frame_arena.allocator(), .{
@@ -284,6 +306,7 @@ pub const CubeDraw = struct {
                     .phi_seg = nsegment,
                     .theta_seg = nsegment,
                     .grid = snap,
+                    .thick = tool.primitive_settings.thickness,
                 });
                 const center = cc[0].add(cc[1].scale(0.5));
                 draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
@@ -299,8 +322,8 @@ pub const CubeDraw = struct {
                     .height = xx[1].dot(cc[1]),
                     .z = @abs(cc[1].dot(norm)),
 
-                    .rise = 8,
-                    .run = 12,
+                    .rise = tool.stairs_setting.rise,
+                    .run = tool.stairs_setting.run,
 
                     .front_perc = tool.stairs_setting.front_perc,
                     .back_perc = tool.stairs_setting.back_perc,

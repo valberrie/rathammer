@@ -76,14 +76,20 @@ pub const Primitive = struct {
     }
 };
 
-pub fn cylinder(alloc: std.mem.Allocator, param: struct {
-    r: f32,
-    z: f32,
-    num_segment: u32 = 16,
-    grid: gridutil.Snap,
-}) !Primitive {
+pub fn cylinder(
+    alloc: std.mem.Allocator,
+    param: struct {
+        a: f32,
+        b: f32,
+        z: f32,
+        num_segment: u32 = 16,
+        grid: gridutil.Snap,
+    },
+) !Primitive {
     var prim = Primitive.init(alloc);
-    const r = param.r;
+    const a = param.a;
+    const b = param.b;
+    //const r = param.r;
     const num_segment = param.num_segment;
     const dtheta: f32 = std.math.tau / @as(f32, @floatFromInt(num_segment));
     const z = param.z;
@@ -92,8 +98,8 @@ pub fn cylinder(alloc: std.mem.Allocator, param: struct {
         const fi: f32 = @floatFromInt(ni);
 
         const thet = fi * dtheta;
-        const x_f = @cos(thet) * r;
-        const y_f = @sin(thet) * r;
+        const x_f = @cos(thet) * a;
+        const y_f = @sin(thet) * b;
         const x = param.grid.swiz1(x_f, "x");
         const y = param.grid.swiz1(y_f, "y");
 
@@ -413,14 +419,15 @@ pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
     phi_seg: u32 = 11,
     phi: f32 = 360,
     grid: gridutil.Snap,
+    thick: f32 = 16,
 }) !Primitive {
     var prim = Primitive.init(alloc);
 
     const dtheta: f32 = std.math.pi / @as(f32, @floatFromInt(param.theta_seg)) / 2;
     const phi_offset: usize = if (param.phi >= 360) 0 else 1;
     const dphi: f32 = std.math.degreesToRadians(param.phi) / @as(f32, @floatFromInt(param.phi_seg - phi_offset));
-    const r = param.r;
-    const r2 = param.r + 4;
+    const r = param.r - param.thick;
+    const r2 = param.r;
 
     const num: u32 = @intCast(param.theta_seg * param.phi_seg);
     try prim.verts.resize(num * 2);
