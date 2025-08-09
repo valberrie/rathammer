@@ -240,6 +240,8 @@ pub const CubeDraw = struct {
                 td.view_3d.*,
             );
         }
+        const bb = util3d.cubeFromBounds(bounds[0], bounds[1]);
+        const bound = tool.primitive_settings.axis.Vec(bb[1].x(), bb[1].y(), bb[1].z());
 
         if (ed.edit_state.lmouse == .falling) {
             //tool.start = bounds[0];
@@ -251,10 +253,8 @@ pub const CubeDraw = struct {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
                 const z = @abs(cc[1].dot(norm));
 
-                const a = @abs(xx[0].dot(cc[1]) / 2);
-                const b = @abs(xx[1].dot(cc[1]) / 2);
-
-                //const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
+                const a = bound.x() / 2;
+                const b = bound.y() / 2;
 
                 const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{
                     .a = a,
@@ -273,10 +273,9 @@ pub const CubeDraw = struct {
             },
             .arch => {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const a = @abs(xx[0].dot(cc[1]) / 2);
-                const b = @abs(xx[1].dot(cc[1]) / 2);
-
-                const z = @abs(cc[1].dot(norm));
+                const a = bound.x() / 2;
+                const b = bound.y() / 2;
+                const z = bound.z();
 
                 const cyl = try prim_gen.arch(ed.frame_arena.allocator(), .{
                     .thick = tool.primitive_settings.thickness,
