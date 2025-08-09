@@ -162,17 +162,24 @@ pub const Axis = enum {
     }
 };
 
-pub fn arch(alloc: std.mem.Allocator, param: struct {
-    r: f32,
-    r2: f32,
-    num_segment: u32 = 16,
-    grid: gridutil.Snap,
-    z: f32,
-    theta_deg: f32 = 180,
-}) !Primitive {
+pub fn arch(
+    alloc: std.mem.Allocator,
+    param: struct {
+        a: f32, //Ellipse radius x
+        b: f32, //Ellipse radius y
+        thick: f32 = 16,
+        num_segment: u32 = 16,
+        grid: gridutil.Snap,
+        z: f32,
+        theta_deg: f32 = 180,
+    },
+) !Primitive {
     var prim = Primitive.init(alloc);
-    const r = param.r;
-    const r2 = param.r2;
+    const a = param.a - param.thick;
+    const a2 = param.a;
+
+    const b = param.b - param.thick;
+    const b2 = param.b;
     const num_segment = param.num_segment;
     const z = param.grid.swiz1(param.z, "z");
     try prim.verts.resize(num_segment * 4);
@@ -181,11 +188,11 @@ pub fn arch(alloc: std.mem.Allocator, param: struct {
         const fi: f32 = @floatFromInt(ni);
 
         const thet = fi * dtheta;
-        const x1_f = @cos(thet) * r;
-        const y1_f = @sin(thet) * r;
+        const x1_f = @cos(thet) * a;
+        const y1_f = @sin(thet) * b;
 
-        const x2_f = @cos(thet) * r2;
-        const y2_f = @sin(thet) * r2;
+        const x2_f = @cos(thet) * a2;
+        const y2_f = @sin(thet) * b2;
 
         const x1 = param.grid.swiz1(x1_f, "x");
         const y1 = param.grid.swiz1(y1_f, "y");

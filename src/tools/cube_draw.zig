@@ -45,7 +45,8 @@ pub const CubeDraw = struct {
         invert: bool = false,
         invert_x: bool = false,
         angle: f32 = 0,
-        theta: f32 = 360,
+        theta: f32 = 180,
+        thickness: f32 = 16,
     } = .{},
 
     stairs_setting: struct {
@@ -114,7 +115,7 @@ pub const CubeDraw = struct {
 
         const SSlide = Wg.StaticSlider;
         { //All the damn settings
-            ly.pushCount(6);
+            ly.pushCount(8);
             var tly = guis.TableLayout{ .columns = 2, .item_height = ly.item_height, .bounds = ly.getArea() orelse return };
             if (guis.label(area_vt, gui, win, tly.getArea(), "Post draw state", .{})) |ar|
                 area_vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.post_state, .{}));
@@ -132,6 +133,15 @@ pub const CubeDraw = struct {
                     .max = 48,
                     .default = 16,
                     .display_bounds_while_editing = false,
+                    .display_kind = .integer,
+                }));
+            if (guis.label(area_vt, gui, win, tly.getArea(), "Thick", .{})) |ar|
+                area_vt.addChildOpt(gui, win, SSlide.build(gui, ar, &self.primitive_settings.thickness, .{
+                    .min = 1,
+                    .max = 256,
+                    .default = 16,
+                    .display_bounds_while_editing = false,
+                    .slide = .{ .snap = 4 },
                     .display_kind = .integer,
                 }));
             if (guis.label(area_vt, gui, win, tly.getArea(), "Axis", .{})) |ar|
@@ -241,14 +251,21 @@ pub const CubeDraw = struct {
             },
             .arch => {
                 const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
+                const a = @abs(xx[0].dot(cc[1]) / 2);
+                const b = @abs(xx[1].dot(cc[1]) / 2);
+
+                //const r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2);
                 const z = @abs(cc[1].dot(norm));
 
                 const cyl = try prim_gen.arch(ed.frame_arena.allocator(), .{
-                    .r = r - 10,
-                    .r2 = r,
+                    .thick = tool.primitive_settings.thickness,
+                    .a = a,
+                    .b = b,
+                    //.r = r - tool.primitive_settings.thickness,
+                    //.r2 = r,
                     .z = z,
                     .num_segment = nsegment,
+                    .theta_deg = tool.primitive_settings.theta,
                     .grid = snap,
                 });
 
