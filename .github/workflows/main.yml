@@ -33,10 +33,6 @@ jobs:
       #    install-linux-dependencies: true
       #    version: 3.2.16
 
-      - uses: tecolicom/actions-use-apt-tools@v1
-        with:
-          tools: libepoxy-dev libfreetype-dev
-          
       - name: build it
         run: bash distrib/makeappdir.sh
 
@@ -44,6 +40,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rathammer_linux_x86_x64.zip
-          path: distrib/rathammer_linux_x86_x64.zip
+          path: distrib/appimagebuild
 
       
