@@ -255,8 +255,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .expected_cb = 100,
     };
 
+    var time_init = try std.time.Timer.start();
+
     var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx, &env, app_cwd, config_dir);
     defer editor.deinit();
+    std.debug.print("edit init took {d} us\n", .{time_init.read() / std.time.ns_per_us});
 
     var os9gui = try Os9Gui.init(alloc, try app_cwd.openDir("ratgraph", .{}), gui_scale, .{
         .cache_dir = editor.dirs.pref,

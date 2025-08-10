@@ -384,7 +384,11 @@ pub const Context = struct {
         try infile.reader().readAllArrayList(&self.filebuf, std.math.maxInt(usize));
         var fbs = std.io.FixedBufferStream([]const u8){ .buffer = self.filebuf.items, .pos = 0 };
 
-        const r = fbs.reader();
+        var r = FastFbs{
+            .slice = self.filebuf.items,
+            .pos = 0,
+        };
+        //const r = fbs.reader();
         const sig = try r.readInt(u32, .little);
         if (sig != VPK_FILE_SIG)
             return error.invalidVpk;
@@ -659,3 +663,35 @@ fn readString(r: anytype, str: *std.ArrayList(u8)) ![]u8 {
         try str.append(char);
     }
 }
+
+const FastFbs = struct {
+    const Self = @This();
+    slice: []const u8,
+    pos: usize,
+
+    pub fn skipBytes(self: *Self, count: usize, _: anytype) !void {
+        if (count + self.pos > self.slice.len) return error.EndOfStream;
+        self.pos += count;
+    }
+
+    pub fn readByte(self: *Self) !u8 {
+        if (self.pos >= self.slice.len) return error.EndOfStream;
+
+        defer self.pos += 1;
+        return self.slice[self.pos];
+    }
+
+    pub fn readBytesNoEof(self: *Self, comptime count: usize) ![count]u8 {
+        if (count + self.pos > self.slice.len) return error.EndOfStream;
+
+        var bytes: [count]u8 = undefined;
+        @memcpy(&bytes, self.slice[self.pos .. self.pos + count]);
+        self.pos += count;
+        return bytes;
+    }
+
+    pub fn readInt(self: *Self, comptime T: type, endian: std.builtin.Endian) !T {
+        const bytes = try self.readBytesNoEof(@divExact(@typeInfo(T).int.bits, 8));
+        return std.mem.readInt(T, &bytes, endian);
+    }
+};
