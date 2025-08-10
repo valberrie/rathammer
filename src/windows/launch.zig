@@ -26,7 +26,7 @@ pub const LaunchWindow = struct {
 
     pub const Recent = struct {
         name: []const u8,
-        tex: graph.Texture,
+        tex: ?graph.Texture,
     };
 
     const Textboxes = enum {
@@ -65,7 +65,8 @@ pub const LaunchWindow = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
         for (self.recents.items) |*rec| {
             self.recents.allocator.free(rec.name);
-            rec.tex.deinit();
+            if (rec.tex) |*t|
+                t.deinit();
         }
         self.recents.deinit();
         //self.layout.deinit(gui, vt);
@@ -96,12 +97,11 @@ pub const LaunchWindow = struct {
         self.area.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome ", null));
         self.area.addChildOpt(gui, win, Btn(gui, ly.getArea(), "New", .{ .cb_fn = &btnCb, .id = Buttons.id(.new_map), .cb_vt = &self.area }));
         self.area.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Load", .{ .cb_fn = &btnCb, .id = Buttons.id(.pick_map), .cb_vt = &self.area }));
-        self.area.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
 
         ly.pushRemaining();
         const SZ = 5;
         self.area.addChildOpt(gui, win, Wg.VScroll.build(gui, ly.getArea(), .{
-            .count = 4,
+            .count = self.recents.items.len,
             .item_h = gui.style.config.default_item_h * SZ,
             .build_cb = buildScroll,
             .build_vt = &self.area,
@@ -113,14 +113,33 @@ pub const LaunchWindow = struct {
         const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
         var scrly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h * 5, .bounds = area.area };
         if (index >= self.recents.items.len) return;
-        for (self.recents.items[index..]) |rec| {
+        const text_bound = gui.font.textBounds("_Load_", gui.style.config.text_h);
+        for (self.recents.items[index..], 0..) |rec, i| {
             const ar = scrly.getArea() orelse return;
             const sp = ar.split(.vertical, ar.h);
 
             var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = sp[1] };
             area.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), rec.name, null));
-            area.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], rec.tex, rec.tex.rect(), .{}));
+            if (rec.tex) |tex|
+                area.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], tex, tex.rect(), .{}));
+            const ld_btn = ly.getArea() orelse return;
+            const ld_ar = ld_btn.replace(null, null, @min(text_bound.x, ld_btn.w), null);
+
+            area.addChildOpt(gui, win, Wg.Button.build(gui, ld_ar, "Load", .{ .cb_fn = &loadBtn, .id = i + index, .cb_vt = &self.area }));
         }
+    }
+
+    pub fn loadBtn(vt: *iArea, id: usize, _: *Gui, _: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        if (id >= self.recents.items.len) return;
+
+        const mname = self.recents.items[id].name;
+        const name = self.editor.printScratch("{s}.ratmap", .{mname}) catch return;
+        self.editor.loadMap(self.editor.dirs.app_cwd, name, self.editor.loadctx) catch |err| {
+            std.debug.print("Can't load map {s} with {!}\n", .{ name, err });
+            return;
+        };
+        self.editor.paused = false;
     }
 
     pub fn btnCb(vt: *iArea, id: usize, _: *Gui, _: *iWindow) void {

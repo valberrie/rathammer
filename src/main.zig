@@ -303,10 +303,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                         const qoi_data = json_map.getFileFromTar(alloc, recent_map, "thumbnail.qoi") catch continue;
 
                         defer alloc.free(qoi_data);
+                        const qoi = graph.Bitmap.initFromQoiBuffer(alloc, qoi_data) catch continue;
                         const rec = LaunchWindow.Recent{
                             .name = try alloc.dupe(u8, filename[0 .. filename.len - EXT.len]),
-                            .tex = graph.Texture.initFromBitmap(try graph.Bitmap.initFromQoiBuffer(alloc, qoi_data), .{}),
+                            .tex = graph.Texture.initFromBitmap(qoi, .{}),
                         };
+                        qoi.deinit();
 
                         recent_map.close();
                         try launch_win.recents.append(rec);

@@ -868,35 +868,42 @@ pub const Context = struct {
         self.has_loaded_map = true;
     }
 
+    fn loadRatmap(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        const in_file = try path.openFile(filename, .{});
+        defer in_file.close();
+        const slice = try in_file.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
+        defer self.alloc.free(slice);
+        var fname_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        var lname_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
+        var tar_it = std.tar.iterator(fbs.reader(), .{
+            .file_name_buffer = &fname_buffer,
+            .link_name_buffer = &lname_buffer,
+        });
+        while (try tar_it.next()) |file| {
+            if (std.mem.eql(u8, file.name, "map.json.gz")) {
+                var unzipped = std.ArrayList(u8).init(self.alloc);
+                defer unzipped.deinit();
+                try std.compress.gzip.decompress(file.reader(), unzipped.writer());
+
+                try self.loadJson(unzipped.items, loadctx, filename);
+
+                continue;
+            }
+        }
+    }
+
     pub fn loadMap(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         const endsWith = std.mem.endsWith;
-        if (endsWith(u8, filename, ".ratmap") or endsWith(u8, filename, ".tar")) {
-            const in_file = try path.openFile(filename, .{});
-            defer in_file.close();
-            const slice = try in_file.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
-            defer self.alloc.free(slice);
-            var fname_buffer: [std.fs.max_path_bytes]u8 = undefined;
-            var lname_buffer: [std.fs.max_path_bytes]u8 = undefined;
-            var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
-            var tar_it = std.tar.iterator(fbs.reader(), .{
-                .file_name_buffer = &fname_buffer,
-                .link_name_buffer = &lname_buffer,
-            });
-            while (try tar_it.next()) |file| {
-                if (std.mem.eql(u8, file.name, "map.json.gz")) {
-                    var unzipped = std.ArrayList(u8).init(self.alloc);
-                    defer unzipped.deinit();
-                    try std.compress.gzip.decompress(file.reader(), unzipped.writer());
-
-                    try self.loadJson(unzipped.items, loadctx, filename);
-
-                    continue;
-                }
-            }
-            //
+        var ext: []const u8 = "";
+        if (endsWith(u8, filename, ".ratmap")) {
+            ext = ".ratmap";
+            try self.loadRatmap(path, filename, loadctx);
         } else if (endsWith(u8, filename, ".json")) {
+            ext = ".json";
             try self.loadJsonFile(path, filename, loadctx);
         } else if (endsWith(u8, filename, ".vmf")) {
+            ext = ".vmf";
             try self.loadVmf(path, filename, loadctx);
         } else {
             return error.unknownMapExtension;
@@ -913,26 +920,25 @@ pub const Context = struct {
                 defer self.alloc.free(slice);
                 var it = std.mem.tokenizeScalar(u8, slice, '\n');
                 while (it.next()) |filen| {
-                    const EXT = ".ratmap";
-                    if (std.mem.endsWith(u8, filen, EXT)) {
-                        if (std.fs.cwd().openFile(filen, .{})) |recent_map| {
-                            //const qoi_data = json_map.getFileFromTar(recent_map,"thumbnail.qoi") catch continue;
-                            recent_map.close();
-                            try recent.append(try aa.dupe(u8, filen));
-                        } else |_| {}
-                    }
+                    if (std.fs.cwd().openFile(filen, .{})) |recent_map| {
+                        //const qoi_data = json_map.getFileFromTar(recent_map,"thumbnail.qoi") catch continue;
+                        recent_map.close();
+                        try recent.append(try aa.dupe(u8, filen));
+                    } else |_| {}
                 }
                 recent_list.close();
             } else |_| {}
 
+            const out_ = out_name[0 .. out_name.len - ext.len];
+            const out_rat = try self.printScratch("{s}.ratmap", .{out_});
             for (recent.items, 0..) |rec, i| {
-                if (std.mem.eql(u8, rec, out_name)) {
+                if (std.mem.eql(u8, rec, out_rat)) {
                     _ = recent.orderedRemove(i);
                     break;
                 }
             }
 
-            try recent.append(out_name);
+            try recent.insert(0, out_rat);
             if (self.dirs.config.createFile("recent_maps.txt", .{})) |recent_out| {
                 for (recent.items) |rec| {
                     try recent_out.writer().print("{s}\n", .{rec});
@@ -1216,8 +1222,11 @@ pub const Context = struct {
             const win_name = try self.printScratchZ(MAPFMT, .{ "", self.loaded_map_name orelse "unnamed_map" });
             _ = graph.c.SDL_SetWindowTitle(self.win.win, &win_name[0]);
 
-            const sz = 128;
+            const sz = 256;
             var bmp = try graph.Bitmap.initBlank(self.alloc, sz, sz, .rgb_8);
+            //Hack, stores the last frames wdim
+            //If the 3d viewport is not at 0,0, it will be incorrect
+            const screen_area = self.draw_state.screen_space_text_ctx.screen_dimensions;
             { //Try to create a thumbnail
 
                 var rb = try graph.RenderTexture.init(sz, sz);
@@ -1227,8 +1236,8 @@ pub const Context = struct {
                     rb.fb,
                     0,
                     0,
-                    self.win.screen_dimensions.x,
-                    self.win.screen_dimensions.y,
+                    @intFromFloat(screen_area.x),
+                    @intFromFloat(screen_area.y),
                     0,
                     sz,
                     sz,
