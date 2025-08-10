@@ -8,21 +8,3 @@ cmake --build build
 sudo cmake --install build --prefix /usr
 cd ..
 
-  'cmake'
-  'ninja'
-  'jack'
-  'wayland-protocols'
-  'alsa-lib'
-  'mesa'
-  'libpulse'
-  'libxrandr'
-  'libxinerama'
-  'wayland'
-  'libxkbcommon'
-  'ibus'
-  'libxss'
-  'pipewire'
-  'libdecor'
-  'vulkan-headers'
-  'sndio'
-
