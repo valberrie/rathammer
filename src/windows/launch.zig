@@ -1,0 +1,144 @@
+const std = @import("std");
+const graph = @import("graph");
+const Gui = guis.Gui;
+const Rec = graph.Rec;
+const Rect = graph.Rect;
+const DrawState = guis.DrawState;
+const GuiHelp = guis.GuiHelp;
+const guis = graph.RGui;
+const iWindow = guis.iWindow;
+const iArea = guis.iArea;
+const Wg = guis.Widget;
+const Context = @import("../editor.zig").Context;
+const label = guis.label;
+const async_util = @import("../async.zig");
+const VisGroup = @import("../visgroup.zig");
+pub const LaunchWindow = struct {
+    const Buttons = enum {
+        quit,
+        new_map,
+        pick_map,
+
+        pub fn id(self: @This()) usize {
+            return @intFromEnum(self);
+        }
+    };
+
+    pub const Recent = struct {
+        name: []const u8,
+        tex: graph.Texture,
+    };
+
+    const Textboxes = enum {
+        set_import_visgroup,
+        set_skyname,
+    };
+
+    const HelpText = struct {
+        text: std.ArrayList(u8),
+        name: std.ArrayList(u8),
+    };
+
+    vt: iWindow,
+    area: iArea,
+
+    editor: *Context,
+    should_exit: bool = false,
+
+    recents: std.ArrayList(Recent),
+
+    pub fn create(gui: *Gui, editor: *Context) !*LaunchWindow {
+        const self = gui.create(@This());
+        self.* = .{
+            .area = iArea.init(gui, Rec(0, 0, 0, 0)),
+            .vt = iWindow.init(&@This().build, gui, &@This().deinit, &self.area),
+            .editor = editor,
+            .recents = std.ArrayList(Recent).init(editor.alloc),
+        };
+        self.area.draw_fn = &draw;
+        self.area.deinit_fn = &area_deinit;
+
+        return self;
+    }
+
+    pub fn deinit(vt: *iWindow, gui: *Gui) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", vt));
+        for (self.recents.items) |*rec| {
+            self.recents.allocator.free(rec.name);
+            rec.tex.deinit();
+        }
+        self.recents.deinit();
+        //self.layout.deinit(gui, vt);
+        vt.deinit(gui);
+        gui.alloc.destroy(self); //second
+    }
+
+    pub fn area_deinit(_: *iArea, _: *Gui, _: *iWindow) void {}
+
+    pub fn draw(vt: *iArea, d: DrawState) void {
+        GuiHelp.drawWindowFrame(d, vt.area);
+    }
+
+    pub fn build(win: *iWindow, gui: *Gui, area: Rect) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("vt", win));
+        self.area.area = area;
+        self.area.clearChildren(gui, win);
+        self.area.dirty(gui);
+        //self.layout.reset(gui, vt);
+        //start a vlayout
+        //var ly = Vert{ .area = vt.area };
+        //const max_w = gui.style.config.default_item_h * 30;
+        //const w = @min(max_w, inset.w);
+        const inset = GuiHelp.insetAreaForWindowFrame(gui, win.area.area);
+        //_ = self.area.addEmpty(gui, vt, graph.Rec(0, 0, 0, 0));
+        var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = inset };
+        const Btn = Wg.Button.build;
+        self.area.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), "Welcome ", null));
+        self.area.addChildOpt(gui, win, Btn(gui, ly.getArea(), "New", .{ .cb_fn = &btnCb, .id = Buttons.id(.new_map), .cb_vt = &self.area }));
+        self.area.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Load", .{ .cb_fn = &btnCb, .id = Buttons.id(.pick_map), .cb_vt = &self.area }));
+        self.area.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Quit", .{ .cb_fn = &btnCb, .id = Buttons.id(.quit), .cb_vt = &self.area }));
+
+        ly.pushRemaining();
+        const SZ = 5;
+        self.area.addChildOpt(gui, win, Wg.VScroll.build(gui, ly.getArea(), .{
+            .count = 4,
+            .item_h = gui.style.config.default_item_h * SZ,
+            .build_cb = buildScroll,
+            .build_vt = &self.area,
+            .win = win,
+        }));
+    }
+
+    pub fn buildScroll(vt: *iArea, area: *iArea, index: usize, gui: *Gui, win: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        var scrly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h * 5, .bounds = area.area };
+        if (index >= self.recents.items.len) return;
+        for (self.recents.items[index..]) |rec| {
+            const ar = scrly.getArea() orelse return;
+            const sp = ar.split(.vertical, ar.h);
+
+            var ly = guis.VerticalLayout{ .padding = .{}, .item_height = gui.style.config.default_item_h, .bounds = sp[1] };
+            area.addChildOpt(gui, win, Wg.Text.buildStatic(gui, ly.getArea(), rec.name, null));
+            area.addChildOpt(gui, win, Wg.GLTexture.build(gui, sp[0], rec.tex, rec.tex.rect(), .{}));
+        }
+    }
+
+    pub fn btnCb(vt: *iArea, id: usize, _: *Gui, _: *iWindow) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("area", vt));
+        switch (@as(Buttons, @enumFromInt(id))) {
+            .quit => self.should_exit = true,
+            .new_map => {
+                self.vt.needs_rebuild = true;
+                const ed = self.editor;
+                ed.initNewMap() catch {
+                    std.debug.print("ERROR INIT NEW MAP\n", .{});
+                };
+                self.editor.paused = false;
+            },
+            .pick_map => {
+                self.vt.needs_rebuild = true;
+                async_util.SdlFileData.spawn(self.editor.alloc, &self.editor.async_asset_load, .pick_map) catch return;
+            },
+        }
+    }
+};

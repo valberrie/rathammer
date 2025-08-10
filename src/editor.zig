@@ -230,6 +230,7 @@ pub const Context = struct {
         fgd: Dir,
         pref: Dir,
         autosave: Dir,
+        config: Dir,
     },
     win: *graph.SDL.Window,
 
@@ -291,6 +292,7 @@ pub const Context = struct {
         loadctx: *LoadCtx,
         env: *std.process.EnvMap,
         app_cwd: std.fs.Dir,
+        conf_dir: std.fs.Dir,
     ) !*Self {
         const shader_dir = try app_cwd.openDir("ratasset/shader", .{});
         var ret = try alloc.create(Context);
@@ -344,12 +346,12 @@ pub const Context = struct {
         };
         //If an error occurs during initilization it is fatal so there is no reason to clean up resources.
         //Thus we call, defer editor.deinit(); after all is initialized..
-        try ret.postInit(args, loadctx, env, app_cwd);
+        try ret.postInit(args, loadctx, env, app_cwd, conf_dir);
         return ret;
     }
 
     /// Called by init
-    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx, env: *std.process.EnvMap, app_cwd: std.fs.Dir) !void {
+    fn postInit(self: *Self, args: anytype, loadctx: *LoadCtx, env: *std.process.EnvMap, app_cwd: std.fs.Dir, conf_dir: std.fs.Dir) !void {
         if (self.config.default_game.len == 0) {
             std.debug.print("config.vdf must specify a default_game!\n", .{});
             return error.incompleteConfig;
@@ -411,7 +413,7 @@ pub const Context = struct {
             }
         }
 
-        self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave, .app_cwd = app_cwd };
+        self.dirs = .{ .cwd = cwd, .fgd = fgd_dir, .pref = pref, .autosave = autosave, .app_cwd = app_cwd, .config = conf_dir };
 
         //try gameinfo.loadGameinfo(self.alloc, base_dir, game_dir, &self.vpkctx, loadctx);
         try self.asset_browser.populate(&self.vpkctx, game_conf.asset_browser_exclude.prefix, game_conf.asset_browser_exclude.entry.items);
@@ -898,6 +900,44 @@ pub const Context = struct {
             try self.loadVmf(path, filename, loadctx);
         } else {
             return error.unknownMapExtension;
+        }
+
+        { //TODO MOVE TO SAVE MAP INSTEAD?
+            var recent = std.ArrayList([]const u8).init(self.alloc);
+            defer recent.deinit();
+            const aa = self.frame_arena.allocator();
+            const out_name = try path.realpathAlloc(aa, filename);
+            if (self.dirs.config.openFile("recent_maps.txt", .{})) |recent_list| { //Keep track of recent maps
+
+                const slice = try recent_list.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
+                defer self.alloc.free(slice);
+                var it = std.mem.tokenizeScalar(u8, slice, '\n');
+                while (it.next()) |filen| {
+                    const EXT = ".ratmap";
+                    if (std.mem.endsWith(u8, filen, EXT)) {
+                        if (std.fs.cwd().openFile(filen, .{})) |recent_map| {
+                            //const qoi_data = json_map.getFileFromTar(recent_map,"thumbnail.qoi") catch continue;
+                            recent_map.close();
+                            try recent.append(try aa.dupe(u8, filen));
+                        } else |_| {}
+                    }
+                }
+                recent_list.close();
+            } else |_| {}
+
+            for (recent.items, 0..) |rec, i| {
+                if (std.mem.eql(u8, rec, out_name)) {
+                    _ = recent.orderedRemove(i);
+                    break;
+                }
+            }
+
+            try recent.append(out_name);
+            if (self.dirs.config.createFile("recent_maps.txt", .{})) |recent_out| {
+                for (recent.items) |rec| {
+                    try recent_out.writer().print("{s}\n", .{rec});
+                }
+            } else |_| {}
         }
         //try self.visgroups.putDefaultVisGroups();
     }

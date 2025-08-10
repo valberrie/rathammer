@@ -16,12 +16,14 @@ const Gui = graph.Gui;
 const Split = @import("splitter.zig");
 const editor_view = @import("editor_views.zig");
 const G = graph.RGui;
+const LaunchWindow = @import("windows/launch.zig").LaunchWindow;
 const NagWindow = @import("windows/savenag.zig").NagWindow;
 const PauseWindow = @import("windows/pause.zig").PauseWindow;
 const ConsoleWindow = @import("windows/console.zig").Console;
 const InspectorWindow = @import("windows/inspector.zig").InspectorWindow;
 const Ctx2dView = @import("view_2d.zig").Ctx2dView;
 const panereg = @import("pane.zig");
+const json_map = @import("json_map.zig");
 
 const Conf = @import("config.zig");
 
@@ -253,7 +255,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .expected_cb = 100,
     };
 
-    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx, &env, app_cwd);
+    var editor = try Editor.init(alloc, if (args.nthread) |nt| @intFromFloat(nt) else null, config, args, &win, &loadctx, &env, app_cwd, config_dir);
     defer editor.deinit();
 
     var os9gui = try Os9Gui.init(alloc, try app_cwd.openDir("ratgraph", .{}), gui_scale, .{
@@ -287,6 +289,36 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const nag_win = try NagWindow.create(&gui, editor);
     try gui.addWindow(&nag_win.vt, Rec(0, 300, 1000, 1000));
 
+    const launch_win = try LaunchWindow.create(&gui, editor);
+    if (args.map == null) { //Only build the recents list if we don't have a map
+        var timer = try std.time.Timer.start();
+        if (config_dir.openFile("recent_maps.txt", .{})) |recent| {
+            const slice = try recent.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+            defer alloc.free(slice);
+            var it = std.mem.tokenizeScalar(u8, slice, '\n');
+            while (it.next()) |filename| {
+                const EXT = ".ratmap";
+                if (std.mem.endsWith(u8, filename, EXT)) {
+                    if (std.fs.cwd().openFile(filename, .{})) |recent_map| {
+                        const qoi_data = json_map.getFileFromTar(alloc, recent_map, "thumbnail.qoi") catch continue;
+
+                        defer alloc.free(qoi_data);
+                        const rec = LaunchWindow.Recent{
+                            .name = try alloc.dupe(u8, filename[0 .. filename.len - EXT.len]),
+                            .tex = graph.Texture.initFromBitmap(try graph.Bitmap.initFromQoiBuffer(alloc, qoi_data), .{}),
+                        };
+
+                        recent_map.close();
+                        try launch_win.recents.append(rec);
+                    } else |_| {}
+                }
+            }
+        } else |_| {}
+
+        std.debug.print("Recent build in {d} ms\n", .{timer.read() / std.time.ns_per_ms});
+    }
+    try gui.addWindow(&launch_win.vt, Rec(0, 300, 1000, 1000));
+
     var console_active = false;
     const console_win = try ConsoleWindow.create(&gui, editor, &editor.shell.cb_vt);
     try gui.addWindow(&console_win.vt, Rec(0, 0, 800, 600));
@@ -313,7 +345,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         try editor.loadMap(app_cwd, mapname, &loadctx);
     } else {
         while (!win.should_exit) {
-            switch (try pauseLoop(&win, &draw, &pause_win.vt, &gui, gui_dstate, &loadctx, editor, pause_win.should_exit)) {
+            switch (try pauseLoop(&win, &draw, &launch_win.vt, &gui, gui_dstate, &loadctx, editor, launch_win.should_exit)) {
                 .exit => break,
                 .unpause => break,
                 .cont => continue,
