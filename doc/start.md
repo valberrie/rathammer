@@ -124,12 +124,15 @@ connections: Used for source engine style entity input-output. See [valve develo
 ## The Ratmap format
 .ratmap is a container around a json map.
 
-The main reason for this is to compress the json, which usually compresses to 1/20th the size. In the future it will hold a thumbnail and other (optional) files for a map.
+The main reason for this is to compress the json, which usually compresses to 1/20th the size.
 
 A .ratmap is just a [tar](https://en.wikipedia.org/wiki/Tar_(computing)) file containing: 
-* map.json.gz -> A [gzipped](https://en.wikipedia.org/wiki/Gzip) json map.
+* map.json.gz -> (required) A [gzipped](https://en.wikipedia.org/wiki/Gzip) json map.
+* thumbnail.qoi -> (optional) A [qoi](https://qoiformat.org/) file containing a thumbnail to preview the map.
 
 Maps are always saved to .ratmap but vmf's, json's, ratmaps's can all be loaded by the editor.
+
+Compressing the map.json rather than the entire tar is done because compressing images twice won't significantly improve ratio and quickly loading the thumbnail without decompressing the entire map is a priority.
 
 ### func_useableladder
 This entity is really annoying, it is only used by hl2 and portal. 

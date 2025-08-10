@@ -393,12 +393,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 .unpause => editor.paused = false,
             }
         }
-        try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
         draw.real_screen_dimensions = win.screen_dimensions.toF();
 
         //win.grabMouse(editor.draw_state.grab.is);
         win.grabMouse(editor.panes.grab.was_grabbed);
         win.pumpEvents(.poll);
+        //POSONE please and thank you.
         frame_time = frame_timer.read();
         frame_timer.reset();
         const perc_of_60fps: f32 = @as(f32, @floatFromInt(frame_time)) / std.time.ns_per_ms / 16;
@@ -427,6 +427,9 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         gui.clamp_window = winrect;
         graph.c.glEnable(graph.c.GL_BLEND);
         try editor.update(&win);
+        //TODO move this back to POSONE once we can render 3dview to any fb
+        //this is here so editor.update can create a thumbnail from backbuffer before its cleared
+        try draw.begin(0x3d8891ff, win.screen_dimensions.toF());
 
         { //Hacks to update gui
             const new_id = editor.selection.getGroupOwnerExclusive(&editor.groups);

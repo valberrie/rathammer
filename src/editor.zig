@@ -1176,11 +1176,36 @@ pub const Context = struct {
             const win_name = try self.printScratchZ(MAPFMT, .{ "", self.loaded_map_name orelse "unnamed_map" });
             _ = graph.c.SDL_SetWindowTitle(self.win.win, &win_name[0]);
 
+            const sz = 128;
+            var bmp = try graph.Bitmap.initBlank(self.alloc, sz, sz, .rgb_8);
+            { //Try to create a thumbnail
+
+                var rb = try graph.RenderTexture.init(sz, sz);
+                defer rb.deinit();
+                graph.c.glBlitNamedFramebuffer(
+                    0,
+                    rb.fb,
+                    0,
+                    0,
+                    self.win.screen_dimensions.x,
+                    self.win.screen_dimensions.y,
+                    0,
+                    sz,
+                    sz,
+                    0,
+                    graph.c.GL_COLOR_BUFFER_BIT,
+                    graph.c.GL_LINEAR,
+                );
+                graph.c.glBindFramebuffer(graph.c.GL_FRAMEBUFFER, rb.fb);
+                graph.c.glReadPixels(0, 0, sz, sz, graph.c.GL_RGB, graph.c.GL_UNSIGNED_BYTE, &bmp.data.items[0]);
+            }
+
             try async_util.CompressAndSave.spawn(
                 self.alloc,
                 &self.async_asset_load,
                 jwriter,
                 out_file,
+                bmp,
             );
         } else |err| {
             jwriter.deinit();

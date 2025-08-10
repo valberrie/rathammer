@@ -173,14 +173,16 @@ pub const CompressAndSave = struct {
 
     file: std.fs.File,
     status: enum { failed, built, nothing } = .nothing,
+    thumb: ?graph.Bitmap,
 
-    pub fn spawn(alloc: std.mem.Allocator, pool: *thread_pool.Context, json_buffer: std.ArrayList(u8), file: std.fs.File) !void {
+    pub fn spawn(alloc: std.mem.Allocator, pool: *thread_pool.Context, json_buffer: std.ArrayList(u8), file: std.fs.File, thumbnail: ?graph.Bitmap) !void {
         const self = try alloc.create(@This());
         self.* = .{
             .job = .{
                 .user_id = 0,
                 .onComplete = &onComplete,
             },
+            .thumb = thumbnail,
             .alloc = alloc,
             .json_buf = json_buffer,
             .pool_ptr = pool,
@@ -192,6 +194,9 @@ pub const CompressAndSave = struct {
     pub fn destroy(self: *@This()) void {
         self.json_buf.deinit();
         self.file.close();
+        if (self.thumb) |th|
+            th.deinit();
+
         const alloc = self.alloc;
         alloc.destroy(self);
     }
@@ -199,8 +204,10 @@ pub const CompressAndSave = struct {
     pub fn onComplete(vt: *thread_pool.iJob, edit: *Context) void {
         const self: *@This() = @alignCast(@fieldParentPtr("job", vt));
         defer self.destroy();
-        if (self.status != .built)
-            edit.notify("Unable to compress map nothing written", .{}, 0xff0000ff) catch {};
+        switch (self.status) {
+            .nothing, .failed => edit.notify("Unable to compress map nothing written", .{}, 0xff0000ff) catch {},
+            .built => edit.notify("Compressed map", .{}, 0x00ff00ff) catch {},
+        }
     }
 
     pub fn workFunc(self: *@This()) void {
@@ -222,6 +229,27 @@ pub const CompressAndSave = struct {
         var tar_out = std.tar.writer(bwr.writer());
 
         var comp_fbs = std.io.FixedBufferStream([]const u8){ .buffer = compressed.items, .pos = 0 };
+
+        if (self.thumb) |th| {
+            var qd = graph.c.qoi_desc{
+                .width = th.w,
+                .height = th.h,
+                .channels = 3,
+                .colorspace = graph.c.QOI_LINEAR,
+            };
+            var qoi_len: c_int = 0;
+            if (graph.c.qoi_encode(&th.data.items[0], &qd, &qoi_len)) |qoi_data| {
+                const qoi_s: [*c]const u8 = @ptrCast(qoi_data);
+                const qlen: usize = if (qoi_len > 0) @intCast(qoi_len) else 0;
+                const slice: []const u8 = qoi_s[0..qlen];
+                var qfbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
+                tar_out.writeFileStream("thumbnail.qoi", qlen, qfbs.reader(), .{}) catch |err| {
+                    log.warn("unable to write thumbnail {!}", .{err});
+                };
+                graph.c.QOI_FREE(qoi_data);
+            }
+        }
+
         tar_out.writeFileStream("map.json.gz", comp_fbs.buffer.len, comp_fbs.reader(), .{}) catch |err| {
             log.err("file write failed {!}", .{err});
             self.status = .failed;
