@@ -250,6 +250,8 @@ pub const Context = struct {
         const eql = std.mem.eql;
         const allowed_exts = [_][]const u8{
             ".json",
+            ".tar",
+            ".ratmap",
             ".vmf",
         };
         var dot_index: ?usize = null;
@@ -561,12 +563,6 @@ pub const Context = struct {
         }
     }
 
-    pub fn writeToJsonFile(self: *Self, path: std.fs.Dir, filename: []const u8) !void {
-        const outfile = try path.createFile(filename, .{});
-        defer outfile.close();
-        try self.writeToJson(outfile);
-    }
-
     pub fn isBindState(self: *const Self, bind: graph.SDL.NewBind, state: graph.SDL.ButtonState) bool {
         if (!self.panes.stackOwns()) return false;
         return self.win.isBindState(bind, state);
@@ -577,11 +573,8 @@ pub const Context = struct {
         return self.win.mouse;
     }
 
-    pub fn writeToJson(self: *Self, outfile: std.fs.File) !void {
-        const wr = outfile.writer();
-        var bwr = std.io.bufferedWriter(wr);
-        const bb = bwr.writer();
-        var jwr = std.json.writeStream(bb, .{ .whitespace = .indent_1 });
+    pub fn writeToJson(self: *Self, writer: anytype) !void {
+        var jwr = std.json.writeStream(writer, .{ .whitespace = .indent_1 });
         try jwr.beginObject();
         {
             try jwr.objectField("editor");
@@ -640,7 +633,6 @@ pub const Context = struct {
         }
         //Men I trust, men that rust
         try jwr.endObject();
-        try bwr.flush();
     }
 
     pub fn writeComponentToJson(self: *Self, jw: anytype, comp: anytype, id: EcsT.Id) !void {
@@ -875,15 +867,52 @@ pub const Context = struct {
     }
 
     pub fn loadMap(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
-        if (std.mem.endsWith(u8, filename, ".json")) {
-            try self.loadJson(path, filename, loadctx);
-        } else {
+        const endsWith = std.mem.endsWith;
+        if (endsWith(u8, filename, ".ratmap") or endsWith(u8, filename, ".tar")) {
+            const in_file = try path.openFile(filename, .{});
+            defer in_file.close();
+            const slice = try in_file.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
+            defer self.alloc.free(slice);
+            var fname_buffer: [std.fs.max_path_bytes]u8 = undefined;
+            var lname_buffer: [std.fs.max_path_bytes]u8 = undefined;
+            var fbs = std.io.FixedBufferStream([]const u8){ .buffer = slice, .pos = 0 };
+            var tar_it = std.tar.iterator(fbs.reader(), .{
+                .file_name_buffer = &fname_buffer,
+                .link_name_buffer = &lname_buffer,
+            });
+            while (try tar_it.next()) |file| {
+                if (std.mem.eql(u8, file.name, "map.json.gz")) {
+                    var unzipped = std.ArrayList(u8).init(self.alloc);
+                    defer unzipped.deinit();
+                    try std.compress.gzip.decompress(file.reader(), unzipped.writer());
+
+                    try self.loadJson(unzipped.items, loadctx, filename);
+
+                    continue;
+                }
+            }
+            //
+        } else if (endsWith(u8, filename, ".json")) {
+            try self.loadJsonFile(path, filename, loadctx);
+        } else if (endsWith(u8, filename, ".vmf")) {
             try self.loadVmf(path, filename, loadctx);
+        } else {
+            return error.unknownMapExtension;
         }
         //try self.visgroups.putDefaultVisGroups();
     }
 
-    fn loadJson(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+    fn loadJsonFile(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
+        const infile = try path.openFile(filename, .{});
+        defer infile.close();
+
+        const slice = try infile.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
+        defer self.alloc.free(slice);
+
+        try self.loadJson(slice, loadctx, filename);
+    }
+
+    fn loadJson(self: *Self, slice: []const u8, loadctx: *LoadCtx, filename: []const u8) !void {
         if (self.has_loaded_map) {
             log.err("Map already loaded", .{});
             return error.multiMapLoadNotSupported;
@@ -891,11 +920,6 @@ pub const Context = struct {
         defer self.has_loaded_map = true;
         var timer = try std.time.Timer.start();
         defer log.info("Loaded json in {d}ms", .{timer.read() / std.time.ns_per_ms});
-        const infile = try path.openFile(filename, .{});
-        defer infile.close();
-
-        const slice = try infile.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
-        defer self.alloc.free(slice);
 
         const jsonctx = json_map.InitFromJsonCtx{
             .alloc = self.alloc,
@@ -1137,17 +1161,30 @@ pub const Context = struct {
         self.edit_state.map_version += 1;
         var timer = try std.time.Timer.start();
         try self.notify("saving: {s}{s}", .{ path, basename }, 0xfca73fff);
-        const name = try self.printScratch("{s}{s}.json", .{ path, basename });
+
+        const name = try self.printScratch("{s}{s}.ratmap", .{ path, basename });
         //TODO make copy of existing map incase something goes wrong
+
         const out_file = try std.fs.cwd().createFile(name, .{});
-        defer out_file.close();
-        if (self.writeToJson(out_file)) {
+
+        var jwriter = std.ArrayList(u8).init(self.alloc);
+
+        if (self.writeToJson(jwriter.writer())) {
             try self.notify(" saved: {s}{s} in {d:.1}ms", .{ path, basename, timer.read() / std.time.ns_per_ms }, 0xff00ff);
             self.edit_state.saved_at_delta = self.undoctx.delta_counter;
             self.edit_state.was_saved = true;
             const win_name = try self.printScratchZ(MAPFMT, .{ "", self.loaded_map_name orelse "unnamed_map" });
             _ = graph.c.SDL_SetWindowTitle(self.win.win, &win_name[0]);
+
+            try async_util.CompressAndSave.spawn(
+                self.alloc,
+                &self.async_asset_load,
+                jwriter,
+                out_file,
+            );
         } else |err| {
+            jwriter.deinit();
+            out_file.close();
             log.err("writeToJson failed ! {}", .{err});
             try self.notify("save failed!: {}", .{err}, 0xff0000ff);
         }
@@ -1176,7 +1213,9 @@ pub const Context = struct {
             self.autosaver.resetTimer();
             if (self.autosaver.getSaveFileAndPrune(self.dirs.autosave, basename, ".json")) |out_file| {
                 defer out_file.close();
-                self.writeToJson(out_file) catch |err| {
+                var bwr = std.io.bufferedWriter(out_file.writer());
+                defer bwr.flush() catch {};
+                self.writeToJson(bwr.writer()) catch |err| {
                     log.err("writeToJson failed ! {}", .{err});
                     try self.notify("Autosave failed!: {}", .{err}, 0xff0000ff);
                 };

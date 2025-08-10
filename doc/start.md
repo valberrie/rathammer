@@ -121,6 +121,16 @@ key_values: Stores a list of arbitrary key value pairs for entities.
 connections: Used for source engine style entity input-output. See [valve developer wiki](https://developer.valvesoftware.com/wiki/VMF_(Valve_Map_Format)#Connections)
 
 
+## The Ratmap format
+.ratmap is a container around a json map.
+
+The main reason for this is to compress the json, which usually compresses to 1/20th the size. In the future it will hold a thumbnail and other (optional) files for a map.
+
+A .ratmap is just a [tar](https://en.wikipedia.org/wiki/Tar_(computing)) file containing: 
+* map.json.gz -> A [gzipped](https://en.wikipedia.org/wiki/Gzip) json map.
+
+Maps are always saved to .ratmap but vmf's, json's, ratmaps's can all be loaded by the editor.
+
 ### func_useableladder
 This entity is really annoying, it is only used by hl2 and portal. 
 When you translate a func_useableladder entity, the origin of the entity is synced with the point0 field (the start of the ladder)

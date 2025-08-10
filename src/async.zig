@@ -13,6 +13,7 @@ pub const SdlFileData = struct {
         .{ .name = "maps", .pattern = "json;vmf" },
         .{ .name = "vmf maps", .pattern = "vmf" },
         .{ .name = "RatHammer json maps", .pattern = "json" },
+        .{ .name = "RatHammer maps", .pattern = "ratmap" },
         .{ .name = "All files", .pattern = "*" },
     };
     action: Action,
@@ -160,5 +161,72 @@ pub const MapCompile = struct {
             log.err("Build map failed with : {!}", .{err});
             self.status = .failed;
         }
+    }
+};
+
+pub const CompressAndSave = struct {
+    job: thread_pool.iJob,
+    pool_ptr: *thread_pool.Context,
+
+    alloc: std.mem.Allocator,
+    json_buf: std.ArrayList(u8),
+
+    file: std.fs.File,
+    status: enum { failed, built, nothing } = .nothing,
+
+    pub fn spawn(alloc: std.mem.Allocator, pool: *thread_pool.Context, json_buffer: std.ArrayList(u8), file: std.fs.File) !void {
+        const self = try alloc.create(@This());
+        self.* = .{
+            .job = .{
+                .user_id = 0,
+                .onComplete = &onComplete,
+            },
+            .alloc = alloc,
+            .json_buf = json_buffer,
+            .pool_ptr = pool,
+            .file = file,
+        };
+        try pool.spawnJob(workFunc, .{self});
+    }
+
+    pub fn destroy(self: *@This()) void {
+        self.json_buf.deinit();
+        self.file.close();
+        const alloc = self.alloc;
+        alloc.destroy(self);
+    }
+
+    pub fn onComplete(vt: *thread_pool.iJob, edit: *Context) void {
+        const self: *@This() = @alignCast(@fieldParentPtr("job", vt));
+        defer self.destroy();
+        if (self.status != .built)
+            edit.notify("Unable to compress map nothing written", .{}, 0xff0000ff) catch {};
+    }
+
+    pub fn workFunc(self: *@This()) void {
+        defer self.pool_ptr.insertCompletedJob(&self.job) catch {};
+
+        var fbs = std.io.FixedBufferStream([]const u8){ .buffer = self.json_buf.items, .pos = 0 };
+        var compressed = std.ArrayList(u8).init(self.alloc);
+        defer compressed.deinit();
+        if (std.compress.gzip.compress(fbs.reader(), compressed.writer(), .{})) |_| {} else |err| {
+            log.err("compress failed {!}", .{err});
+            self.status = .failed;
+            return;
+        }
+
+        const wr = self.file.writer();
+        var bwr = std.io.bufferedWriter(wr);
+        defer bwr.flush() catch {};
+
+        var tar_out = std.tar.writer(bwr.writer());
+
+        var comp_fbs = std.io.FixedBufferStream([]const u8){ .buffer = compressed.items, .pos = 0 };
+        tar_out.writeFileStream("map.json.gz", comp_fbs.buffer.len, comp_fbs.reader(), .{}) catch |err| {
+            log.err("file write failed {!}", .{err});
+            self.status = .failed;
+            return;
+        };
+        self.status = .built;
     }
 };
