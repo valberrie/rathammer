@@ -23,10 +23,24 @@ jobs:
         with:
           # Version of the Zig compiler, e.g. "0.13.0" or "0.13.0-dev.351+64ef45eb0". "master" uses the latest nightly build. "latest" uses the latest tagged release. Leave empty to use minimum_zig_version from build.zig.zon, with a fallback to "latest".
           version: "0.14.1"
+          
       - uses: libsdl-org/setup-sdl@main
         id: sdl
         with:
           install-linux-dependencies: true
-          version: 2-latest
+          version: 3-latest
+
+      - uses: tecolicom/actions-use-apt-tools@v1
+        with:
+          tools: libepoxy-dev libfreetype-dev
+          
       - name: build it
-        run: zig build
+        run: ./distrib/makeappdir.sh
+
+      - name: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rathammer_linux_x86_x64.zip
+          path: distrib/rathammer_linux_x86_x64.zip
+
+      
