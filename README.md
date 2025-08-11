@@ -36,6 +36,8 @@ Second, wine is very slow to startup by default, 'running wineserver --persisten
 ## Building from source
 ### Arch Linux based distro (The easiest)
 ```
+# run scripts/build_arch.sh
+# OR:
 # install dependencies zig 0.14.1
 sudo pacman -S zig libepoxy freetype2 sdl3 zenity
 
@@ -45,6 +47,8 @@ sudo pacman -S wine
 
 ### Debian based distro 
 ```
+# run scripts/build_sdl.sh
+# OR:
 sudo apt install libepoxy-dev libfreetype-dev
 ```
 * Download the correct zig 0.14.1 tar from [zig](https://ziglang.org/download/)

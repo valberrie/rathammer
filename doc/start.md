@@ -30,7 +30,7 @@ Set a custom cwd with --custom_cwd flag
 ```
 Unless something horribly wrong happened (Windows builds can be finicky), RatHammer will usually give you good idea of why it can't start.
 
-To load a vmf or json map you can use the --vmf flag, or you can select a map to load once the editor is started.
+To load a vmf or ratmap you can use the --map flag, or you can select a map to load once the editor is started.
 
 ## Editing
 Once you have successfully started RatHammer you will be greeted by a "pause menu", there are various global settings in here and documentation. Open and close the pause menu with 'Escape'
