@@ -1,11 +1,21 @@
 #!/bin/bash
 git clone --depth 1 --branch release-3.2.16 https://github.com/libsdl-org/SDL.git
-cd SDL
+#cd SDL
 sudo apt-get update
 sudo apt-get install libepoxy-dev libfreetype-dev
 sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev
-cmake -S . -B build
+
+cmake -S SDL \
+    -B build -G Ninja \
+  	-D CMAKE_BUILD_TYPE=None \
+    -D CMAKE_INSTALL_PREFIX=/usr \
+    -D SDL_STATIC=OFF \
+    -D SDL_RPATH=OFF
 cmake --build build
-sudo cmake --install build --prefix /usr
+
+sudo cmake --install build
+
+#cmake -S . -B build
+#sudo cmake --install build --prefix /usr
 cd ..
 
