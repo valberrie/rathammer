@@ -69,3 +69,19 @@ pub fn parseSemver(string: []const u8) ![3]u32 {
         std.fmt.parseInt(u32, rev, 10) catch return error.invalidSemVer,
     };
 }
+
+pub fn getFileFromTar(alloc: std.mem.Allocator, fileo: std.fs.File, filename: []const u8) ![]const u8 {
+    var fname_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    var lname_buffer: [std.fs.max_path_bytes]u8 = undefined;
+
+    var tar_it = std.tar.iterator(fileo.reader(), .{
+        .file_name_buffer = &fname_buffer,
+        .link_name_buffer = &lname_buffer,
+    });
+    while (try tar_it.next()) |file| {
+        if (std.mem.eql(u8, file.name, filename)) {
+            return try file.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+        }
+    }
+    return error.notFound;
+}

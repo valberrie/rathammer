@@ -1323,6 +1323,7 @@ pub const Context = struct {
                     self.skybox.sky_name,
                     &self.vpkctx,
                     &self.groups,
+                    null,
                 )) {
                     try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
                 } else |_| {}

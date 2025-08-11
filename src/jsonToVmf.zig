@@ -4,6 +4,7 @@ const ecs = @import("ecs.zig");
 const vdf_serial = @import("vdf_serial.zig");
 const vmf = @import("vmf.zig");
 const GroupId = ecs.Groups.GroupId;
+const util = @import("util.zig");
 
 const version = @import("version.zig");
 
@@ -54,8 +55,15 @@ fn fixupValue(key: []const u8, value: []const u8, ent_class: []const u8) []const
 }
 
 /// Does not free memory, use an arena.
-pub fn jsontovmf(alloc: std.mem.Allocator, ecs_p: *ecs.EcsT, skyname: []const u8, vpkmapper: anytype, groups: *ecs.Groups) !void {
-    const outfile = try std.fs.cwd().createFile("dump.vmf", .{});
+pub fn jsontovmf(
+    alloc: std.mem.Allocator,
+    ecs_p: *ecs.EcsT,
+    skyname: []const u8,
+    vpkmapper: anytype,
+    groups: *ecs.Groups,
+    filename: ?[]const u8,
+) !void {
+    const outfile = try std.fs.cwd().createFile(filename orelse "dump.vmf", .{});
     defer outfile.close();
     const wr = outfile.writer();
     var bwr = std.io.bufferedWriter(wr);
@@ -203,18 +211,34 @@ pub fn main() !void {
 
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
-        Arg("json", .string, "json map to load"),
+        Arg("map", .string, "ratmap or json map to load"),
+        Arg("output", .string, "name of vmf file to write"),
     }, &arg_it);
 
     var loadctx = LoadCtx{};
 
-    if (args.json) |mapname| {
+    if (args.map) |mapname| {
         const infile = std.fs.cwd().openFile(mapname, .{}) catch |err| {
             std.debug.print("Unable to open file: {s}, {!}\n", .{ mapname, err });
             std.process.exit(1);
         };
         defer infile.close();
-        const slice = try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+
+        const slice = blk: {
+            if (std.mem.endsWith(u8, mapname, ".json")) {
+                break :blk try infile.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+            } else if (std.mem.endsWith(u8, mapname, ".ratmap")) {
+                const compressed = try util.getFileFromTar(alloc, infile, "map.json.gz");
+                var fbs = std.io.FixedBufferStream([]const u8){ .buffer = compressed, .pos = 0 };
+                var unzipped = std.ArrayList(u8).init(alloc);
+                try std.compress.gzip.decompress(fbs.reader(), unzipped.writer());
+                break :blk unzipped.items;
+            } else {
+                std.debug.print("Unknown map extension {s}\n", .{mapname});
+                std.debug.print("Valid extensions are .json, .ratmap\n", .{});
+                return error.invalid;
+            }
+        };
 
         var strings = StringStorage.init(alloc);
         var ecs_p = try ecs.EcsT.init(alloc);
@@ -225,9 +249,9 @@ pub fn main() !void {
         const jsonctx = json_map.InitFromJsonCtx{ .alloc = alloc, .str_store = &strings };
         const parsed = try json_map.loadJson(jsonctx, slice, &loadctx, &ecs_p, &vpkmapper, &groups);
 
-        try jsontovmf(alloc, &ecs_p, parsed.value.sky_name, &vpkmapper, &groups);
+        try jsontovmf(alloc, &ecs_p, parsed.value.sky_name, &vpkmapper, &groups, args.output);
     } else {
-        std.debug.print("Please specify json file with --json\n", .{});
+        std.debug.print("Please specify map file with --map\n", .{});
     }
 }
 

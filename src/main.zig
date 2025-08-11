@@ -303,7 +303,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
                 const EXT = ".ratmap";
                 if (std.mem.endsWith(u8, filename, EXT)) {
                     if (std.fs.cwd().openFile(filename, .{})) |recent_map| {
-                        const qoi_data = json_map.getFileFromTar(alloc, recent_map, "thumbnail.qoi") catch continue;
+                        const qoi_data = util.getFileFromTar(alloc, recent_map, "thumbnail.qoi") catch continue;
 
                         defer alloc.free(qoi_data);
                         const qoi = graph.Bitmap.initFromQoiBuffer(alloc, qoi_data) catch continue;
