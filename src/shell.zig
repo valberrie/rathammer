@@ -20,6 +20,7 @@ const Commands = enum {
     fov,
     dump_selected,
     snap_selected,
+    optimize,
     tp,
     pointfile,
     unload_pointfile,
@@ -171,7 +172,7 @@ pub const CommandCtx = struct {
                                 try wr.print("  v {d} [{d:.1} {d:.1} {d:.1}]\n", .{ i, vert.x(), vert.y(), vert.z() });
                             }
                             for (solid.sides.items, 0..) |side, i| {
-                                try wr.print("  side {d}", .{i});
+                                try wr.print("  side {d}: ", .{i});
                                 for (side.index.items) |ind|
                                     try wr.print(" {d}", .{ind});
                                 try wr.print("\n", .{});
@@ -179,6 +180,13 @@ pub const CommandCtx = struct {
                                 try wr.print("  Normal: [{d} {d} {d}]\n", .{ norm.x(), norm.y(), norm.z() });
                             }
                         }
+                    }
+                },
+                .optimize => {
+                    const selected_slice = self.ed.selection.getSlice();
+                    for (selected_slice) |id| {
+                        if (try self.ed.ecs.getOptPtr(id, .solid)) |solid|
+                            try solid.optimizeMesh();
                     }
                 },
                 .snap_selected => {

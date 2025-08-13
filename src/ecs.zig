@@ -758,7 +758,6 @@ pub const Solid = struct {
 
     pub fn initFromPrimitive(alloc: std.mem.Allocator, verts: []const Vec3, faces: []const std.ArrayList(u32), tex_id: vpk.VpkResId, offset: Vec3, rot: graph.za.Mat3) !Solid {
         var ret = init(alloc);
-        //TODO prune the verts
         for (verts) |v|
             try ret.verts.append(rot.mulByVec3(v).add(offset));
 
@@ -773,11 +772,12 @@ pub const Solid = struct {
                 .material = "",
                 .tex_id = tex_id,
             });
-            const side = &ret.sides.items[ret.sides.items.len - 1];
+        }
+        try ret.optimizeMesh();
+        for (ret.sides.items) |*side| {
             const norm = side.normal(&ret);
             side.resetUv(norm, true);
         }
-        try ret.optimizeMesh();
         return ret;
     }
 
@@ -785,21 +785,41 @@ pub const Solid = struct {
     pub fn optimizeMesh(self: *Self) !void {
         var vmap = csg.VecMap.init(self.sides.allocator);
         defer vmap.deinit();
+        var new_sides = std.ArrayList(Side).init(self.sides.allocator);
 
-        for (self.sides.items) |side| {
-            for (side.index.items) |*ind|
+        var index_map = std.AutoHashMap(u32, void).init(self.sides.allocator);
+        defer index_map.deinit();
+        var index = std.ArrayList(u32).init(self.sides.allocator);
+        defer index.deinit();
+
+        for (self.sides.items) |*side| {
+            index_map.clearRetainingCapacity();
+            index.clearRetainingCapacity();
+            for (side.index.items) |*ind| // ensure each vertex unique
                 ind.* = try vmap.put(self.verts.items[ind.*]);
+
+            for (side.index.items) |ind| { //ensure each index unique
+                const res = try index_map.getOrPut(ind);
+                if (res.found_existing) {} else {
+                    try index.append(ind);
+                }
+            }
+            if (index.items.len < 3) { //Remove degenerate sides
+                side.deinit();
+                continue;
+            }
+            side.index.clearRetainingCapacity();
+            try side.index.appendSlice(index.items);
+
+            try new_sides.append(side.*);
         }
+        self.sides.deinit();
+        self.sides = new_sides;
         if (vmap.verts.items.len < self.verts.items.len) {
-            //std.debug.print("OPTIMIZED {d} {d} \n", .{
-            //    self.verts.items.len - vmap.verts.items.len,
-            //    vmap.verts.items.len / self.verts.items.len * 100,
-            //});
             self.verts.shrinkAndFree(vmap.verts.items.len);
         }
         try self.verts.resize(vmap.verts.items.len);
         @memcpy(self.verts.items, vmap.verts.items);
-        //TODO
     }
 
     pub fn initFromCube(alloc: std.mem.Allocator, v1: Vec3, v2: Vec3, tex_id: vpk.VpkResId) !Solid {
