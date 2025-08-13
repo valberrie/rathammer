@@ -222,8 +222,6 @@ pub const CubeDraw = struct {
         const draw_nd = &ed.draw_state.ctx;
         const set = tool.primitive_settings;
         const rot = set.axis.getMat(set.invert, set.angle);
-        const norm = rot.mulByVec3(Vec3.new(0, 0, 1));
-        const xx = util3d.getBasis(norm);
         const rc = ed.camRay(td.screen_area, td.view_3d.*);
         const snap = if (tool.snap_new_verts) ed.grid else grid.Snap.zero();
         const bounds = tool.bb_gizmo.aabbGizmo(&tool.start, &tool.end, rc, ed.edit_state.lmouse, ed.grid, draw_nd);
@@ -241,114 +239,73 @@ pub const CubeDraw = struct {
             );
         }
         const bb = util3d.cubeFromBounds(bounds[0], bounds[1]);
-        const bound = tool.primitive_settings.axis.Vec(bb[1].x(), bb[1].y(), bb[1].z());
+        const x_basis = rot.mulByVec3(Vec3.new(1, 0, 0));
+        const y_basis = rot.mulByVec3(Vec3.new(0, 1, 0));
+        const z_basis = rot.mulByVec3(Vec3.new(0, 0, 1));
+        const center = bb[0].add(bb[1].scale(0.5));
+
+        const rb = Vec3.new(
+            @abs(x_basis.dot(bb[1])),
+            @abs(y_basis.dot(bb[1])),
+            @abs(z_basis.dot(bb[1])),
+        );
 
         if (ed.edit_state.lmouse == .falling) {
             //tool.start = bounds[0];
             //tool.end = bounds[1];
         }
         const nsegment: u32 = @intFromFloat(std.math.clamp(tool.primitive_settings.nsegment, 2, 128));
-        switch (tool.primitive) {
-            .cylinder => {
-                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const z = @abs(cc[1].dot(norm));
+        const prim: struct {
+            prim_gen.Primitive,
+            bool,
+        } = switch (tool.primitive) {
+            .cylinder => .{ try prim_gen.cylinder(ed.frame_arena.allocator(), .{
+                .a = rb.x() / 2,
+                .b = rb.y() / 2,
+                .z = rb.z(),
+                .num_segment = nsegment,
+                .grid = snap,
+            }), false },
+            .arch => .{ try prim_gen.arch(ed.frame_arena.allocator(), .{
+                .thick = tool.primitive_settings.thickness,
+                .a = rb.x() / 2,
+                .b = rb.y() / 2,
+                .z = rb.z(),
+                .num_segment = nsegment,
+                .theta_deg = tool.primitive_settings.theta,
+                .snap_to_box = tool.primitive_settings.archbox,
+                .grid = snap,
+            }), true },
+            .dome => .{ try prim_gen.uvSphere(ed.frame_arena.allocator(), .{
+                .a = rb.x() / 2,
+                .b = rb.y() / 2,
+                .z = rb.z() / 2,
+                .phi = tool.primitive_settings.theta,
+                .phi_seg = nsegment,
+                .theta_seg = nsegment,
+                .grid = snap,
+                .thick = tool.primitive_settings.thickness,
+            }), true },
+            .stairs => .{ try prim_gen.stairs(ed.frame_arena.allocator(), .{
+                .width = rb.x(),
+                .height = rb.y(),
+                .z = rb.z(),
 
-                const a = bound.x() / 2;
-                const b = bound.y() / 2;
+                .rise = tool.stairs_setting.rise,
+                .run = tool.stairs_setting.run,
 
-                const cyl = try prim_gen.cylinder(ed.frame_arena.allocator(), .{
-                    .a = a,
-                    .b = b,
-                    .z = z,
-                    .num_segment = nsegment,
-                    .grid = snap,
-                });
-
-                const center = cc[0].add(cc[1].scale(0.5));
-                //draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                cyl.draw(td.draw, center, rot);
-                if (ed.edit_state.rmouse != .rising) return;
-                tool.state = .start;
-                try tool.commitPrimitive(ed, center, &cyl, .{ .rot = rot });
-            },
-            .arch => {
-                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const a = bound.x() / 2;
-                const b = bound.y() / 2;
-                const z = bound.z();
-
-                const cyl = try prim_gen.arch(ed.frame_arena.allocator(), .{
-                    .thick = tool.primitive_settings.thickness,
-                    .a = a,
-                    .b = b,
-                    .z = z,
-                    .num_segment = nsegment,
-                    .theta_deg = tool.primitive_settings.theta,
-                    .snap_to_box = tool.primitive_settings.archbox,
-                    .grid = snap,
-                });
-
-                const center = cc[0].add(cc[1].scale(0.5));
-                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                cyl.draw(td.draw, center, rot);
-                if (ed.edit_state.rmouse != .rising) return;
-                tool.state = .start;
-                try tool.commitPrimitive(ed, center, &cyl, .{ .select = true, .rot = rot });
-            },
-            //TODO fix the dome.
-            //TODO dome, arch, cylinder, ensure bb changes are rotated
-            .dome => {
-                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const prim = try prim_gen.uvSphere(ed.frame_arena.allocator(), .{
-                    .r = @abs(@min(xx[0].dot(cc[1]), xx[1].dot(cc[1])) / 2),
-                    .phi = tool.primitive_settings.theta,
-                    .phi_seg = nsegment,
-                    .theta_seg = nsegment,
-                    .grid = snap,
-                    .thick = tool.primitive_settings.thickness,
-                });
-                const center = cc[0].add(cc[1].scale(0.5));
-                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                prim.draw(td.draw, center, rot);
-                if (ed.edit_state.rmouse != .rising) return;
-                tool.state = .start;
-                try tool.commitPrimitive(ed, center, &prim, .{ .select = true, .rot = rot });
-            },
-            .stairs => {
-                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const prim = try prim_gen.stairs(ed.frame_arena.allocator(), .{
-                    .width = xx[0].dot(cc[1]),
-                    .height = xx[1].dot(cc[1]),
-                    .z = @abs(cc[1].dot(norm)),
-
-                    .rise = tool.stairs_setting.rise,
-                    .run = tool.stairs_setting.run,
-
-                    .front_perc = tool.stairs_setting.front_perc,
-                    .back_perc = tool.stairs_setting.back_perc,
-                    .grid = snap,
-                });
-                const center = cc[0].add(cc[1].scale(0.5));
-                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                prim.draw(td.draw, center, rot);
-                if (ed.edit_state.rmouse != .rising) return;
-                tool.state = .start;
-                try tool.commitPrimitive(ed, center, &prim, .{ .select = true, .rot = rot });
-            },
-            .cube => {
-                const cc = util3d.cubeFromBounds(bounds[0], bounds[1]);
-                const prim = try prim_gen.cube(ed.frame_arena.allocator(), .{
-                    .size = cc[1].scale(0.5),
-                });
-                const center = cc[0].add(cc[1].scale(0.5));
-                draw_nd.cubeFrame(cc[0], cc[1], 0xff0000ff);
-                prim.draw(td.draw, center, Mat3.identity());
-
-                if (ed.edit_state.rmouse != .rising) return;
-                tool.state = .start;
-                try tool.commitPrimitive(ed, center, &prim, .{ .rot = Mat3.identity() });
-            },
-        }
+                .front_perc = tool.stairs_setting.front_perc,
+                .back_perc = tool.stairs_setting.back_perc,
+                .grid = snap,
+            }), true },
+            .cube => .{ try prim_gen.cube(ed.frame_arena.allocator(), .{
+                .size = rb.scale(0.5),
+            }), false },
+        };
+        prim[0].draw(td.draw, center, rot);
+        if (ed.edit_state.rmouse != .rising) return;
+        tool.state = .start;
+        try tool.commitPrimitive(ed, center, &prim[0], .{ .rot = rot, .select = prim[1] });
     }
 
     fn commitPrimitive(self: *@This(), ed: *Editor, center: Vec3, prim: *const prim_gen.Primitive, opts: struct { select: bool = false, rot: Mat3 }) !void {

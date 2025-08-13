@@ -414,7 +414,9 @@ pub fn stairs(alloc: std.mem.Allocator, param: struct {
 }
 
 pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
-    r: f32,
+    a: f32,
+    b: f32,
+    z: f32,
     theta_seg: u32 = 11,
     phi_seg: u32 = 11,
     phi: f32 = 360,
@@ -426,8 +428,15 @@ pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
     const dtheta: f32 = std.math.pi / @as(f32, @floatFromInt(param.theta_seg)) / 2;
     const phi_offset: usize = if (param.phi >= 360) 0 else 1;
     const dphi: f32 = std.math.degreesToRadians(param.phi) / @as(f32, @floatFromInt(param.phi_seg - phi_offset));
-    const r = param.r - param.thick;
-    const r2 = param.r;
+
+    const a = param.a - param.thick;
+    const a2 = param.a;
+
+    const b = param.b - param.thick;
+    const b2 = param.b;
+
+    const h = param.z - param.thick;
+    const h2 = param.z;
 
     const num: u32 = @intCast(param.theta_seg * param.phi_seg);
     try prim.verts.resize(num * 2);
@@ -439,8 +448,8 @@ pub fn uvSphere(alloc: std.mem.Allocator, param: struct {
             const y = @sin(th) * @sin(phi);
             const z = @cos(th);
             const gi = dth * param.theta_seg + dpi;
-            prim.verts.items[gi] = param.grid.snapV3(Vec3.new(x, y, z).scale(r));
-            prim.verts.items[gi + num] = param.grid.snapV3(Vec3.new(x, y, z).scale(r2));
+            prim.verts.items[gi] = param.grid.snapV3(Vec3.new(x, y, z).mul(Vec3.new(a, b, h)));
+            prim.verts.items[gi + num] = param.grid.snapV3(Vec3.new(x, y, z).mul(Vec3.new(a2, b2, h2)));
         }
     }
 

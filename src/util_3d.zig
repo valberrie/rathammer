@@ -373,10 +373,16 @@ pub fn getBasis(norm: Vec3) [2]Vec3 {
     //0 -> 1 2
     //1 -> 0 2
     //2 -> 1 0
+    return switch (n) {
+        0 => .{ vs[2], vs[1] }, //yz
+        1 => .{ vs[0], vs[2] }, //xz
+        2 => .{ vs[0], vs[1] }, //xy
+        else => .{ vs[0], vs[1] },
+    };
 
-    const v: u8 = if (n == 2) 0 else 2;
-    const u: u8 = if (n == 1) 0 else 1;
-    return .{ vs[u], vs[v] };
+    //const u: u8 = if (n == 2) 0 else 2;
+    //const v: u8 = if (n == 1) 0 else 1;
+    //return .{ vs[u], vs[v] };
 }
 
 //Touching does not count
