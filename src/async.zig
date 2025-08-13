@@ -10,7 +10,7 @@ pub const SdlFileData = struct {
         pick_map,
     };
     const map_filters = [_]graph.c.SDL_DialogFileFilter{
-        .{ .name = "maps", .pattern = "json;vmf" },
+        .{ .name = "maps", .pattern = "json;vmf;ratmap" },
         .{ .name = "vmf maps", .pattern = "vmf" },
         .{ .name = "RatHammer json maps", .pattern = "json" },
         .{ .name = "RatHammer maps", .pattern = "ratmap" },

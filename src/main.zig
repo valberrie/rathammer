@@ -164,7 +164,12 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
             try config_path.writer().print("{s}/rathammer", .{x});
         } else {
             switch (builtin.target.os.tag) {
-                .windows => break :blk app_cwd,
+                // Workaround to weird ntdll segfault.
+                // Sometimes an invalidStatus error with openFile(recent_maps) -> STATUS_OBJECT_TYPE_MISMATCH   0xC0000024
+                // Sometimes it segfaults on INVALID_STATUS
+                // Seems to be involve a race condition
+                // app_cwd and config_dir are never closed so this makes no sense.
+                .windows => break :blk try app_cwd.openDir(".", .{}),
                 else => {
                     if (env.get("HOME")) |home| {
                         try config_path.writer().print("{s}/.config/rathammer", .{home});
@@ -296,6 +301,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     if (args.map == null) { //Only build the recents list if we don't have a map
         var timer = try std.time.Timer.start();
         if (config_dir.openFile("recent_maps.txt", .{})) |recent| {
+            defer recent.close();
             const slice = try recent.reader().readAllAlloc(alloc, std.math.maxInt(usize));
             defer alloc.free(slice);
             var it = std.mem.tokenizeScalar(u8, slice, '\n');

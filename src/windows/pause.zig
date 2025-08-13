@@ -21,6 +21,7 @@ pub const PauseWindow = struct {
         force_autosave,
         new_map,
         pick_map,
+        save_as,
 
         pub fn id(self: @This()) usize {
             return @intFromEnum(self);
@@ -120,6 +121,10 @@ pub const PauseWindow = struct {
                     std.debug.print("ERROR INIT NEW MAP\n", .{});
                 };
                 self.editor.paused = false;
+            },
+            .save_as => {
+                self.vt.needs_rebuild = true;
+                async_util.SdlFileData.spawn(self.editor.alloc, &self.editor.async_asset_load, .save_map) catch return;
             },
             .pick_map => {
                 self.vt.needs_rebuild = true;
@@ -265,7 +270,11 @@ pub const PauseWindow = struct {
             const Btn = Wg.Button.build;
             const ds = &self.editor.draw_state;
             if (self.editor.has_loaded_map) {
-                vt.addChildOpt(gui, win, Btn(gui, ly.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+                {
+                    var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
+                    vt.addChildOpt(gui, win, Btn(gui, hy.getArea(), "Unpause", .{ .cb_fn = &btnCb, .id = Buttons.id(.unpause), .cb_vt = &self.area }));
+                    vt.addChildOpt(gui, win, Btn(gui, hy.getArea(), "save as", .{ .cb_fn = &btnCb, .id = Buttons.id(.save_as), .cb_vt = &self.area }));
+                }
                 {
                     var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 3 };
                     if (guis.label(vt, gui, win, hy.getArea(), "Import under visgroup: ", .{})) |ar|

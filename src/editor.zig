@@ -915,6 +915,7 @@ pub const Context = struct {
             const aa = self.frame_arena.allocator();
             const out_name = try path.realpathAlloc(aa, filename);
             if (self.dirs.config.openFile("recent_maps.txt", .{})) |recent_list| { //Keep track of recent maps
+                defer recent_list.close();
 
                 const slice = try recent_list.reader().readAllAlloc(self.alloc, std.math.maxInt(usize));
                 defer self.alloc.free(slice);
@@ -926,7 +927,6 @@ pub const Context = struct {
                         try recent.append(try aa.dupe(u8, filen));
                     } else |_| {}
                 }
-                recent_list.close();
             } else |_| {}
 
             const out_ = out_name[0 .. out_name.len - ext.len];
@@ -940,6 +940,7 @@ pub const Context = struct {
 
             try recent.insert(0, out_rat);
             if (self.dirs.config.createFile("recent_maps.txt", .{})) |recent_out| {
+                defer recent_out.close();
                 for (recent.items) |rec| {
                     try recent_out.writer().print("{s}\n", .{rec});
                 }
@@ -1004,6 +1005,7 @@ pub const Context = struct {
     //Then, only have a single function to load serialized data into engine "loadJson"
     fn loadVmf(self: *Self, path: std.fs.Dir, filename: []const u8, loadctx: *LoadCtx) !void {
         const vis_override = if (self.hacky_extra_vmf.override_vis_group) |n| try self.visgroups.getOrPutTopLevelGroup(n) else null;
+        self.has_loaded_map = true;
         if (false and self.has_loaded_map) {
             log.err("Map already loaded", .{});
             return error.multiMapLoadNotSupported;
@@ -1301,7 +1303,9 @@ pub const Context = struct {
         }
         if (win.isBindState(self.config.keys.save.b, .rising)) {
             if (self.loaded_map_name) |basename| {
-                try self.saveAndNotify(basename, self.loaded_map_path orelse "");
+                self.saveAndNotify(basename, self.loaded_map_path orelse "") catch |err| {
+                    try self.notify("Failed saving map: {!}", .{err}, 0xff0000ff);
+                };
             } else {
                 try async_util.SdlFileData.spawn(self.alloc, &self.async_asset_load, .save_map);
             }
@@ -1313,31 +1317,35 @@ pub const Context = struct {
             blk: {
                 const lp = self.loaded_map_path orelse break :blk;
                 const lm = self.loaded_map_name orelse break :blk;
-                try self.saveAndNotify(lm, lp);
+                if (self.saveAndNotify(lm, lp)) {
+                    var build_arena = std.heap.ArenaAllocator.init(self.alloc);
+                    defer build_arena.deinit();
+                    if (jsontovmf(
+                        build_arena.allocator(),
+                        &self.ecs,
+                        self.skybox.sky_name,
+                        &self.vpkctx,
+                        &self.groups,
+                        null,
+                    )) {
+                        try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
 
-                var build_arena = std.heap.ArenaAllocator.init(self.alloc);
-                defer build_arena.deinit();
-                if (jsontovmf(
-                    build_arena.allocator(),
-                    &self.ecs,
-                    self.skybox.sky_name,
-                    &self.vpkctx,
-                    &self.groups,
-                    null,
-                )) {
-                    try self.notify("Exported map to vmf", .{}, 0x00ff00ff);
-                } else |_| {}
+                        try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
+                            .vmf = "dump.vmf",
+                            .gamedir_pre = self.game_conf.mapbuilder.game_dir,
+                            .exedir_pre = self.game_conf.mapbuilder.exe_dir,
+                            .gamename = self.game_conf.mapbuilder.game_name,
 
-                try async_util.MapCompile.spawn(self.alloc, &self.async_asset_load, .{
-                    .vmf = "dump.vmf",
-                    .gamedir_pre = self.game_conf.mapbuilder.game_dir,
-                    .exedir_pre = self.game_conf.mapbuilder.exe_dir,
-                    .gamename = self.game_conf.mapbuilder.game_name,
-
-                    .outputdir = self.game_conf.mapbuilder.output_dir,
-                    .cwd = self.dirs.cwd,
-                    .tmpdir = self.game_conf.mapbuilder.tmp_dir,
-                });
+                            .outputdir = self.game_conf.mapbuilder.output_dir,
+                            .cwd = self.dirs.cwd,
+                            .tmpdir = self.game_conf.mapbuilder.tmp_dir,
+                        });
+                    } else |err| {
+                        try self.notify("Failed exporting map to vmf {!}", .{err}, 0xff0000ff);
+                    }
+                } else |err| {
+                    try self.notify("Failed saving map: {!}", .{err}, 0xff0000ff);
+                }
             }
         }
 
