@@ -352,14 +352,19 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
 
     editor.draw_state.cam3d.fov = config.window.cam_fov;
 
-    if (args.map) |mapname| {
-        try editor.loadMap(app_cwd, mapname, &loadctx);
+    if (args.blank) |blank| {
+        try editor.setMapName(blank);
+        try editor.initNewMap();
     } else {
-        while (!win.should_exit) {
-            switch (try pauseLoop(&win, &draw, &launch_win.vt, &gui, gui_dstate, &loadctx, editor, launch_win.should_exit)) {
-                .exit => break,
-                .unpause => break,
-                .cont => continue,
+        if (args.map) |mapname| {
+            try editor.loadMap(app_cwd, mapname, &loadctx);
+        } else {
+            while (!win.should_exit) {
+                switch (try pauseLoop(&win, &draw, &launch_win.vt, &gui, gui_dstate, &loadctx, editor, launch_win.should_exit)) {
+                    .exit => break,
+                    .unpause => break,
+                    .cont => continue,
+                }
             }
         }
     }
@@ -562,6 +567,7 @@ pub fn main() !void {
     const Arg = graph.ArgGen.Arg;
     const args = try graph.ArgGen.parseArgs(&.{
         Arg("map", .string, "vmf or json to load"),
+        Arg("blank", .string, "create blank map named"),
         Arg("basedir", .string, "base directory of the game, \"Half-Life 2\""),
         Arg("gamedir", .string, "directory of gameinfo.txt, \"Half-Life 2/hl2\""),
         Arg("fgddir", .string, "directory of fgd file"),
