@@ -44,17 +44,17 @@ jobs:
         run: echo "::set-output name=version::$(./zig-out/bin/rathammer --version)"
         id: version
 
-      #- name: upload linux
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: rathammer_linux_x86_x64-${{ steps.version.outputs.version }}.zip
-      #    path: distrib/appimagebuild
+      - name: upload linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: rathammer_linux_x86_x64-${{ steps.version.outputs.version }}
+          path: distrib/appimagebuild
 
-      #- name: upload windows
-      #  uses: actions/upload-artifact@v4
-      #  with:
-      #    name: rathammer_windows_x86_x64-${{ steps.version.outputs.version }}.zip
-      #    path: distrib/rathammer-windows
+      - name: upload windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: rathammer_windows_x86_x64-${{ steps.version.outputs.version }}
+          path: distrib/rathammer-windows
 
       - name: release
         uses: actions/create-release@v1
