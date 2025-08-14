@@ -4,4 +4,5 @@ sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome
 
 pushd ratgraph
 ./setup_libs.sh
+./setup_libs_win.sh
 popd

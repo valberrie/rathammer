@@ -34,17 +34,26 @@ jobs:
       #    install-linux-dependencies: true
       #    version: 3.2.16
 
-      - name: build it
+      - name: build linux
         run: bash distrib/makeappdir.sh
+
+      - name: build win
+        run: bash distrib/makewin.sh
 
       - name: version
         run: echo "::set-output name=version::$(./zig-out/bin/rathammer --version)"
         id: version
 
-      - name: upload
+      - name: upload linux
         uses: actions/upload-artifact@v4
         with:
           name: rathammer_linux_x86_x64-${{ steps.version.outputs.version }}.zip
           path: distrib/appimagebuild
+
+      - name: upload windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: rathammer_windows_x86_x64-${{ steps.version.outputs.version }}.zip
+          path: distrib/rathammer-windows
 
       

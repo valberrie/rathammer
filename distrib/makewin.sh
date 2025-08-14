@@ -4,10 +4,10 @@ RATOUT=distrib/rathammer-windows
 rm -rf "$RATOUT"
 mkdir "$RATOUT"
 
-zig build -Doptimize=ReleaseSafe -Dcpu=x86_64
-cp zig-out/bin/rathammer "$RATOUT"
-cp zig-out/bin/jsonmaptovmf "$RATOUT"
-cp zig-out/bin/mapbuilder "$RATOUT"
+zig build -Doptimize=ReleaseSafe -Dcpu=x86_64 -Dtarget=x86_64-windows-gnu
+cp zig-out/bin/rathammer.exe "$RATOUT"
+cp zig-out/bin/jsonmaptovmf.exe "$RATOUT"
+cp zig-out/bin/mapbuilder.exe "$RATOUT"
 cp -r ratasset "$RATOUT"
 cp  config.vdf "$RATOUT"
 cp -r doc "$RATOUT"
