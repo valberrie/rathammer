@@ -8,8 +8,8 @@ on:
 
 jobs:
   build:
-    #runs-on: ubuntu-22.04
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    #runs-on: ubuntu-latest
 
     steps: 
       - name: checkout
@@ -25,8 +25,8 @@ jobs:
           # Version of the Zig compiler, e.g. "0.13.0" or "0.13.0-dev.351+64ef45eb0". "master" uses the latest nightly build. "latest" uses the latest tagged release. Leave empty to use minimum_zig_version from build.zig.zon, with a fallback to "latest".
           version: "0.14.1"
           
-      - name: get sdl
-        run:  bash scripts/build_sdl.sh
+      - name: build libs
+        run:  bash scripts/setup_ci.sh
 
       #- uses: libsdl-org/setup-sdl@main
       #  id: sdl
