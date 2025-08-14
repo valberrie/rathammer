@@ -44,16 +44,49 @@ jobs:
         run: echo "::set-output name=version::$(./zig-out/bin/rathammer --version)"
         id: version
 
-      - name: upload linux
-        uses: actions/upload-artifact@v4
-        with:
-          name: rathammer_linux_x86_x64-${{ steps.version.outputs.version }}.zip
-          path: distrib/appimagebuild
+      #- name: upload linux
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: rathammer_linux_x86_x64-${{ steps.version.outputs.version }}.zip
+      #    path: distrib/appimagebuild
 
-      - name: upload windows
-        uses: actions/upload-artifact@v4
+      #- name: upload windows
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: rathammer_windows_x86_x64-${{ steps.version.outputs.version }}.zip
+      #    path: distrib/rathammer-windows
+
+      - name: release
+        uses: actions/create-release@v1
+        id: create_release
         with:
-          name: rathammer_windows_x86_x64-${{ steps.version.outputs.version }}.zip
-          path: distrib/rathammer-windows
+          draft: false
+          prerelease: true
+          release_name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref }}
+          body_path: CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: upload linux artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./distrib/rathammer_linux_x86_64.zip
+          asset_name: rathammer_linux-${{ steps.version.outputs.version }}.zip
+          asset_content_type: application/zip
+
+      - name: upload windows artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./distrib/rathammer_windows.zip
+          asset_name: rathammer_windows-${{ steps.version.outputs.version }}.zip
+          asset_content_type: application/zip
+
 
       
