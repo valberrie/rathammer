@@ -26,7 +26,7 @@ jobs:
           version: "0.14.1"
           
       - name: build libs
-        run:  bash scripts/setup_ci.sh
+        run:  bash ci/setup_linux.sh
 
       #- uses: libsdl-org/setup-sdl@main
       #  id: sdl
