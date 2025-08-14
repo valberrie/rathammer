@@ -211,14 +211,9 @@ pub const PauseWindow = struct {
             if (guis.label(vt, gui, win, ly.getArea(), "index", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.draw_state.index, 0, 5, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "gamma", .{})) |ar|
-                vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ed.renderer.gamma, 0.1, 3, .{}));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.gamma, .{ .min = 0.1, .max = 3, .default = 1.45, .slide = .{ .snap = 0.1 } }));
             if (guis.label(vt, gui, win, ly.getArea(), "exposure", .{})) |ar|
-                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.exposure, .{
-                    .min = 0.1,
-                    .max = 10,
-                    .default = 1,
-                    .slide = .{ .snap = 0.1 },
-                }));
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.exposure, .{ .min = 0.1, .max = 10, .default = 1, .slide = .{ .snap = 0.1 } }));
             if (guis.label(vt, gui, win, ly.getArea(), "pitch", .{})) |ar|
                 vt.addChildOpt(gui, win, St(gui, ar, &ed.renderer.pitch, .{ .min = 0, .max = 90, .default = -30 }));
             if (guis.label(vt, gui, win, ly.getArea(), "yaw", .{})) |ar|
@@ -256,6 +251,10 @@ pub const PauseWindow = struct {
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "do hdr", .{ .bool_ptr = &ed.renderer.do_hdr_buffer }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw outline", .{ .bool_ptr = &ed.draw_state.draw_outlines }, null));
             vt.addChildOpt(gui, win, Wg.Checkbox.build(gui, ly.getArea(), "Draw displacement solid", .{ .bool_ptr = &ed.draw_state.draw_displacment_solid }, null));
+            if (guis.label(vt, gui, win, ly.getArea(), "far clip", .{})) |ar|
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.draw_state.cam_far_plane, .{ .min = 512 * 64, .max = 512 * 512, .default = 512 * 64, .slide = .{ .snap = 64 } }));
+            if (guis.label(vt, gui, win, ly.getArea(), "near clip", .{})) |ar|
+                vt.addChildOpt(gui, win, St(gui, ar, &ed.draw_state.cam_near_plane, .{ .min = 1, .max = 512, .default = 1, .slide = .{ .snap = 1 } }));
         }
         if (eql(u8, tab, "main")) {
             var ly = guis.VerticalLayout{
@@ -311,7 +310,7 @@ pub const PauseWindow = struct {
                 vt.addChildOpt(gui, win, Wg.Combo.build(gui, ar, &self.editor.edit_state.default_group_entity, .{}));
             if (guis.label(vt, gui, win, ly.getArea(), "Entity render distance", .{})) |ar|
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, ar, &ds.tog.model_render_dist, 64, 1024 * 10, .{ .nudge = 256 }));
-            {
+            if (false) {
                 var hy = guis.HorizLayout{ .bounds = ly.getArea() orelse return, .count = 2 };
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_near_plane, 1, 512, .{ .nudge = 1 }));
                 vt.addChildOpt(gui, win, Wg.Slider.build(gui, hy.getArea(), &ds.cam_far_plane, 512 * 64, 512 * 512, .{ .nudge = 1 }));
