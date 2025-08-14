@@ -37,10 +37,14 @@ jobs:
       - name: build it
         run: bash distrib/makeappdir.sh
 
+      - name: version
+        run: echo "::set-output name=version::$(./zig-out/bin/rathammer --version)"
+        id: version
+
       - name: upload
         uses: actions/upload-artifact@v4
         with:
-          name: rathammer_linux_x86_x64.zip
+          name: rathammer_linux_x86_x64-${{ steps.version.outputs.version }}.zip
           path: distrib/appimagebuild
 
       

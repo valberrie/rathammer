@@ -26,9 +26,7 @@ rm "$RATOUT"/ratgraph/asset/fonts/*
 
 cp distrib/appimageskeleton/* "$RATOUT"/
 
-mkdir "$RATOUT"/lib
-LOUT="$RATOUT"/lib
-LIBPATH="/lib/x86_64-linux-gnu"
+cp -r rat_custom "$RATOUT"
 
 # Copyright stuff
 cp ratgraph/c_libs/libspng/LICENSE "$RATOUT"/SPNG_LICENSE

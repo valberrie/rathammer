@@ -26,6 +26,7 @@ const panereg = @import("pane.zig");
 const json_map = @import("json_map.zig");
 
 const Conf = @import("config.zig");
+const version = @import("version.zig");
 
 //Deprecate this please
 //wrapper to make the old gui stuff work with pane reg
@@ -581,7 +582,15 @@ pub fn main() !void {
         Arg("fontfile", .string, "load custom font"),
         Arg("display_scale", .number, "override detected display scale, should be ~ 0.2-3"),
         Arg("config", .string, "load custom config, relative to cwd"),
+        Arg("version", .flag, "Print rathammer version and exit"),
     }, &arg_it);
+
+    if (args.version != null) {
+        const out = std.io.getStdOut();
+        try out.writer().print("{s}\n", .{version.version});
+        return;
+    }
+
     try wrappedMain(alloc, args);
 
     // if the application is quit while items are being loaded in the thread pool, we get spammed with memory leaks.

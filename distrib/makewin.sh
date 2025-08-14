@@ -4,7 +4,7 @@ RATOUT=distrib/rathammer-windows
 rm -rf "$RATOUT"
 mkdir "$RATOUT"
 
-zig build -Doptimize=ReleaseSafe
+zig build -Doptimize=ReleaseSafe -Dcpu=x86_64
 cp zig-out/bin/rathammer "$RATOUT"
 cp zig-out/bin/jsonmaptovmf "$RATOUT"
 cp zig-out/bin/mapbuilder "$RATOUT"
