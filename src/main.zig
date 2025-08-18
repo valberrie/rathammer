@@ -25,6 +25,7 @@ const Ctx2dView = @import("view_2d.zig").Ctx2dView;
 const panereg = @import("pane.zig");
 const json_map = @import("json_map.zig");
 
+const build_config = @import("config");
 const Conf = @import("config.zig");
 const version = @import("version.zig");
 
@@ -583,11 +584,27 @@ pub fn main() !void {
         Arg("display_scale", .number, "override detected display scale, should be ~ 0.2-3"),
         Arg("config", .string, "load custom config, relative to cwd"),
         Arg("version", .flag, "Print rathammer version and exit"),
+        Arg("build", .flag, "Print rathammer build info as json and exit"),
     }, &arg_it);
 
     if (args.version != null) {
         const out = std.io.getStdOut();
         try out.writer().print("{s}\n", .{version.version});
+        return;
+    }
+
+    if (args.build != null) {
+        const out = std.io.getStdOut();
+        var jout = std.json.writeStream(out.writer(), .{ .whitespace = .indent_2 });
+        defer out.writer().print("\n", .{}) catch {}; //Json doesn't emit final \n
+        defer jout.deinit();
+        try jout.write(.{
+            .version = version.version,
+            .os = builtin.target.os.tag,
+            .arch = builtin.target.cpu.arch,
+            .mode = builtin.mode,
+            .commit = build_config.commit_hash,
+        });
         return;
     }
 
