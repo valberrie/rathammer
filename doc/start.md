@@ -35,8 +35,26 @@ To load a vmf or ratmap you can use the --map flag, or you can select a map to l
 ## Editing
 Once you have successfully started RatHammer you will be greeted by a "pause menu", there are various global settings in here and documentation. Open and close the pause menu with 'Escape'
 RatHammer was designed with 3D editing as the main form. There are 2d views but are relegated to speciality tasks that benefit from a orthographic view, such as alignment and selection of vertices in an axis aligned solid.
-Navigation of the 3d view is done with the WASD keys the c key moves the camera down, and the space bar moves it up.
-To un-capture the mouse cursor, hold the shift key
+
+Quick reference:
+
+* Navigation -> WASD
+* Camera up/down -> space/c
+* Change camera speed -> scroll
+* Uncapture mouse -> shift
+* Pause -> Escape
+* Toggle console -> tilde (~)
+* Grid inc/dec -> R/F
+* Duplicate / texture-wrap -> z
+* Delete -> ctrl+d
+* Pick -> Q
+* main 3d view -> alt+1
+* texture browser -> alt+t (see workspaces below)
+* ctrl+z, ctrl+shift+z -> undo / redo
+* ctrl+s, ctrl+shift+s -> save / save as
+* F9 build map
+
+Notice how these bindings all sit near wasd, so the left hand doesn't need to move out of position while editing.
 
 All keys can be remapped in the config.vdf file. By default all keys map to physical keys on the keyboard rather than symbols, so if you use a layout other than QWERTY, the keys are in the same place as they would be on a QWERTY layout. This behavior can be changed per key in the config.
 
@@ -69,9 +87,47 @@ Click and drag the gizmo to translate.
 Clicking the white cube above the gizmo will toggle between and translation and rotation gizmo.
 Clicking on any part of the selected brushes will let you do a "smart move" If your cursor is > 30 degrees from the horizon, the solid is moved in the xy plane. Otherwise, the solid is moved in the plane of the face you clicked on. 
 
+This smart move function means you can move objects along arbitrary planes, by creating a temporary solid with desired plane, moving along that plane with all selected, then deleting the temporary solid.
+
 ### Face translate tool.
 A Specialized tool for moving the faces of a single solid in an arbitrary direction. If more than one entity is selected it will draw a bounding box around all selected and allow you to scale them proportionally. 
 
+### Place model
+Places entities in the world. The default entity is prop_static and if you have a model selected in the model browser (alt+m) that model gets placed. 
+To create a brush entity, select entities and press ctrl+t.
+
+### Cube draw
+When the cube draw tool is activated, a grid is drawn an z=0. Left click to start, left click again to finish the cube. A red and gray outline of the cube is drawn and you can resize it by left clicking and dragging on a face. Commit the cube with right click. This preview is especially useful for the arch tool as you can resize the bounds and see how the archway will look before committing.
+
+To change the height of the grid hold q and aim at something in the world. Left click while holding q to set this as the new height.
+
+Pressing z and x move the grid up and down in grid increments.
+To change the primitive go to the tool tab in the inspector.
+
+Supported primitives are (cube, arch, cylinder, stairs, dome)
+
+### Texture Tool
+Select textures with alt+t, switch back to main view with alt+1.
+
+Under the tool tab, the active texture and a list of recent of recent textures is shown. 
+Right click on any face to apply the texture. Left click on a face to select it.
+Holding z and right clicking will wrap the texture from the selected face. This is equivalent to Hammer's (alt + right click ).
+
+### Vertex tool
+In 3d, mouse over a vertex and left click to add. Drag the gizmo and right click to move those vertices.
+
+In the 2d views (alt + 2), left click on a vertex or left click and drag to do a marquee. Hold shift and drag to move all selected vertices.
+
+This vertex tool is temporary and I hope to write a much better one in the future.
+
+### Clipping tool
+The clipping tool only works in the 3d viewport for now.
+Left click on a selected solid to add the start point, do the same for the second point. The plane you are clipping against will be highlighted in light blue. The red plane is the clipping plane, the blue plane is where the third point lies.
+Clicking and dragging the second and third points will allow you to manipulate the clipping plane. Right click to commit the clip. 
+
+The clipping plane will always lie in the normal of the plane you are clipping about (light blue). You can change the selection at any time. The solid you started clipping against does not need to be in the selected when you commit. You can use this to easily specify arbitrary clip planes in 3d.
+
+Currently, clipping solid(s) will remove them from any groups, keep this in mind when clipping collections e.g. staircases.
 
 ## Workspaces
 RatHammer has a few different workspaces.
