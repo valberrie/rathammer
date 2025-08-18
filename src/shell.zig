@@ -95,10 +95,25 @@ pub const CommandCtx = struct {
                     try wr.print("Number of entites: {d}", .{self.ed.ecs.getEntLength()});
                 },
                 .help => {
-                    try wr.print("commands: \n", .{});
-                    const field = @typeInfo(Commands).@"enum".fields;
-                    inline for (field) |f| {
-                        try wr.print("{s}\n", .{f.name});
+                    if (args.next()) |help_com| {
+                        if (std.meta.stringToEnum(Commands, help_com)) |en| {
+                            try wr.print("{s}: {s}", .{ help_com, switch (en) {
+                                else => "no doc written",
+                                .select_id => "id0 id1... , Add or remove ids from selection",
+                                .select_class => "prop_static infodecal... , Add or remove any entities with matching class",
+                                .snap_selected => "Round all vertices of selected solids to integers",
+                                .optimize => "Attempt to fix invalid solids in selection",
+                                .pointfile => "Attempt to load pointfile in map compile dir, or user path if specified",
+                            } });
+                        } else {
+                            try wr.print("Unknown command: {s}", .{help_com});
+                        }
+                    } else {
+                        try wr.print("commands: \n", .{});
+                        const field = @typeInfo(Commands).@"enum".fields;
+                        inline for (field) |f| {
+                            try wr.print("{s}\n", .{f.name});
+                        }
                     }
                 },
                 .set => {
