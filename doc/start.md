@@ -106,6 +106,14 @@ To change the primitive go to the tool tab in the inspector.
 
 Supported primitives are (cube, arch, cylinder, stairs, dome)
 
+### Fast face
+The fast face tool allows to quickly move a solid's faces along their normal.
+Selected solids will be outlined in orange. Left click to select the face nearest to you, right click to select the far face.
+
+If more than one solid is selected, faces with common normals are moved together.
+
+The fast face tool is an outlier as it does not require actions to be committed.
+
 ### Texture Tool
 Select textures with alt+t, switch back to main view with alt+1.
 
@@ -128,6 +136,18 @@ Clicking and dragging the second and third points will allow you to manipulate t
 The clipping plane will always lie in the normal of the plane you are clipping about (light blue). You can change the selection at any time. The solid you started clipping against does not need to be in the selected when you commit. You can use this to easily specify arbitrary clip planes in 3d.
 
 Currently, clipping solid(s) will remove them from any groups, keep this in mind when clipping collections e.g. staircases.
+
+
+### Displacements 
+There is no displacement tool yet, but very limited editing of displacements can be done.
+
+Create a displacement by selected a face with the texture tool and click "make displacement". Using the vertex tool, the displacement vertices can be moved around. To modify the underlying solid's vertices, check the box under the tool tab.
+
+There is no support yet for: (alpha blend, modifying normals (smoothing), sewing). Displacements can be imported and exported from vmf without loosing information however, so a workaround is exporting to vmf, editing with hammer, then importing that vmf.
+
+### Grid and selection options
+Under the tool tab when the translate tool is active, you will find options for grid size and selection mask.
+The angle snap can be set here. 
 
 ## Workspaces
 RatHammer has a few different workspaces.
@@ -193,5 +213,6 @@ Compressing the map.json rather than the entire tar is done because compressing 
 ### func_useableladder
 This entity is really annoying, it is only used by hl2 and portal. 
 When you translate a func_useableladder entity, the origin of the entity is synced with the point0 field (the start of the ladder)
-The point1 field (end of the ladder) must be set manually. An orange helper outlining the ladders bounds is drawn, but the second part of the hull (point1) can not be manipulated in 3d.
+The point1 field (end of the ladder) must be set manually. An orange helper outlining the ladders bounds is drawn, but the second part of the hull (point1) can not be manipulated in 3d. Copy and paste a position value into the point1 field.
+
 
