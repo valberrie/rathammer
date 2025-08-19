@@ -31,6 +31,7 @@ cp -r rat_custom "$RATOUT"
 # Copyright stuff
 cp ratgraph/c_libs/libspng/LICENSE "$RATOUT"/SPNG_LICENSE
 cp LICENSE "$RATOUT"/LICENSE
+cp README.md "$RATOUT"/README.md
 
 cd distrib
 zip -r rathammer_linux_x86_x64.zip appimagebuild

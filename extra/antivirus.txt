@@ -1,0 +1,12 @@
+On Windows, rathammer.exe and/or mapbuilder.exe are sometimes flagged as virus's.
+
+On my system (Windows 10), it labeled rathammer as a PUA and mapbuilder as something really dangerous or something. (The learn more linked to nothing)
+
+Whitelist rathammer by going to windows defender, finding the threat, and selecting "restore".
+
+Rathammer and mapbuilder both create child process, (vbsp, vvis, vrad), to compile your map, which is probably part of why they get flagged.
+
+If you do not trust that the software is safe, you are free to audit the source code at:
+https://github.com/nmalthouse/rathammer
+
+and build it from source yourself.
