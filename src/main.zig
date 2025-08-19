@@ -207,6 +207,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .frame_sync = .adaptive_vsync,
         .gl_major_version = 4,
         .gl_minor_version = 2,
+        .enable_debug = IS_DEBUG,
     });
     defer win.destroyWindow();
 
