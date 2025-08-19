@@ -88,6 +88,8 @@ pub const Config = struct {
 
         sensitivity_3d: f32 = 1,
         sensitivity_2d: f32 = 1,
+
+        display_scale: f32 = -1,
     },
     default_game: []const u8 = "",
     games: struct {

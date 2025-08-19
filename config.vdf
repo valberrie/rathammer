@@ -90,6 +90,10 @@ window {
     cam_fov     85
     sensitivity_3d  1
     sensitivity_2d  1
+
+    //The display scale is determined automatically and is used to set the scale of the gui and other elements.
+    //Uncomment this line to permanently change it. value must be in (0, f32max)
+    //display_scale 1
 }
 
 //The name of a game defined in "games"

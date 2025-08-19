@@ -226,10 +226,11 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .{ .dpi = 1, .fh = 14, .ih = 25, .scale = 1 },
         .{ .dpi = 1.7, .fh = 24, .ih = 42 },
     };
-    const sc = args.display_scale orelse try dpiDetect(&win);
+    const config_display_scale = if (config.window.display_scale > 0) config.window.display_scale else null;
+    const sc = args.display_scale orelse config_display_scale orelse try dpiDetect(&win);
     edit.log.info("Detected a display scale of {d}", .{sc});
     const dpi_preset = blk: {
-        const default_scaled = Preset{ .fh = 20 * sc, .ih = 25 * sc, .scale = 2 };
+        const default_scaled = Preset{ .fh = 20 * sc, .ih = 25 * sc, .scale = 1 };
         const max_dpi_diff = 0.3;
         const index = util.nearest(Preset, &DPI_presets, {}, Preset.distance, .{ .dpi = sc }) orelse break :blk default_scaled;
         const p = DPI_presets[index];
@@ -242,7 +243,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
     const scaled_item_height = args.gui_item_height orelse @trunc(dpi_preset.ih);
     const scaled_text_height = args.gui_font_size orelse @trunc(dpi_preset.fh);
     const gui_scale = args.gui_scale orelse dpi_preset.scale;
-    edit.log.info("gui Size: {d} text ", .{scaled_text_height});
+    edit.log.info("gui Size, text: {d} item: {d} ", .{ scaled_text_height, scaled_item_height });
 
     if (!graph.SDL.Window.glHasExtension("GL_EXT_texture_compression_s3tc")) return error.glMissingExt;
     var draw = graph.ImmediateDrawingContext.init(alloc);
