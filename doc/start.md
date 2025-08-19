@@ -32,6 +32,11 @@ Unless something horribly wrong happened (Windows builds can be finicky), RatHam
 
 To load a vmf or ratmap you can use the --map flag, or you can select a map to load once the editor is started.
 
+## Gui
+If the scale of the gui is incorrect, set a custom display scale with the --display_scale 1 flag.
+
+This can be permanently set in the config.vdf window section.
+
 ## Editing
 Once you have successfully started RatHammer you will be greeted by a "pause menu", there are various global settings in here and documentation. Open and close the pause menu with 'Escape'
 RatHammer was designed with 3D editing as the main form. There are 2d views but are relegated to speciality tasks that benefit from a orthographic view, such as alignment and selection of vertices in an axis aligned solid.
@@ -50,9 +55,9 @@ Quick reference:
 * Pick -> Q
 * main 3d view -> alt+1
 * texture browser -> alt+t (see workspaces below)
-* ctrl+z, ctrl+shift+z -> undo / redo
-* ctrl+s, ctrl+shift+s -> save / save as
-* F9 build map
+* undo / redo -> ctrl+z, ctrl+shift+z 
+* save / save as -> ctrl+s, ctrl+shift+s
+* F9 build map (map must have name)
 
 Notice how these bindings all sit near wasd, so the left hand doesn't need to move out of position while editing.
 
@@ -97,9 +102,9 @@ Places entities in the world. The default entity is prop_static and if you have 
 To create a brush entity, select entities and press ctrl+t.
 
 ### Cube draw
-When the cube draw tool is activated, a grid is drawn an z=0. Left click to start, left click again to finish the cube. A red and gray outline of the cube is drawn and you can resize it by left clicking and dragging on a face. Commit the cube with right click. This preview is especially useful for the arch tool as you can resize the bounds and see how the archway will look before committing.
+When the cube draw tool is activated, a grid is drawn on z=0. Left click to start, left click again to finish the cube. A red and gray outline of the cube is drawn and you can resize it by left clicking and dragging on a face. Commit the cube with right click. This preview is especially useful for the arch tool as you can resize the bounds and see how the archway will look before committing.
 
-To change the height of the grid hold q and aim at something in the world. Left click while holding q to set this as the new height.
+To change the z value of the grid hold q and aim at something in the world. Left click while holding q to set this as the new z.
 
 Pressing z and x move the grid up and down in grid increments.
 To change the primitive go to the tool tab in the inspector.
@@ -137,7 +142,6 @@ The clipping plane will always lie in the normal of the plane you are clipping a
 
 Currently, clipping solid(s) will remove them from any groups, keep this in mind when clipping collections e.g. staircases.
 
-
 ### Displacements 
 There is no displacement tool yet, but very limited editing of displacements can be done.
 
@@ -148,6 +152,13 @@ There is no support yet for: (alpha blend, modifying normals (smoothing), sewing
 ### Grid and selection options
 Under the tool tab when the translate tool is active, you will find options for grid size and selection mask.
 The angle snap can be set here. 
+
+### Visgroups 
+Visgroups are imported from vmf and can be selected or have visibility toggled from the pause tab.
+
+There is currently no way to add objects to a visgroup.
+
+In the future, a layer system for manually orginizing objects, coupled with a automatic vis grouping system will be added.
 
 ## Workspaces
 RatHammer has a few different workspaces.

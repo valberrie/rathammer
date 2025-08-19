@@ -208,6 +208,7 @@ pub fn wrappedMain(alloc: std.mem.Allocator, args: anytype) !void {
         .gl_major_version = 4,
         .gl_minor_version = 2,
         .enable_debug = IS_DEBUG,
+        .gl_flags = if (IS_DEBUG) &[_]u32{graph.c.SDL_GL_CONTEXT_DEBUG_FLAG} else &[_]u32{},
     });
     defer win.destroyWindow();
 
