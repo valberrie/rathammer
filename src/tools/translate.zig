@@ -250,9 +250,9 @@ pub const Translate = struct {
                     angle_delta = snapV3(angle, tool.angle_snap);
 
                     if (giz_active == .high) {
-                        try solid.drawImmediateCustom(draw, self, ctx, DrawCustomCtx.vertOffset);
+                        try solid.drawImmediateCustom(draw, self, ctx, DrawCustomCtx.vertOffset, true);
                         if (dupe) { //Draw original
-                            try solid.drawImmediate(draw, self, Vec3.zero(), null);
+                            try solid.drawImmediate(draw, self, Vec3.zero(), null, true);
                         }
                         //if (draw_verts)
                         //solid.drawEdgeOutline(draw_nd, color, 0xff0000ff, dist);
@@ -389,12 +389,12 @@ pub const Translate = struct {
                         try solid.translate(id, Vec3.zero(), self, Vec3.zero(), null); //Dummy to put it bake in the mesh batch
 
                         //Draw it here too so we it doesn't flash for a single frame
-                        try solid.drawImmediate(draw, self, dist, null);
+                        try solid.drawImmediate(draw, self, dist, null, true);
                     }
                     if (giz_active == .high) {
-                        try solid.drawImmediate(draw, self, dist, null);
+                        try solid.drawImmediate(draw, self, dist, null, true);
                         if (dupe) { //Draw original
-                            try solid.drawImmediate(draw, self, Vec3.zero(), null);
+                            try solid.drawImmediate(draw, self, Vec3.zero(), null, true);
                         }
                         if (draw_verts)
                             solid.drawEdgeOutline(draw_nd, dist, .{

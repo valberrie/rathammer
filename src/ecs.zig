@@ -1042,7 +1042,7 @@ pub const Solid = struct {
 
     /// only_verts contains a list of vertex indices to apply offset to.
     /// If it is null, all vertices are offset
-    pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, only_verts: ?[]const u32) !void {
+    pub fn drawImmediate(self: *Self, draw: *DrawCtx, editor: *Editor, offset: Vec3, only_verts: ?[]const u32, texture_lock: bool) !void {
         for (self.sides.items) |side| {
             if (side.omit_from_batch)
                 continue;
@@ -1065,6 +1065,7 @@ pub const Solid = struct {
                 }
                 const pos = v.add(off);
 
+                const upos = if (texture_lock) v else pos;
                 try batch.vertices.append(.{
                     .pos = .{
                         .x = pos.x(),
@@ -1072,8 +1073,8 @@ pub const Solid = struct {
                         .z = pos.z(),
                     },
                     .uv = .{
-                        .x = @as(f32, @floatCast(pos.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
-                        .y = @as(f32, @floatCast(pos.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
+                        .x = @as(f32, @floatCast(upos.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                        .y = @as(f32, @floatCast(upos.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
                     },
                     .color = 0xffffffff,
                 });
@@ -1084,7 +1085,7 @@ pub const Solid = struct {
     }
 
     //the vertexOffsetCb is given the vertex, the side_index, the index
-    pub fn drawImmediateCustom(self: *Self, draw: *DrawCtx, ed: *Editor, user: anytype, vertOffsetCb: fn (@TypeOf(user), Vec3, u32, u32) Vec3) !void {
+    pub fn drawImmediateCustom(self: *Self, draw: *DrawCtx, ed: *Editor, user: anytype, vertOffsetCb: fn (@TypeOf(user), Vec3, u32, u32) Vec3, texture_lock: bool) !void {
         for (self.sides.items, 0..) |side, s_i| {
             if (side.omit_from_batch) //don't draw this sideit
                 continue;
@@ -1102,6 +1103,7 @@ pub const Solid = struct {
                 const off = vertOffsetCb(user, v, @intCast(s_i), @intCast(i));
 
                 const pos = v.add(off);
+                const upos = if (texture_lock) v else pos;
                 try batch.vertices.append(.{
                     .pos = .{
                         .x = pos.x(),
@@ -1109,8 +1111,8 @@ pub const Solid = struct {
                         .z = pos.z(),
                     },
                     .uv = .{
-                        .x = @as(f32, @floatCast(pos.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
-                        .y = @as(f32, @floatCast(pos.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
+                        .x = @as(f32, @floatCast(upos.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                        .y = @as(f32, @floatCast(upos.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
                     },
                     .color = 0xffffffff,
                 });

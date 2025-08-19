@@ -269,7 +269,7 @@ pub const FastFaceManip = struct {
                                     if (sel.face_id >= solid_o.sides.items.len) continue;
                                     const s_io: usize = @intCast(sel.face_id);
                                     const side_o = &solid_o.sides.items[s_io];
-                                    solid_o.drawImmediate(td.draw, editor, dist, side_o.index.items) catch return;
+                                    solid_o.drawImmediate(td.draw, editor, dist, side_o.index.items, false) catch return;
                                     draw_nd.convexPolyIndexed(side_o.index.items, solid_o.verts.items, 0xff000088, .{ .offset = dist });
                                 }
 
@@ -618,7 +618,7 @@ const Proportional = struct {
                     }
                     for (selected) |id| {
                         const solid = ed.getComponent(id, .solid) orelse continue;
-                        solid.drawImmediateCustom(td.draw, ed, &ctx_, TranslateCtx.vertexOffset) catch return;
+                        solid.drawImmediateCustom(td.draw, ed, &ctx_, TranslateCtx.vertexOffset, false) catch return;
                     }
                 }
             },
@@ -735,7 +735,7 @@ pub const TranslateFace = struct {
                     if (giz_active == .high) {
                         const dist = self.grid.snapV3(origin.sub(origin_i));
                         toolutil.drawDistance(origin_i, dist, &self.draw_state.screen_space_text_ctx, td.text_param, td.screen_area, td.view_3d.*);
-                        try solid.drawImmediate(td.draw, self, dist, side.index.items);
+                        try solid.drawImmediate(td.draw, self, dist, side.index.items, false);
                         if (self.edit_state.rmouse == .rising) {
                             //try solid.translateSide(id, dist, self, s_i);
                             const ustack = try self.undoctx.pushNewFmt("translated face", .{});
