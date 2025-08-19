@@ -1051,16 +1051,11 @@ pub const Solid = struct {
                 .texture = (try editor.getTexture(side.tex_id)).id,
                 .camera = ._3d,
             } }) catch return).billboard;
-            const uvs = try editor.csgctx.calcUVCoordsIndexed(
-                self.verts.items,
-                side.index.items,
-                side,
-                @intCast(side.tw),
-                @intCast(side.th),
-                Vec3.zero(),
-            );
             const ioffset = batch.vertices.items.len;
+            const tw: f32 = @floatFromInt(side.tw);
+            const th: f32 = @floatFromInt(side.th);
             for (side.index.items, 0..) |vi, i| {
+                _ = i;
                 const v = self.verts.items[vi];
 
                 var off = offset;
@@ -1068,16 +1063,17 @@ pub const Solid = struct {
                     if (std.mem.indexOfScalar(u32, ov, vi) == null)
                         off = Vec3.zero();
                 }
+                const pos = v.add(off);
 
                 try batch.vertices.append(.{
                     .pos = .{
-                        .x = v.x() + off.x(),
-                        .y = v.y() + off.y(),
-                        .z = v.z() + off.z(),
+                        .x = pos.x(),
+                        .y = pos.y(),
+                        .z = pos.z(),
                     },
                     .uv = .{
-                        .x = uvs[i].x(),
-                        .y = uvs[i].y(),
+                        .x = @as(f32, @floatCast(pos.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                        .y = @as(f32, @floatCast(pos.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
                     },
                     .color = 0xffffffff,
                 });
@@ -1097,29 +1093,24 @@ pub const Solid = struct {
                 .texture = (try ed.getTexture(side.tex_id)).id,
                 .camera = ._3d,
             } }) catch return).billboard;
-            const uvs = try ed.csgctx.calcUVCoordsIndexed(
-                self.verts.items,
-                side.index.items,
-                side,
-                @intCast(side.tw),
-                @intCast(side.th),
-                Vec3.zero(),
-            );
             const ioffset = batch.vertices.items.len;
+            const tw: f32 = @floatFromInt(side.tw);
+            const th: f32 = @floatFromInt(side.th);
             for (side.index.items, 0..) |vi, i| {
                 const v = self.verts.items[vi];
 
                 const off = vertOffsetCb(user, v, @intCast(s_i), @intCast(i));
 
+                const pos = v.add(off);
                 try batch.vertices.append(.{
                     .pos = .{
-                        .x = v.x() + off.x(),
-                        .y = v.y() + off.y(),
-                        .z = v.z() + off.z(),
+                        .x = pos.x(),
+                        .y = pos.y(),
+                        .z = pos.z(),
                     },
                     .uv = .{
-                        .x = uvs[i].x(),
-                        .y = uvs[i].y(),
+                        .x = @as(f32, @floatCast(pos.dot(side.u.axis) / (tw * side.u.scale) + side.u.trans / tw)),
+                        .y = @as(f32, @floatCast(pos.dot(side.v.axis) / (th * side.v.scale) + side.v.trans / th)),
                     },
                     .color = 0xffffffff,
                 });
