@@ -3,6 +3,8 @@
 
 [Documentation](doc/start.md)
 
+[Matrix chat](https://matrix.to/#/#rathammer:matrix.org)
+
 ![Screenshot of the editor](doc/screen.jpg)
 
 ## Getting vbsp.exe, fgd files, etc on Linux
